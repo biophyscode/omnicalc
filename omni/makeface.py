@@ -183,7 +183,10 @@ if __name__ == "__main__":
 	#---read configuration to retrieve source scripts
 	#---note this happens every time (even on make tab-completion) to collect scripts
 	#---...from all open-ended sources. timing: it only requires about 3 ms
-	if not os.path.isfile(config_fn): raise Exception('cannot locate %s'%config_fn)
+	if not os.path.isfile(config_fn): 
+		#---write a default config for omnicalc if config is missing
+		default_config = {'commands': ['omni/cli.py'],'commands_aliases': [('set','set_config')]}
+		with open(config_fn,'w') as fp: fp.write(str(default_config))
 	if 'config_fn' in globals() and 'config_key' in globals(): 
 		with open(config_fn) as fp: configurator = eval(fp.read())
 		source_scripts = str_or_list(configurator.get('commands',[]))

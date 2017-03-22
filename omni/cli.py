@@ -50,4 +50,7 @@ def clone_calcs(source):
 		raise Exception('found calcs/.git but no calculations_repo in the config')
 	elif 'calculations_repo' in config and os.path.isdir('calcs/.git'):
 		raise Exception('you already have a calculations repo at calcs')
-	
+	#---clone and register
+	bash('git clone %s calcs'%source)
+	config['calculations_repo'] = source
+	write_config(config)

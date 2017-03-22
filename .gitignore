@@ -1,0 +1,17 @@
+/*
+/*/
+paths.yaml
+gromacs.py
+!/omni/
+!/calcs/
+!/calcs/codes/
+!/calcs/codes/.info
+!/calcs/scripts/
+!/calcs/scripts/.info
+!makefile
+!.gitignore
+*.pyc
+!README.md
+!LICENSE.md
+calcs/
+omni/docs/build/

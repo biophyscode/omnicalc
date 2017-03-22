@@ -5,7 +5,7 @@ Omnicalc command-line interface.
 """
 
 #---expose interface functions from omnicalc.py as well
-__all__ = ['locate','set_config','nuke','setup','compute','plot','pipeline']
+__all__ = ['locate','set_config','nuke','setup','compute','plot','pipeline','clone_calcs']
 
 import os,sys,re
 from config import read_config,write_config,is_terminal_command,bash,abspath,set_config
@@ -38,3 +38,16 @@ def setup():
 	needs_keys = [i for i in required_settings if i not in config]
 	if any(needs_keys): 
 		print('[NOTE] setting is incomplete until you add: %s. use `make set key="val"`.'%needs_keys)
+
+def clone_calcs(source):
+	"""
+	Clone a calculations repository.
+	"""
+	config = read_config()
+	if 'calculations_repo' in config and not os.path.isdir('calcs/.git'):
+		raise Exception('config has a calculations repo registered but we cannot find calcs/.git')
+	elif not 'calculations_repo' in config and os.path.isdir('calcs/.git'):
+		raise Exception('found calcs/.git but no calculations_repo in the config')
+	elif 'calculations_repo' in config and os.path.isdir('calcs/.git'):
+		raise Exception('you already have a calculations repo at calcs')
+	

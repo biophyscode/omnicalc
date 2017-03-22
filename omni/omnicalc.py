@@ -22,7 +22,7 @@ class WorkSpace:
 	#---! currently hard-coded
 	nprocs = 4
 
-	def __init__(self,plot=None,plot_call=False,pipeline=None):
+	def __init__(self,plot=None,plot_call=False,pipeline=None,meta=None):
 		"""
 		"""
 		if plot and pipeline: raise Exception('only plot or pipeline')
@@ -31,7 +31,7 @@ class WorkSpace:
 		#---unpack the paths right into the workspace for calculation functions
 		#---! check that all paths are added here for posterity/backwards compatibility
 		self.paths = dict([(key,self.config[key]) for key in ['post_plot_spot','post_data_spot']])
-		self.specs = self.read_specs()
+		self.specs = self.read_specs(meta=meta)
 		#---prepare a namer from the global omni_namer
 		self.namer = NamingConventions(
 			short_namer=self.meta.get('short_namer',None),
@@ -76,14 +76,21 @@ class WorkSpace:
 		self.specs_raw = specs
 		return specs
 
-	def read_specs(self,names=None,merge_method='careful'):
+	def read_specs(self,meta=None,merge_method='careful'):
 		"""
 		Read and interpret calculation specs.
 		Lifted directly from old workspace.load_specs.
 		"""
 		if merge_method!='careful': raise Exception('dev')
-		if names: raise Exception('dev')
-		specs_files = glob.glob(os.path.join(*self.specs_path))
+		if not meta: specs_files = glob.glob(os.path.join(*self.specs_path))
+		else: 
+			#---in case the user gives the glob in calcs/specs we try this first
+			specs_files = []
+			try: specs_files = glob.glob(os.path.join(*(tuple(self.specs_path[:-1])+tuple([meta]))))
+			#---otherwise the user should give a glob directly to calcs/specs/*.yaml
+			except: pass
+			if not specs_files: specs_files = glob.glob(meta)
+		if not specs_files: raise Exception('cannot find meta files')
 		allspecs = []
 		for fn in specs_files:
 			with open(fn) as fp: 
@@ -217,6 +224,10 @@ class WorkSpace:
 			if kind=='std':
 				these_slices = {}
 				for slice_name,sl in spec['slices'].items():
+					#if 'groups' not in sl: 
+					#	import ipdb;ipdb.set_trace()
+					#---always copy the slice here because it might be an internal reference
+					sl = dict(sl)
 					for group in sl.pop('groups'):
 						if sn not in slice_catalog: slice_catalog[sn] = []
 						#---add this slice to the catalog
@@ -232,7 +243,9 @@ class WorkSpace:
 								grab_slices.pop(slice_fn)
 						slice_catalog[sn].append(new_slice)
 			else: raise Exception('not sure how to find a %s slice'%kind)
-		if grab_slices: raise Exception('grab_slices is not cleared')
+		if grab_slices: 
+			#import ipdb;ipdb.set_trace()
+			print('grab_slices is not cleared')
 		#---! pythonic?
 		del self.__dict__['post_grab_bag']
 		return slice_catalog
@@ -255,7 +268,7 @@ class WorkSpace:
 		if len(slices)>1:
 			import ipdb;ipdb.set_trace()
 			raise Exception('found multiple slices for your request for %s: %s'%(sn,kwargs))
-		elif len(slices)==0: raise Exception('cannot find a matching sliec for %s: %s'%(sn,kwargs))
+		elif len(slices)==0: raise Exception('cannot find a matching slice for %s: %s'%(sn,kwargs))
 		else: return slices[0]
 
 	def unroll_loops(self,details,return_stubs=False):
@@ -372,7 +385,21 @@ class WorkSpace:
 				#---custom simulation name request will whittle the sns list here
 				else: sns = str_or_list(sns)
 				#---get the group
-				group = calc['group']
+				group = calc.get('group',None)
+				#---group is absent if this is a downstream calculation
+				if not group:
+					def get_upstream_groups(*args):
+						"""Recurse the dependency list for groups."""
+						for arg in args:
+							if 'group' in self.calcs[arg]: yield self.calcs[arg]['group']
+							else: up_again.append(arg)
+					groups = get_upstream_groups(calc['specs']['upstream'].keys())
+					groups_consensus = list(set(groups))
+					if len(groups_consensus)!=1: 
+						print('cannot achieve upstream group consensus')
+						import ipdb;ipdb.set_trace()
+						raise Exception('cannot achieve upstream group consensus')
+					group = groups_consensus[0]
 				#---loop over simulations
 				for sn in sns: 
 					job = dict(sn=sn,slice=self.slice(sn,group=group,slice_name=slice_name))
@@ -744,11 +771,11 @@ class NamingConventions:
 
 ###---INTERFACE
 
-def compute():
+def compute(meta=None):
 	"""
 	Expose the workspace to the command line.
 	"""
-	work = WorkSpace()
+	work = WorkSpace(meta=meta)
 
 def plot(name):
 	"""

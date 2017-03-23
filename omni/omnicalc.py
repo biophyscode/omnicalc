@@ -55,7 +55,7 @@ class WorkSpace:
 			calc_jobs = self.prepare_calculations()
 			self.compute(calc_jobs)
 		elif plot: self.plot(plotname=plot,plot_call=plot_call,meta=meta)
-		elif pipeline: self.pipeline(name=pipeline,plot_call=plot_call)
+		elif pipeline: self.pipeline(name=pipeline,plot_call=plot_call,meta=meta)
 
 	def variable_unpacker(self,specs):
 		"""

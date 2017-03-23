@@ -23,7 +23,7 @@ import codes
 
 from omnicalc import WorkSpace
 if run_type=='plot': work = WorkSpace(plot=plotname,meta=meta)
-elif run_type=='pipeline': work = WorkSpace(pipeline=plotname)
+elif run_type=='pipeline': work = WorkSpace(pipeline=plotname,meta=meta)
 else: raise Exception('invalid run_type for this header: %s'%run_type)
 
 from base.store import plotload,picturesave

@@ -177,8 +177,8 @@ def makeface(*arglist):
 			sys.exit(1)
 
 if __name__ == "__main__": 
-	try: from logo import logo
-	except: logo = ""
+	from logo import logo
+	#except: logo = ""
 	if logo: print(logo)
 	#---read configuration to retrieve source scripts
 	#---note this happens every time (even on make tab-completion) to collect scripts

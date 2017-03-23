@@ -54,7 +54,7 @@ class WorkSpace:
 			#---match calculation codes with target slices
 			calc_jobs = self.prepare_calculations()
 			self.compute(calc_jobs)
-		elif plot: self.plot(plotname=plot,plot_call=plot_call)
+		elif plot: self.plot(plotname=plot,plot_call=plot_call,meta=meta)
 		elif pipeline: self.pipeline(name=pipeline,plot_call=plot_call)
 
 	def variable_unpacker(self,specs):
@@ -115,6 +115,7 @@ class WorkSpace:
 						for key,val in topval.items():
 							if key not in specs[topkey]: specs[topkey][key] = val
 							else: 
+								print('careful merging problem???')
 								import pdb;pdb.set_trace()
 								raise Exception(
 								('[ERROR] performing careful merge in the top-level specs dictionary "%s" '+
@@ -203,13 +204,6 @@ class WorkSpace:
 		for name in names: sns.extend(collections.get(name,[]))
 		return sorted(list(set(sns)))
 
-	def get_slice_kind(self,spec):
-		"""
-		Figure out what kind of slice.
-		"""
-		if set(spec.keys())==set(['groups','slices']): return 'std'
-		else: raise Exception('indeterminate slice')
-
 	def get_slice_catalog(self):
 		"""
 		Match slices in the specs file with slices in the post-processed database.
@@ -219,9 +213,9 @@ class WorkSpace:
 		grab_slices = dict([(fn,self.namer.check(fn)) for fn in self.post_grab_bag])
 		#---we search for slices from the slice dictionary
 		for sn,spec in self.slices_meta.items():
-			kind = self.get_slice_kind(spec)
+			kind = self.namer.get_slice_kind(spec)
 			#---standard slice request has a group and a name and uses gromacs
-			if kind=='std':
+			if kind=='standard':
 				these_slices = {}
 				for slice_name,sl in spec['slices'].items():
 					#if 'groups' not in sl: 
@@ -231,21 +225,34 @@ class WorkSpace:
 					for group in sl.pop('groups'):
 						if sn not in slice_catalog: slice_catalog[sn] = []
 						#---add this slice to the catalog
+						#---! intervening here to look for slices with short_namer for the fox case
+						#---! problem is that the namer.slice is catching the dcd name. they must be distinct
 						new_slice = dict(slice_name=slice_name,group=group,sn=sn,**sl)
 						#---! also save the post directory or highlander?
 						#---for the standard slice we add the gro and xtc to the new_slice
 						#---! more flexible data types
 						for suffix in ['gro','xtc']:
 							#---search the grab_slices for the slice data
-							slice_fn = self.namer.slice(suffix=suffix,**new_slice)
+							slice_fn = self.namer.slice(suffix=suffix,kind=kind,**new_slice)
 							if slice_fn in grab_slices:
-								new_slice[suffix] = dict(fn=slice_fn,**grab_slices[slice_fn])
+								try: new_slice[suffix] = dict(fn=slice_fn,**grab_slices[slice_fn])
+								except:
+									import ipdb;ipdb.set_trace()
 								grab_slices.pop(slice_fn)
+							else:
+								import ipdb;ipdb.set_trace()
 						slice_catalog[sn].append(new_slice)
+			elif kind=='readymade_namd':
+				these_slices = {}
+				for slice_name,sl in spec['readymade_namd'].items():
+					if sn not in slice_catalog: slice_catalog[sn] = []
+					new_slice = dict(slice_name=slice_name,sn=sn,**sl)
+					#---! you need to remove files in the preexisting slice from the grab bag
+					slice_catalog[sn].append(new_slice)
 			else: raise Exception('not sure how to find a %s slice'%kind)
 		if grab_slices: 
-			#import ipdb;ipdb.set_trace()
-			print('grab_slices is not cleared')
+			#---! eventually make this an exception
+			print('[WARNING] failed to clear the grab bag. some post data might be unclassified?')
 		#---! pythonic?
 		del self.__dict__['post_grab_bag']
 		return slice_catalog
@@ -266,9 +273,9 @@ class WorkSpace:
 		"""
 		slices = self.slices(sn,**kwargs)
 		if len(slices)>1:
-			import ipdb;ipdb.set_trace()
 			raise Exception('found multiple slices for your request for %s: %s'%(sn,kwargs))
-		elif len(slices)==0: raise Exception('cannot find a matching slice for %s: %s'%(sn,kwargs))
+		elif len(slices)==0: 
+			raise Exception('cannot find a matching slice for %s: %s'%(sn,kwargs))
 		else: return slices[0]
 
 	def unroll_loops(self,details,return_stubs=False):
@@ -368,6 +375,7 @@ class WorkSpace:
 		! assumes everything is ready. maybe call a validator? coder should not call this until validated
 		This function prepares all pending calculations unless you ask for a specific one.
 		"""
+		sns_overrides = None if not sns else list(str_or_list(sns))
 		calc_jobs = []
 		#---loop over calculations
 		for calckey in (self.calc_order if not calcnames else str_or_list(calcnames)):
@@ -381,9 +389,9 @@ class WorkSpace:
 				#---get slice name
 				slice_name = calc['slice_name']
 				#---loop over simulations
-				if not sns: sns = self.get_simulations_in_collection(*str_or_list(calc['collections']))
+				if not sns_overrides: sns = self.get_simulations_in_collection(*str_or_list(calc['collections']))
 				#---custom simulation name request will whittle the sns list here
-				else: sns = str_or_list(sns)
+				else: sns = list(sns_overrides)
 				#---get the group
 				group = calc.get('group',None)
 				#---group is absent if this is a downstream calculation
@@ -402,7 +410,11 @@ class WorkSpace:
 					group = groups_consensus[0]
 				#---loop over simulations
 				for sn in sns: 
+					#---! for the fox case we need to get one of these sn to shortname ???
+					#try: 
 					job = dict(sn=sn,slice=self.slice(sn,group=group,slice_name=slice_name))
+					#except:
+					#	import ipdb;ipdb.set_trace()
 					#---calculations do not require specs. empty specs gives empty specs file.
 					#---...we add an empty dictionary so later this job can be matched against postdat
 					if 'specs' not in calc: calc['specs'] = {}
@@ -519,9 +531,20 @@ class WorkSpace:
 		if job['calc']['uptype']=='simulation':
 			#---! specific to the standard operation
 			#---assume that all postdata are in one spot
-			struct_file = os.path.join(self.paths['post_data_spot'],job['slice']['gro']['fn'])
-			traj_file = os.path.join(self.paths['post_data_spot'],job['slice']['xtc']['fn'])
-			result,attrs = function(struct_file,traj_file,**outgoing)
+			#---! the following is a clusmy hack
+			if 'gro' in job['slice']:
+				struct_file = os.path.join(self.paths['post_data_spot'],job['slice']['gro']['fn'])
+				traj_file = os.path.join(self.paths['post_data_spot'],job['slice']['xtc']['fn'])
+				result,attrs = function(struct_file,traj_file,**outgoing)
+			elif 'psf' in job['slice']:
+				struct_file = os.path.join(self.paths['post_data_spot'],job['slice']['psf'])
+				#---note that it is *very* nice that MDAnalysis will take a list instead of a single 
+				#---...trajectory, which means that no further modification for DCDs is necessary
+				traj_files = [os.path.join(self.paths['post_data_spot'],i) for i in job['slice']['dcds']]
+				result,attrs = function(struct_file,traj_files,**outgoing)
+			else: 
+				print('unclear trajectory mode')
+				import ipdb;ipdb.set_trace()
 		elif job['calc']['uptype']=='post':
 			#---acquire upstream data
 			#---! multiple upstreams. double upstreams. loops. specs. etc. THIS IS REALLY COMPLICATED.
@@ -539,7 +562,6 @@ class WorkSpace:
 			#---for backwards compatibility we decorate the kwargs with the slice name and group
 			outgoing.update(slice_name=job['slice']['slice_name'],group=job['slice']['group'])
 			result,attrs = function(**outgoing)
-
 			"""
 			note some testing on old-school omnicalc
 			ipdb> kwargs.keys()
@@ -551,7 +573,6 @@ class WorkSpace:
 			ipdb> kwargs['upstream']['lipid_abstractor'].keys()
 			[u'resnames', u'nframes', u'points', u'separator', u'vecs', u'resids', u'monolayer_indices', u'selector', u'nojumps']
 			"""
-
 		else: raise Exception('invalid uptype: %s'%job['calc']['uptype'])
 
 		#---check the attributes against the specs so we don't underspecify the data in the spec file
@@ -578,6 +599,9 @@ class WorkSpace:
 		if self.versioning['spec_file']==2:
 			#---! should we also include other calculation data by default
 			specs_out = {'specs':job['calc']['specs']}
+			#---we code the entire job because it contains specs as a subdictionary
+			#---! is this enough to make lookups sensible later without metadata in the simulation names
+			#specs_out = job
 			#---write a lightweight "spec" file, always paired with dat file
 			with open(os.path.join(self.paths['post_data_spot'],spec_fn),'w') as fp: 
 				fp.write(json.dumps(specs_out))
@@ -599,7 +623,7 @@ class WorkSpace:
 					dat_fn_full,spec_fn_full)
 			raise Exception(msg)
 
-	def plot(self,plotname,plot_call=False):
+	def plot(self,plotname,plot_call=False,meta=None):
 		"""
 		Plot something.
 		! Get this out of the workspace.
@@ -611,7 +635,8 @@ class WorkSpace:
 		script_name = self.find_script('plot-%s'%plotname)
 		header_script = 'omni/base/header.py'
 		#---custom arguments passed to the header so it knows how to execute the plot script
-		if plot_call: bash('python -iB %s %s %s %s'%(header_script,script_name,plotname,'plot'))
+		if plot_call: bash('python -iB %s %s %s %s %s'%(header_script,script_name,plotname,'plot',
+			'null' if not meta else meta))
 
 	def pipeline(self,name,plot_call=False):
 		"""
@@ -697,8 +722,8 @@ this calculation. however, all of the attributes must "pass through" the calcula
 section. it looks like you failed to pass one of them through, but I couldn't tell until after the calculation was 
 complete and we are ready to write the data. you can procede by removing the attribute from your calculation specs in 
 the meta file or by adding it to the outgoing data via e.g. "attrs['my_spec'] = my_spec". recall also that the 
-attribute/spec comes *in* to the calculation function in "kwargs['calc']['specs']". the incoming warning will tell you 
-which attributes are causing the problem
+attribute/spec comes *in* to the calculation function in "kwargs['calc']['specs']". the incoming warning will tell 
+you which attributes are causing the problem
 """
 
 class NamingConventions:
@@ -710,14 +735,20 @@ class NamingConventions:
 
 	common_types = {'wild':r'[A-Za-z0-9\-_]','float':r'\d+(?:(?:\.\d+))?','suffixes':'(gro|xtc)'}
 	omni_namer = {
-		'gmx_slice':{
+		'standard':{
 			'namers':[
 				('base',r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s'),
 				('slice',r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.%(suffix)s'),
 				('post',r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.%(calc_name)s')],
 			'regex':
-				'(?P<short_name>%(wild)s+)\.(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
-				'(?P<group>%(wild)s+)\.pbc(?P<pbc>%(wild)s+)\.(?P<suffix>%(suffixes)s)$',},}
+				'^(?P<short_name>%(wild)s+)\.(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
+				'(?P<group>%(wild)s+)\.pbc(?P<pbc>%(wild)s+)\.(?P<suffix>%(suffixes)s)$',
+			'slice_keys':['groups','slices'],},
+		'readymade_namd':{
+			'namers':[
+				('base',r'%(short_name)s'),],
+			'regex':'^(?P<short_name>%(wild)s+)',
+			'slice_keys':['readymade_namd']},}
 
 	def __init__(self,**kwargs):
 		"""
@@ -733,19 +764,32 @@ class NamingConventions:
 		else: self.short_namer = eval(self.short_namer)
 		#---! validate the naming steps?
 		if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
-		self.catalog,self.namers = {},[]
+		self.catalog,self.namers,self.slice_keys = {},[],{}
 		for key,val in self.omni_namer.items():
 			self.catalog[key] = val['regex']%self.common_types
 			#---infer the keys required for the namer by the "%s(variable)" syntax, which is required
 			for subkey,namer in val['namers']:
 				self.namers.append(((key,subkey),{'reqs':re.findall(r'%\((.*?)\)',namer),'namer':namer}))
+			self.slice_keys[key] = val['slice_keys']
+
+	def get_slice_kind(self,spec):
+		"""
+		Figure out what kind of slice.
+		"""
+		matches = [key for key,val in self.slice_keys.items() if set(spec.keys())==set(val)]
+		#---matches should never be redundant by design
+		if len(matches)>1: raise Exception('multiple slice matches: %s'%matches)
+		elif len(matches)==0: raise Exception('invalid set of slice keys: %s'%spec.keys())
+		else: return matches[0]
 
 	def check(self,text):
 		"""
 		Try many regexes on some text and return the type.
 		"""
 		for key,val in self.catalog.items():
-			if re.match(val,text): return {'kind':key,'data':re.match(val,text).groupdict()}
+			if re.match(val,text): 
+				return {'kind':key,'data':re.match(val,text).groupdict()}
+		import ipdb;ipdb.set_trace()
 
 	def get_shortname(self,sn):
 		"""
@@ -756,7 +800,7 @@ class NamingConventions:
 		#---we consult a namer function if there is no explicit translation
 		elif self.short_namer: return self.short_namer(sn)
 
-	def slice(self,**kwargs):
+	def slice(self,kind=None,**kwargs):
 		"""
 		Name a slice.
 		"""
@@ -764,7 +808,11 @@ class NamingConventions:
 		#---add the short_name to the specs
 		spec['short_name'] = self.get_shortname(spec['sn'])
 		#---figure out the naming convention for this slice
-		kinds = [key for key,namer in self.namers if all([k in spec for k in namer['reqs']])]
+		#---...in this case we find the last namer that has all of the right keys
+		if not kind: valid_namers = self.namers
+		else: valid_namers = [item for item in self.namers if item[0][0]==kind]
+		if not valid_namers: raise Exception('no valid namers for kind: %s'%kind)
+		kinds = [key for key,namer in valid_namers if all([k in spec for k in namer['reqs']])]
 		if len(kinds)==0: raise Exception('cannot find a naming convention for %s'%spec)
 		#---the namers are ordered and we choose the *last* match
 		else: return self.namers[list(zip(*self.namers))[0].index(kinds[-1])][1]['namer']%spec
@@ -777,12 +825,12 @@ def compute(meta=None):
 	"""
 	work = WorkSpace(meta=meta)
 
-def plot(name):
+def plot(name,meta=None):
 	"""
 	Plot something
 	"""
 	#---! avoid unnecessary calculations for the plot we want
-	work = WorkSpace(plot=name,plot_call=True)
+	work = WorkSpace(plot=name,plot_call=True,meta=meta)
 
 def pipeline(name):
 	"""

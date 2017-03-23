@@ -6,10 +6,11 @@ Header file which runs automatically before any plotting.
 This handles backwards compatibility with old plots --- just remove any header junk.
 """
 
-import os,sys
+import os,sys,re
 
 #---we set the file name so tracebacks make sense
-__file__,script,plotname,run_type = sys.argv
+__file__,script,plotname,run_type,meta = sys.argv
+meta = None if meta=='null' else meta
 
 #---this script is called from root and expects omni to be present
 if not os.path.isdir('omni'): raise Exception('cannot find `omni` folder')
@@ -21,7 +22,7 @@ sys.path.insert(0,'omni')
 import codes
 
 from omnicalc import WorkSpace
-if run_type=='plot': work = WorkSpace(plot=plotname)
+if run_type=='plot': work = WorkSpace(plot=plotname,meta=meta)
 elif run_type=='pipeline': work = WorkSpace(pipeline=plotname)
 else: raise Exception('invalid run_type for this header: %s'%run_type)
 

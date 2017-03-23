@@ -647,7 +647,7 @@ class WorkSpace:
 		script_name = self.find_script('pipeline-%s'%name)
 		header_script = 'omni/base/header.py'
 		#---custom arguments passed to the header so it knows how to execute the plot script
-		if plot_call: bash('python -iB %s %s %s %s'%(header_script,script_name,name,'pipeline',
+		if plot_call: bash('python -iB %s %s %s %s %s'%(header_script,script_name,name,'pipeline',
 			'null' if not meta else meta))
 
 	def load(self,name,cwd=None,verbose=False,exclude_slice_source=False,filename=False):

@@ -833,9 +833,9 @@ def plot(name,meta=None):
 	#---! avoid unnecessary calculations for the plot we want
 	work = WorkSpace(plot=name,plot_call=True,meta=meta)
 
-def pipeline(name):
+def pipeline(name,meta=None):
 	"""
 	Plot something
 	"""
 	#---! avoid unnecessary calculations for the plot we want
-	work = WorkSpace(pipeline=name,plot_call=True)
+	work = WorkSpace(pipeline=name,plot_call=True,meta=meta)

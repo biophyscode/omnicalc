@@ -7,16 +7,17 @@ from base.hypothesis import hypothesis
 import yaml,h5py
 import numpy as np
 
+#---! temporary, for debugging
+from datapack import asciitree
+
 class WorkSpace:
 
 	"""
-	! note that I decided to make this a class when passing around slices etc got clumsy
+	Manage the calculator.
 	"""
 
 	#---hard-coded paths for specs files
 	specs_path = 'calcs','specs','*.yaml'
-	#---identify any post-processing data
-	post_regex = '^.+\.(dat|spec|gro|xtc)$'
 	#---versioning manages fairly generic data structures written to disk
 	versioning = {'spec_file':2}
 	#---! currently hard-coded
@@ -24,38 +25,48 @@ class WorkSpace:
 
 	def __init__(self,plot=None,plot_call=False,pipeline=None,meta=None):
 		"""
+		Prepare the workspace.
 		"""
 		if plot and pipeline: raise Exception('only plot or pipeline')
 		#---read the omnicalc config and specs files
 		self.config = read_config()
 		#---unpack the paths right into the workspace for calculation functions
-		#---! check that all paths are added here for posterity/backwards compatibility
+		#---add paths here for backwards compatibility at the plotting stage
 		self.paths = dict([(key,self.config[key]) for key in ['post_plot_spot','post_data_spot']])
-		self.specs = self.read_specs(meta=meta)
+		meta_incoming = meta
+		#---check the config.py for this omnicalc to find restrictions on metafiles
+		#---...note that this allows us to avoid using git branches and the meta flag in the CLI for 
+		#---...managing multiple meta files.
+		if not meta_incoming and self.config.get('meta_filter',None):
+			#---set_config forces meta_filter to be a list. each can be a glob. the path is relative to 
+			#---...the calcs/specs folder since that is the only acceptable location for meta files
+			#---...we detect meta files here and send them as a list, otherwise read_specs gets a string
+			#---...from the CLI which is a glob with the full path to calcs/specs
+			meta_incoming = [i for j in [glob.glob(os.path.join('calcs','specs',g)) 
+				for g in self.config['meta_filter']] for i in j]
+		#---read the specs according to incoming meta flags
+		self.specs = self.read_specs(meta=meta_incoming)
 		#---prepare a namer from the global omni_namer
 		self.namer = NamingConventions(
 			short_namer=self.meta.get('short_namer',None),
 			short_names=self.meta.get('short_names',None))
-		#---! source regular data
-		#---! explicitly-named data
 		#---catalog post-processing data
-		self.postdat = self.read_postdat()
+		self.read_postdat()
 		#---CALCULATION LOOP
 		self.calcs = self.specs.get('calculations',None)
-		self.slices_meta = self.specs.get('slices',None)
+		self.slices = self.specs.get('slices',None)
 		if not self.calcs: return
-		if not self.calcs and self.slices_meta: 
+		if not self.calcs and self.slices: 
 			raise Exception('cannot continue to calculations without slices')
 		#---get the right calculation order
 		self.calc_order = self.infer_calculation_order()
-		#---compile a listing of slices
-		self.slice_catalog = self.get_slice_catalog()
+		#---plot and pipeline skip calculations and call the target script
 		if not plot and not pipeline:
 			#---match calculation codes with target slices
 			calc_jobs = self.prepare_calculations()
 			self.compute(calc_jobs)
-		elif plot: self.plot(plotname=plot,plot_call=plot_call,meta=meta)
-		elif pipeline: self.pipeline(name=pipeline,plot_call=plot_call,meta=meta)
+		elif plot: self.plot(plotname=plot,plot_call=plot_call,meta=meta_incoming)
+		elif pipeline: self.pipeline(name=pipeline,plot_call=plot_call,meta=meta_incoming)
 
 	def variable_unpacker(self,specs):
 		"""
@@ -84,12 +95,17 @@ class WorkSpace:
 		if merge_method!='careful': raise Exception('dev')
 		if not meta: specs_files = glob.glob(os.path.join(*self.specs_path))
 		else: 
-			#---in case the user gives the glob in calcs/specs we try this first
-			specs_files = []
-			try: specs_files = glob.glob(os.path.join(*(tuple(self.specs_path[:-1])+tuple([meta]))))
-			#---otherwise the user should give a glob directly to calcs/specs/*.yaml
-			except: pass
-			if not specs_files: specs_files = glob.glob(meta)
+			#---if meta is a string we assume it is a glob and check for files
+			#---note that using the CLI to set meta requires all paths relative to the omnicalc root
+			#---...hence they must point to calcs/specs to find valid files
+			#---...however globs saved to meta_filter in the config.py via `make set` do not 
+			#---...need to be prepended with calcs/specs since this location is assumed
+			if type(meta)==str: specs_files = glob.glob(meta)
+			#---if meta is a list then it must have come from meta_filter and hence includes valid files
+			else:
+				if not all([os.path.isfile(i) for i in meta]): 
+					raise Exception('received invalid meta files in a list')
+				specs_files = meta
 		if not specs_files: raise Exception('cannot find meta files')
 		allspecs = []
 		for fn in specs_files:
@@ -135,37 +151,103 @@ class WorkSpace:
 	def read_postdat(self):
 		"""
 		Parse a directory of post-processed data.
-		POSTDAT STRUCTURE REQUIRES dat_fn,spec_fn,spot,specs
+		data structure includes:
+			1. dat_fn
+			2. spec_fn
+			3. spot
+			3. versioning (vn)
+				a. spec version (svn)
+				b. slice type e.g. standard or readymade_name (skind)
+			4. specs (no meta-meta; used for comparison only)
+				since this is version 2 format, some parts may be blank. we can infer other items later
+				a. calc
+				b. specs
+				c. sn
 		"""
 		post_dn = self.config.get('post_data_spot',None)
 		if not post_dn: raise Exception('config lacks "post_data_spot"')
-		fns = [i for i in [
-			os.path.basename(i) for i in glob.glob(os.path.join(post_dn,'*'))] 
-			if re.match(self.post_regex,i)]
-		#---classify each file in the post-processing dataset
-		toc = dict([(re.match('^(.+)\.dat$',i).group(1),{'spot':post_dn,'dat_fn':i}) 
-			for i in fns if re.match('^(.+)\.dat$',i)])
-		#---remove dat files from consideration
-		for fn in toc: fns.remove(fn+'.dat')
-		#---check that each dat has a spec
-		for fn in toc: 
-			if fn+'.spec' not in fns: 
-				raise Exception('in the post-processed data at '+
-					'%s we found %s.dat with no corresponding %s.spec'%(post_dn,fn,fn))
-			else: 
-				fns.remove(fn+'.spec')
-				toc[fn]['spec_fn'] = fn+'.spec'
-		#---we should have removed all paired spec files so any remaining ones are lonely
-		spec_unclaimed = [i for i in fns if re.match('^(.+)\.spec$',i)]
-		if any(spec_unclaimed): raise Exception('found spec files without corresponding dat files '+
-			'in post data at %s: %s'%(post_dn,spec_unclaimed))
-		#---unpack spec files
-		for fn in [i for i in toc if 'spec_fn' in toc[fn]]:
-			toc[fn]['specs'] = json.load(open(os.path.join(toc[fn]['spot'],toc[fn]['spec_fn'])))
-		#---! instead of parsing the slices, we simply add them to a grab-bag of slices. needs developed.
-		#---! continue to parse the data
-		self.post_grab_bag = fns
-		return toc
+		fns = [os.path.basename(i) for i in glob.glob(os.path.join(post_dn,'*'))]
+		
+		if False:
+			#---classify each file in the post-processing dataset
+			toc = dict([(re.match('^(.+)\.dat$',i).group(1),{'spot':post_dn,'dat_fn':i}) 
+				for i in fns if re.match('^(.+)\.dat$',i)])
+			#---remove dat files from consideration
+			for fn in toc: fns.remove(fn+'.dat')
+			#---check that each dat has a spec
+			for fn in toc: 
+				if fn+'.spec' not in fns: 
+					raise Exception('in the post-processed data at '+
+						'%s we found %s.dat with no corresponding %s.spec'%(post_dn,fn,fn))
+				else: 
+					fns.remove(fn+'.spec')
+					toc[fn]['spec_fn'] = fn+'.spec'
+			#---we should have removed all paired spec files so any remaining ones are lonely
+			spec_unclaimed = [i for i in fns if re.match('^(.+)\.spec$',i)]
+			if any(spec_unclaimed): raise Exception('found spec files without corresponding dat files '+
+				'in post data at %s: %s'%(post_dn,spec_unclaimed))
+			#---unpack spec files
+			for fn in [i for i in toc if 'spec_fn' in toc[fn]]:
+				toc[fn]['specs'] = json.load(open(os.path.join(toc[fn]['spot'],toc[fn]['spec_fn'])))
+			#---! instead of parsing the slices, we simply add them to a grab-bag of slices. needs developed.
+			#---! continue to parse the data
+			self.post_grab_bag = fns
+			self.postdat = toc
+
+		self.post_limbo = []
+		self.postdat = {}
+		#---master classification loop
+		while fns:
+			name = fns.pop()
+			#---interpret the name
+			namedat = self.namer.interpret_name(name)
+			if not namedat: self.post_limbo.append(name)
+			else:	
+				entry = {}
+				#---if this is a datspec file we find its pair and read the spec file
+				if namedat['dat_type']=='datspec':
+					this_suffix = re.match('^.+\.(dat|spec)$',name).group(1)
+					datspec_base = re.sub('\.(dat|spec)$','',name)
+					twin = datspec_base+'.%s'%{'dat':'spec','spec':'dat'}[this_suffix]
+					if twin not in fns: raise Exception('cannot find dat-spec twin of %s'%name)
+					else: fns.remove(twin)
+					#---register this datspec in the toc
+					entry['files'] = {'dat':datspec_base+'.dat','spec':datspec_base+'.spec'}
+					#---datspec files are unique in that both files are keyed by the suffix-less name
+					postdat_name = datspec_base
+					#---read the spec data from the hard-coded post spot
+					spec_body = json.load(open(os.path.join(post_dn,datspec_base+'.spec')))
+					entry['specs'] = spec_body
+				#---note that we could pair e.g. gro/xtc files but this has little benefit
+				else: postdat_name = name
+				#---???
+				entry['namedat'] = namedat
+				if postdat_name in self.postdat: 
+					import ipdb;ipdb.set_trace()
+					print('cannot re-register %s'%postdat_name)
+				#---add this entry to the master list
+				self.postdat[postdat_name] = entry
+
+		if False:
+			import ipdb;ipdb.set_trace()
+			#---!!!!!!!!!!!! debugging structure here. THIS WILL BE MOVED, DUDE
+			#---example
+			key = 'v003.0-400000-200.all.pbcmol.lipid_abstractor.n0'
+			#---detect the spec version
+			spec_version = self.namer.classify(**self.postdat[key])
+			#---extract information from the name
+			name_spec = self.namer.interpret_name(key)
+			skind,name_data = name_spec['kind'],name_spec['data']
+			#---add the versioning information to the entry
+			self.postdat[key]['vn'] = {'svn':spec_version,'skind':skind}
+			#---fold the metadata from the name into the final data structure
+			if spec_version==1:
+				print()
+			elif spec_version==2:
+				print()
+			else: raise Exception('unknown spec version: %s'%spec_version)
+			print('how are we DOING?')
+			import ipdb;ipdb.set_trace()
 
 	def infer_calculation_order(self):
 		"""
@@ -204,13 +286,13 @@ class WorkSpace:
 		for name in names: sns.extend(collections.get(name,[]))
 		return sorted(list(set(sns)))
 
-	def get_slice_catalog(self):
+	def get_slice_catalog_deprecated(self):
 		"""
 		Match slices in the specs file with slices in the post-processed database.
 		"""
 		slice_catalog = {}
 		#---preload slices from the grab bag
-		grab_slices = dict([(fn,self.namer.check(fn)) for fn in self.post_grab_bag])
+		grab_slices = dict([(fn,self.namer.check(fn)) for fn in self.post_limbo])
 		#---we search for slices from the slice dictionary
 		for sn,spec in self.slices_meta.items():
 			kind = self.namer.get_slice_kind(spec)
@@ -257,7 +339,50 @@ class WorkSpace:
 		del self.__dict__['post_grab_bag']
 		return slice_catalog
 
-	def slices(self,sn,**kwargs):
+	def get_slice(self,sn,group,slice_name):
+		"""
+		Match slices in the specs file with slices in the post-processed database.
+		REDESIGNING THE SLICE CATALOG
+			where are we asking for slices?
+				only in one place! via self.slice() which calls self.slices()
+				these are called in prepare_calculations, where we match slices to jobs
+				prepare_calculations provides a group and slice name ... and that's it.
+			part of the point of the slice catalog is to also make sure the slices are there
+		NEW EXECUTION METHOD
+			eliminate functions slice, slices, and get_slice_catalog
+			in favor of a single slice request function which will be called by prepare_calculation
+			to get a slice:
+				for each slice method we check the postdat keys in a distinct way
+				for each slice_name,group combination sent to get_slice, we check the slice type
+					then figure out how to look it up
+		"""
+		if sn not in self.slices: raise Exception('the metadata slice dictionary has no simulation %s'%sn)
+		#---requested slices for this simulation
+		#---! note that we might want to pre-compute this
+		slices_request = {}
+		#---the meta slices dictionary is keyed first by simulation name, then by slice type
+		#---get all slices regardless of type for a specific simulation name
+		#---parse a simulation slice dictionary for valid slices
+		#---! currently this is replacing keysets in the NamingConvention class
+		#---! check that there is no garbage in the slice dictionary?
+
+		#---check the simulation's slice dictionary for each kind of slice
+		#---! note that groups is not on-pathway here
+		standard_slices = self.slices[sn].get('slices',{})
+		namd_slices = self.slices[sn].get('readymade_namd',{})
+		#---collect standard slices
+		for slice_name,slice_spec in standard_slices.items():
+			print('standard slices ')
+			import ipdb;ipdb.set_trace()
+		#---collect NAMD slices
+		for slice_name,slice_spec in namd_slices.items():
+			#---name the slice and check the postdat for the name
+			###slices_request[slice_name] = {'sn':sn}
+			import ipdb;ipdb.set_trace()
+		print('are slices ready??')
+		import ipdb;ipdb.set_trace()
+
+	def slices_DERPRECATED(self,sn,**kwargs):
 		"""
 		Get a slice from the catalog.
 		"""
@@ -267,7 +392,7 @@ class WorkSpace:
 			if all([key in i and i[key]==val for key,val in kwargs.items()])]
 		return slices
 
-	def slice(self,sn,**kwargs):
+	def slice_DERPRECATED(self,sn,**kwargs):
 		"""
 		Get a single slice from the catalog.
 		"""
@@ -338,14 +463,16 @@ class WorkSpace:
 		#---...to convey the metatdata e.g. simulation name
 		base_name = self.job_to_name(calc=job['calc'],sl=job['slice'])
 		keys_no_specs = [key for key in self.postdat if re.match(base_name,key)]
-		keys_by_versioning[1] = [key for key in keys_no_specs if 
-			self.postdat[key]['specs']==job['calc']['specs']]
+		for version in [1,2]:
+			keys_by_versioning[version] = [key for key in keys_no_specs if 
+				self.namer.slice_compare(post=self.postdat[key],job=job,version=version)]
 
+		#---! previously self.postdat[key]['specs']==job['calc']['specs']]
 		#---version 2 specs files have a specs sub-dictionary but also hold OTHER INFORMATION
 		#---! which other information?
 		#---! currently we still look to the base_name generated for version 1 to get this information
-		keys_by_versioning[2] = [key for key in keys_no_specs
-			if self.postdat[key]['specs'].get('specs',{})==job['calc']['specs']]
+		#keys_by_versioning[2] = [key for key in keys_no_specs
+		#	if self.postdat[key]['specs'].get('specs',{})==job['calc']['specs']]
 
 		#---get unique key matches
 		keys_matches = [(val[0],key) for key,val in keys_by_versioning.items() if len(val)==1]
@@ -354,6 +481,34 @@ class WorkSpace:
 			print('[STATUS] matched postdat (v%s) %s'%(this_version,this_key))
 			#job['result'] = this_key
 			return this_key
+		else:
+			#print('!!!!!!!!!!! source of much naming problems')
+			import ipdb;ipdb.set_trace()
+			"""
+			data flows:
+				1. specs files v1 are read in and keyed by names that have important metadata
+				2. specs files v2 are written with lots of data
+				3. parts of jobs are compared to specs to look up results to see what needs done
+			options for fixing everything
+				A. ???
+					incoming specs v1 files are added to the list with a key control that unpacks metadata
+					new specs are controlled by the same controller
+					all specs are validated *before* comparison, and so are the jobs
+			places to validate:
+				read_postdat
+				get_postdat_with_specs (run by match_postdat_to_results)
+				
+			thinking more about the namer ...
+				steps to match up specs on disk
+					1. get the spec file and store it in specs
+					2. if there is info in the names, store it in name_specs or something else
+				now the postdat list has metadata about the post location and files, specs, and name_specs
+				steps to match a job with a spec in the postdat list indicating it is complete
+					1. 
+
+			"""
+			#import ipdb;ipdb.set_trace()
+
 			#print(666)
 			#import ipdb;ipdb.set_trace()
 			#return this_key
@@ -372,7 +527,6 @@ class WorkSpace:
 	def prepare_calculations(self,calcnames=None,sns=None):
 		"""
 		Match calculations with simulations.
-		! assumes everything is ready. maybe call a validator? coder should not call this until validated
 		This function prepares all pending calculations unless you ask for a specific one.
 		"""
 		sns_overrides = None if not sns else list(str_or_list(sns))
@@ -389,7 +543,8 @@ class WorkSpace:
 				#---get slice name
 				slice_name = calc['slice_name']
 				#---loop over simulations
-				if not sns_overrides: sns = self.get_simulations_in_collection(*str_or_list(calc['collections']))
+				if not sns_overrides: 
+					sns = self.get_simulations_in_collection(*str_or_list(calc['collections']))
 				#---custom simulation name request will whittle the sns list here
 				else: sns = list(sns_overrides)
 				#---get the group
@@ -410,16 +565,15 @@ class WorkSpace:
 					group = groups_consensus[0]
 				#---loop over simulations
 				for sn in sns: 
-					#---! for the fox case we need to get one of these sn to shortname ???
-					#try: 
-					job = dict(sn=sn,slice=self.slice(sn,group=group,slice_name=slice_name))
-					#except:
-					#	import ipdb;ipdb.set_trace()
+					#---slices always require group/name, interpreted according to slice type
+					job = dict(sn=sn,slice=self.get_slice(sn=sn,group=group,slice_name=slice_name))
 					#---calculations do not require specs. empty specs gives empty specs file.
 					#---...we add an empty dictionary so later this job can be matched against postdat
 					if 'specs' not in calc: calc['specs'] = {}
 					job['calc'] = calc
+					#---the job joins the slice and calculation. 
 					calc_jobs.append(job)
+		#---after preparing jobs, attach post-processing data to them
 		self.match_postdat_to_results(calc_jobs)
 		return calc_jobs
 
@@ -429,6 +583,7 @@ class WorkSpace:
 		"""
 		completed = [item for item in jobs if 'result' in item]
 		pending = [item for item in jobs if 'result' not in item]
+		import ipdb;ipdb.set_trace()
 		for jnum,calc_job in enumerate(pending):
 			print('[JOB] running calculation job %d/%d'%(jnum+1,len(pending)))
 			self.compute_single(calc_job)
@@ -553,7 +708,9 @@ class WorkSpace:
 			for upcalc in upstreams:
 				#---get a jobs list for this single simulation since post data is one-simulation only
 				upstream_jobs = self.prepare_calculations(calcnames=upstreams,sns=[job['sn']])
-				if any(['result' not in j for j in upstream_jobs]):
+				missing_ups = [j for j in upstream_jobs if 'result' not in j]
+				if any(missing_ups):
+					print('[ERROR] missing upstream data from: %s'%missing_ups)
 					raise Exception('some upstream calculations are missing')
 				for upstream_job in upstream_jobs:
 					outgoing['upstream'][upcalc] = self.load(
@@ -571,7 +728,8 @@ class WorkSpace:
 			ipdb> kwargs['upstream'].keys()
 			['lipid_abstractor']
 			ipdb> kwargs['upstream']['lipid_abstractor'].keys()
-			[u'resnames', u'nframes', u'points', u'separator', u'vecs', u'resids', u'monolayer_indices', u'selector', u'nojumps']
+			[u'resnames', u'nframes', u'points', u'separator', u'vecs', u'resids', 
+				u'monolayer_indices', u'selector', u'nojumps']
 			"""
 		else: raise Exception('invalid uptype: %s'%job['calc']['uptype'])
 
@@ -585,7 +743,8 @@ class WorkSpace:
 			attrs['upstream'] = job['calc']['specs']['upstream']
 		if any(unaccounted):
 			import textwrap
-			print('\n'.join(['[ERROR] %s'%i for i in textwrap.wrap(computer_error_attrs_passthrough,width=80)]))
+			print('\n'.join(['[ERROR] %s'%i for i in 
+				textwrap.wrap(computer_error_attrs_passthrough,width=80)]))
 			raise Exception('some calculation specs were not saved: %s'%unaccounted)
 
 		base_name = self.job_to_name(calc=job['calc'],sl=job['slice'])
@@ -598,10 +757,10 @@ class WorkSpace:
 		#---compile the specs according to a special versioning system
 		if self.versioning['spec_file']==2:
 			#---! should we also include other calculation data by default
-			specs_out = {'specs':job['calc']['specs']}
+			#specs_out = {'specs':job['calc']['specs']}
 			#---we code the entire job because it contains specs as a subdictionary
 			#---! is this enough to make lookups sensible later without metadata in the simulation names
-			#specs_out = job
+			specs_out = job
 			#---write a lightweight "spec" file, always paired with dat file
 			with open(os.path.join(self.paths['post_data_spot'],spec_fn),'w') as fp: 
 				fp.write(json.dumps(specs_out))
@@ -717,39 +876,58 @@ class WorkSpace:
 
 ###---SUPPORT
 
-computer_error_attrs_passthrough = """the calculation has a number of "specs" according to one of your meta files. 
-after the data are saved, the plotloader function will use these specs to uniquely identify the upstream data from 
-this calculation. however, all of the attributes must "pass through" the calculation function and end up in the attrs 
-section. it looks like you failed to pass one of them through, but I couldn't tell until after the calculation was 
-complete and we are ready to write the data. you can procede by removing the attribute from your calculation specs in 
-the meta file or by adding it to the outgoing data via e.g. "attrs['my_spec'] = my_spec". recall also that the 
-attribute/spec comes *in* to the calculation function in "kwargs['calc']['specs']". the incoming warning will tell 
-you which attributes are causing the problem
+computer_error_attrs_passthrough = """the calculation has a number of "specs" according to one of your meta 
+files. after the data are saved, the plotloader function will use these specs to uniquely identify the 
+upstream data from this calculation. however, all of the attributes must "pass through" the calculation 
+function and end up in the attrs section. it looks like you failed to pass one of them through, but I 
+couldn't tell until after the calculation was complete and we are ready to write the data. you can procede 
+by removing the attribute from your calculation specs in the meta file or by adding it to the outgoing data 
+via e.g. "attrs['my_spec'] = my_spec". recall also that the attribute/spec comes *in* to the calculation 
+function in "kwargs['calc']['specs']". the incoming warning will tell you which attributes are causing the 
+problem
 """
 
 class NamingConventions:
 
 	"""
 	Organize the naming conventions for omnicalc.
-	! note that namers is ordered
+	omni_namer data structure:
+		naming indexed by pairs: slice-type,data-type
+			dictionary-to-name
+			name-to-dictionary
+		meta slice reading indexed by: slice-type
+			keys required in the specs
 	"""
 
-	common_types = {'wild':r'[A-Za-z0-9\-_]','float':r'\d+(?:(?:\.\d+))?','suffixes':'(gro|xtc)'}
-	omni_namer = {
-		'standard':{
-			'namers':[
-				('base',r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s'),
-				('slice',r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.%(suffix)s'),
-				('post',r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.%(calc_name)s')],
-			'regex':
-				'^(?P<short_name>%(wild)s+)\.(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
-				'(?P<group>%(wild)s+)\.pbc(?P<pbc>%(wild)s+)\.(?P<suffix>%(suffixes)s)$',
-			'slice_keys':['groups','slices'],},
-		'readymade_namd':{
-			'namers':[
-				('base',r'%(short_name)s'),],
-			'regex':'^(?P<short_name>%(wild)s+)',
-			'slice_keys':['readymade_namd']},}
+	#---all n2d types in omni_namer get standard types
+	common_types = {'wild':r'[A-Za-z0-9\-_]','float':r'\d+(?:(?:\.\d+))?'}
+	omni_namer = [
+		(('standard','gro'),{
+			'd2n':r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.%(suffix)s',
+			'n2d':'^(?P<short_name>%(wild)s+)\.'+
+				'(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
+				'(?P<group>%(wild)s+)\.pbc(?P<pbc>%(wild)s+)\.gro$',}),
+		(('standard','xtc'),{
+			'd2n':r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.%(suffix)s',
+			'n2d':'^(?P<short_name>%(wild)s+)\.'+
+				'(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
+				'(?P<group>%(wild)s+)\.pbc(?P<pbc>%(wild)s+)\.xtc$',}),
+		(('standard','datspec'),{
+			#---we append the dat,spec when we receive this
+			#---! should this include the number?
+			'd2n':r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.n%(nnum)d',
+			'n2d':'^(?P<short_name>%(wild)s+)\.'+
+				'(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
+				'(?P<group>%(wild)s+)\.pbc(?P<pbc>%(wild)s+)\.(?P<calc_name>%(wild)s+)'+
+				'\.n(?P<nnum>\d+)\.(dat|spec)$',}),]
+	#---keys required in a slice in the meta file for a particular umbrella naming convention
+	omni_slicer_namer = {
+		'standard':{'slice_keys':['groups','slices']},
+		'readymade_namd':{'slice_keys':['readymade_namd']},}
+
+	#---! deprecated ???
+	#---that's right. we specify what's in the spec with another spec and no it's not meta
+	spec_spec = {2:['calc','slice','sn'],}
 
 	def __init__(self,**kwargs):
 		"""
@@ -763,60 +941,109 @@ class NamingConventions:
 			raise Exception('meta short_namer parameter must be a string: %s'%self.short_namer)
 		#---compile the lambda function which comes in as a string
 		else: self.short_namer = eval(self.short_namer)
-		#---! validate the naming steps?
-		if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
-		self.catalog,self.namers,self.slice_keys = {},[],{}
-		for key,val in self.omni_namer.items():
-			self.catalog[key] = val['regex']%self.common_types
-			#---infer the keys required for the namer by the "%s(variable)" syntax, which is required
-			for subkey,namer in val['namers']:
-				self.namers.append(((key,subkey),{'reqs':re.findall(r'%\((.*?)\)',namer),'namer':namer}))
-			self.slice_keys[key] = val['slice_keys']
+		self.parser = dict(self.omni_namer)
+		#---! ALL DEPRECATED BELOW
+		if False:
+			#---! validate the naming steps?
+			if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
+			self.catalog,self.namers,self.slice_keys = {},[],{}
+			for key,val in self.omni_namer.items():
+				self.catalog[key] = val['regex']%self.common_types
+				#---infer the keys required for the namer by the "%s(variable)" syntax, which is required
+				for subkey,namer in val['namers']:
+					self.namers.append(((key,subkey),{'reqs':re.findall(r'%\((.*?)\)',namer),'namer':namer}))
+				self.slice_keys[key] = val['slice_keys']
 
-	def get_slice_kind(self,spec):
+	def interpret_name(self,name):
 		"""
-		Figure out what kind of slice.
+		Given a post-processing data file name, extract data and infer the version.
 		"""
-		matches = [key for key,val in self.slice_keys.items() if set(spec.keys())==set(val)]
-		#---matches should never be redundant by design
-		if len(matches)>1: raise Exception('multiple slice matches: %s'%matches)
-		elif len(matches)==0: raise Exception('invalid set of slice keys: %s'%spec.keys())
-		else: return matches[0]
+		matches = []
+		for (slice_type,dat_type),namespec in self.parser.items():
+			if re.match(namespec['n2d']%self.common_types,name):
+				matches.append((slice_type,dat_type))
+		#---anything that fails to match goes into limbo of some kind
+		if not matches: return None
+		elif len(matches)>1: raise Exception('multiple filename interpretations: %s'%matches)
+		slice_type,dat_type = matches[0]
+		data = re.match(self.parser[(slice_type,dat_type)]['n2d']%self.common_types,name).groupdict()
+		return {'slice_type':slice_type,'dat_type':dat_type,'body':data}
 
-	def check(self,text):
+	def name_slice(self,kind,**kwargs):
 		"""
-		Try many regexes on some text and return the type.
+		Generate a slice name from metadata according to the slice type.
 		"""
-		for key,val in self.catalog.items():
-			if re.match(val,text): 
-				return {'kind':key,'data':re.match(val,text).groupdict()}
 		import ipdb;ipdb.set_trace()
 
-	def get_shortname(self,sn):
-		"""
-		Convert a full simulation name to a shorter name.
-		"""
-		#---the explicit short names list is top priority
-		if self.short_names and sn in self.short_names: return self.short_names[sn]
-		#---we consult a namer function if there is no explicit translation
-		elif self.short_namer: return self.short_namer(sn)
 
-	def slice(self,kind=None,**kwargs):
-		"""
-		Name a slice.
-		"""
-		spec = dict(kwargs)
-		#---add the short_name to the specs
-		spec['short_name'] = self.get_shortname(spec['sn'])
-		#---figure out the naming convention for this slice
-		#---...in this case we find the last namer that has all of the right keys
-		if not kind: valid_namers = self.namers
-		else: valid_namers = [item for item in self.namers if item[0][0]==kind]
-		if not valid_namers: raise Exception('no valid namers for kind: %s'%kind)
-		kinds = [key for key,namer in valid_namers if all([k in spec for k in namer['reqs']])]
-		if len(kinds)==0: raise Exception('cannot find a naming convention for %s'%spec)
-		#---the namers are ordered and we choose the *last* match
-		else: return self.namers[list(zip(*self.namers))[0].index(kinds[-1])][1]['namer']%spec
+	#---! EVERYTHING BELOW HAS TO GO
+
+	if False:
+
+		def get_slice_kind(self,spec):
+			"""
+			Figure out what kind of slice.
+			"""
+			matches = [key for key,val in self.slice_keys.items() if set(spec.keys())==set(val)]
+			#---matches should never be redundant by design
+			if len(matches)>1: raise Exception('multiple slice matches: %s'%matches)
+			elif len(matches)==0: raise Exception('invalid set of slice keys: %s'%spec.keys())
+			else: return matches[0]
+
+		def get_shortname(self,sn):
+			"""
+			Convert a full simulation name to a shorter name.
+			"""
+			#---the explicit short names list is top priority
+			if self.short_names and sn in self.short_names: return self.short_names[sn]
+			#---we consult a namer function if there is no explicit translation
+			elif self.short_namer: return self.short_namer(sn)
+
+		def slice(self,kind=None,**kwargs):
+			"""
+			Name a slice.
+			"""
+			spec = dict(kwargs)
+			#---add the short_name to the specs
+			spec['short_name'] = self.get_shortname(spec['sn'])
+			#---figure out the naming convention for this slice
+			#---...in this case we find the last namer that has all of the right keys
+			if not kind: valid_namers = self.namers
+			else: valid_namers = [item for item in self.namers if item[0][0]==kind]
+			if not valid_namers: raise Exception('no valid namers for kind: %s'%kind)
+			kinds = [key for key,namer in valid_namers if all([k in spec for k in namer['reqs']])]
+			if len(kinds)==0: raise Exception('cannot find a naming convention for %s'%spec)
+			#---the namers are ordered and we choose the *last* match
+			else: return self.namers[list(zip(*self.namers))[0].index(kinds[-1])][1]['namer']%spec
+
+		def classify(self,**spec):
+			"""
+			Given a spec, determine its version.
+			This function is called by WorkSpace.read_postdat to properly store that data.
+			"""
+			#---scan the key lists for different versions to see which version spec we have
+			for vnum in self.spec_spec:
+				if set(spec.keys())==set(self.spec_spec[vnum]): return vnum
+			#---all other specs are version 1
+			else: return 1
+
+		def slice_compare(self,post,job,version):
+			"""
+			postdat:
+				['dat_fn', 'spot', 'specs', 'spec_fn']
+				specs:
+					ipdb> set([tuple(i['specs'].keys()) for i in self.postdat.values()])
+					set([(u'specs',), (u'selector', u'separator', u'nojumps'), (u'separator', u'selector')])
+			"""
+			#version_post = self.classify(**post['specs'])
+			if version != 1:
+				#---! compare post specs to the job specs according to the version ... ???
+				matches = [all([(i,j,i==j) for i,j in [[post['specs'].get(i,None),job.get(i,None)]]]) 
+					for i in self.spec_spec[version]]
+				return all(matches)
+			#---version 1 spec files (for backwards compatibility) require a special check because specs are 
+			#---...directly at the top level of the file
+			else: return False
 
 ###---INTERFACE
 

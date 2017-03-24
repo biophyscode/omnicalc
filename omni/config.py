@@ -86,11 +86,15 @@ def set_config(*args,**kwargs):
 	function to ``make set ...``.
 	This was adapted from the automacs.runner.acme version to be more generic.
 	"""
-	config_toc = {'post_plot_spot':'single','post_data_spot':'single','calculations_repo':'single'}
+	config_toc = {'post_plot_spot':'single','post_data_spot':'single','calculations_repo':'single',
+		'meta_filter':'many'}
 	if len(args)>=2: what,args = args[0],args[1:]
+	elif len(args)==1: raise Exception('cannot accept a single argument')
 	else: what = None
-	if what and what not in config_toc: raise Exception('the argument to `make set` must be in %s'%config_toc.keys())
-	if what:
+	if what and what not in config_toc: 
+		raise Exception('the argument to `make set` must be in %s'%config_toc.keys())
+	elif what:
+		#---! check the "what" ...
 		if config_toc[what] == 'single':
 			if len(args)<1: raise Exception('must have an argument to set config %s'%what)
 			elif len(args)>1: raise Exception('too many arguments for singleton setting %s: %s'%(what,args))
@@ -101,6 +105,7 @@ def set_config(*args,**kwargs):
 		if invalids: raise Exception('invalid keys: %s'%invalids)
 		for key,val in kwargs.items():
 			if config_toc[key]=='single': add_config(key,value=val,many=False)
+			elif config_toc[key]=='many': add_config(key,value=val,many=True)
 			else: raise Exception('DEV')
 	return
 

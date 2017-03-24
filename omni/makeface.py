@@ -135,7 +135,8 @@ def makeface(*arglist):
 	arglist = list(arglist)
 	funcname = arglist.pop(0)
 	#---regex for kwargs. note that the makefile organizes the flags for us
-	regex_kwargs = r'^(\w+)\="?([\w:~\-\.\/\s]+)"?$'
+	#---note that the following regex is important. it includes e.g. wildcards for use with double quotes
+	regex_kwargs = r'^(\w+)\="?([\w:~\-\.\/\s\*]+)"?$'
 	while arglist:
 		arg = arglist.pop(0)
 		#---note that it is crucial that the following group contains all incoming 

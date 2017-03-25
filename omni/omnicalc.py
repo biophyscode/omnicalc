@@ -359,28 +359,52 @@ class WorkSpace:
 		if sn not in self.slices: raise Exception('the metadata slice dictionary has no simulation %s'%sn)
 		#---requested slices for this simulation
 		#---! note that we might want to pre-compute this
-		slices_request = {}
+		slices_catalog = {}
 		#---the meta slices dictionary is keyed first by simulation name, then by slice type
 		#---get all slices regardless of type for a specific simulation name
 		#---parse a simulation slice dictionary for valid slices
 		#---! currently this is replacing keysets in the NamingConvention class
 		#---! check that there is no garbage in the slice dictionary?
-
 		#---check the simulation's slice dictionary for each kind of slice
 		#---! note that groups is not on-pathway here
 		standard_slices = self.slices[sn].get('slices',{})
 		namd_slices = self.slices[sn].get('readymade_namd',{})
-		#---collect standard slices
-		for slice_name,slice_spec in standard_slices.items():
-			print('standard slices ')
-			import ipdb;ipdb.set_trace()
-		#---collect NAMD slices
-		for slice_name,slice_spec in namd_slices.items():
-			#---name the slice and check the postdat for the name
-			###slices_request[slice_name] = {'sn':sn}
-			import ipdb;ipdb.set_trace()
-		print('are slices ready??')
-		import ipdb;ipdb.set_trace()
+		#---! this loop is somewhat repetitive
+		if slice_name in standard_slices and slice_name in namd_slices: 
+			raise Exception('found slice named %s in both `slices` and `readymade_namd`')
+		elif slice_name in standard_slices:
+			slices_files = self.namer.name_slice(kind='standard',
+				sn=sn,group=group,**standard_slices[slice_name])
+		elif slice_name in namd_slices: 
+			#---! it is not necessary to pass these along to namd, but we will remain consistent anyway
+			slices_files = self.namer.name_slice(kind='readymade_namd',
+				sn=sn,group=group,**namd_slices[slice_name])
+		else: raise Exception('cannot find slice')
+		#---the namer only guesses at the identity of the slice so we check that it exists
+		for key,val in slices_files.items():
+			fns = val if type(val)==list else [val]
+			for fn in fns:
+				if not os.path.isfile(os.path.join(self.paths['post_data_spot'],fn)):
+					raise Exception('cannot find file %s'%fn)
+		#---construct the slice object here!
+		return {'slice':slices_files}
+
+		if False:
+			#---collect standard slices
+			for slice_name_this,slice_spec in standard_slices.items():
+				import ipdb;ipdb.set_trace()
+				slices_files = self.namer.name_slice(kind='standard',sn=sn,group=group,**slice_spec)
+				slices_catalog[slice_name_this] = slices_files
+			#---collect NAMD slices
+			for slice_name_this,slice_spec in namd_slices.items():
+				#---name the slice and check the postdat for the name
+				slices_files = self.namer.name_slice(kind='readymade_namd',sn=sn,group=group,**slice_spec)
+				slices_catalog[slice_name_this] = slices_files
+			#---now that we've collected all of the slices for this simulation according to the metadata
+			#---...we fish out the one being requested by the caller, to complete the job
+			if slice_name not in slices_catalog: 
+				raise Exception('cannot find slice named %s for simulation %s'%(slice_name,sn))
+		return {'slice':slices_catalog[slice_name]}
 
 	def slices_DERPRECATED(self,sn,**kwargs):
 		"""
@@ -461,7 +485,7 @@ class WorkSpace:
 
 		#---version 1 specs files have raw specs written directly to the file and rely on the filename
 		#---...to convey the metatdata e.g. simulation name
-		base_name = self.job_to_name(calc=job['calc'],sl=job['slice'])
+		base_name = self.job_to_name(sn=kwargs['sn'],calc=job['calc'],sl=job['slice'])
 		keys_no_specs = [key for key in self.postdat if re.match(base_name,key)]
 		for version in [1,2]:
 			keys_by_versioning[version] = [key for key in keys_no_specs if 
@@ -573,8 +597,26 @@ class WorkSpace:
 					job['calc'] = calc
 					#---the job joins the slice and calculation. 
 					calc_jobs.append(job)
+		
+		###---see if the job is done by SEARCHING THE POSTDAT
+		#---! might be worth making this a separate function
+		"""
+		***this should be a proper search. nobody cares about the name yet.
+		wtf do we check?
+			version 2
+
+			version 1
+				...
+
+		"""
+
+		# UGLY [key for key,val in self.postdat.items() if val.get('specs') and val['specs'].get('calc') and val['specs']['calc'].get('specs')==calc_jobs[0]['calc'].get('specs') and val['specs']['slice']['sn']==calc_jobs[0]['sn']]
+
 		#---after preparing jobs, attach post-processing data to them
-		self.match_postdat_to_results(calc_jobs)
+
+		import ipdb;ipdb.set_trace()
+
+		#self.match_postdat_to_results(calc_jobs)
 		return calc_jobs
 
 	def compute(self,jobs):
@@ -634,14 +676,14 @@ class WorkSpace:
 		#---! check if these files don't exist
 		return [base_name+tag+i for i in ['.dat','.spec','']]
 
-	def job_to_name(self,calc,sl):
+	def job_to_name(self,sn,calc,sl):
 		"""
 		Take the calculation and slice specification and combine them for the namer.
 		"""
 		#---note that calc and slice are probably redundant
 		combo = dict(calc)
-		combo.update(**sl)
-		return self.namer.slice(**combo)
+		combo.update(sn=sn,**sl)
+		return self.namer.name_slice(kind='datspec',**combo)
 
 	def store(self,obj,name,path,attrs=None,print_types=False,verbose=True):
 
@@ -915,11 +957,17 @@ class NamingConventions:
 		(('standard','datspec'),{
 			#---we append the dat,spec when we receive this
 			#---! should this include the number?
-			'd2n':r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.n%(nnum)d',
+			'd2n':r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.'+
+				r'pbc%(pbc)s.%(calc_name)s.n%(nnum)d',
 			'n2d':'^(?P<short_name>%(wild)s+)\.'+
 				'(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
 				'(?P<group>%(wild)s+)\.pbc(?P<pbc>%(wild)s+)\.(?P<calc_name>%(wild)s+)'+
-				'\.n(?P<nnum>\d+)\.(dat|spec)$',}),]
+				'\.n(?P<nnum>\d+)\.(dat|spec)$',}),
+		(('raw','datspec'),{
+			#---we append the dat,spec when we receive this
+			#---! should this include the number?
+			'd2n':r'%(short_name)s.%(calc_name)s.n%(nnum)d',
+			'n2d':'^(?P<short_name>%(wild)s+)\.(?P<calc_name>%(wild)s+)\.n(?P<nnum>\d+)\.(dat|spec)$',}),]
 	#---keys required in a slice in the meta file for a particular umbrella naming convention
 	omni_slicer_namer = {
 		'standard':{'slice_keys':['groups','slices']},
@@ -973,8 +1021,49 @@ class NamingConventions:
 		"""
 		Generate a slice name from metadata according to the slice type.
 		"""
-		import ipdb;ipdb.set_trace()
+		sn,group = kwargs['sn'],kwargs['group']
+		if kind=='readymade_namd': slice_files = {'struct':kwargs['psf'],'traj':kwargs['dcds']}
+		elif kind=='standard':
+			if group not in kwargs['groups']: 
+				raise Exception('simulation %s does not have requested group %s'%(sn,group))
+			name_data = dict(**kwargs)
+			slice_files = {}
+			for suffix,out in [('gro','struct'),('xtc','traj')]:
+				name_data['short_name'] = self.short_namer(sn)
+				name_data['suffix'] = suffix
+				slice_files[out] = self.parser[('standard','gro')]['d2n']%name_data
+		elif kind=='datspec':
+			#---first we try the standard datspec
+			#---! could be more systematic about checking keys
+			name = None
+			for name_style in [('standard','datspec'),('raw','datspec')]:
+				try:
+					name = self.parser[name_style]['d2n']%dict(
+						short_name=self.short_namer(kwargs['sn']),nnum=0,**kwargs)
+				except: pass
+			if not name: raise Exception('cannot generate datspec name')
+			slice_files = name
+		else: raise Exception('invalid slice kind: %s'%kind)
+		
+		if False:
 
+			"""
+			Name a slice.
+			"""
+			spec = dict(kwargs)
+			#---add the short_name to the specs
+			spec['short_name'] = self.get_shortname(spec['sn'])
+			#---figure out the naming convention for this slice
+			#---...in this case we find the last namer that has all of the right keys
+			if not kind: valid_namers = self.namers
+			else: valid_namers = [item for item in self.namers if item[0][0]==kind]
+			if not valid_namers: raise Exception('no valid namers for kind: %s'%kind)
+			kinds = [key for key,namer in valid_namers if all([k in spec for k in namer['reqs']])]
+			if len(kinds)==0: raise Exception('cannot find a naming convention for %s'%spec)
+			#---the namers are ordered and we choose the *last* match
+			else: return self.namers[list(zip(*self.namers))[0].index(kinds[-1])][1]['namer']%spec
+
+		return slice_files
 
 	#---! EVERYTHING BELOW HAS TO GO
 

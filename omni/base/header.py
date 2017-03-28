@@ -6,11 +6,13 @@ Header file which runs automatically before any plotting.
 This handles backwards compatibility with old plots --- just remove any header junk.
 """
 
+exec(open('omni/base/pythonrc.py').read())
+
 import os,sys,re
 
 #---we set the file name so tracebacks make sense
-__file__,script,plotname,run_type,meta = sys.argv
-meta = None if meta=='null' else meta
+__file__,script,plotname,run_type = sys.argv[:4]
+meta = None if sys.argv[4]=='null' else sys.argv[4:]
 
 #---this script is called from root and expects omni to be present
 if not os.path.isdir('omni'): raise Exception('cannot find `omni` folder')
@@ -42,6 +44,6 @@ def replot():
 	try: exec(compile(code,script,'exec'),globals())
 	except Exception as e: tracebacker(e)
 
-print('[PLOTTER] running plots via __file__="%s". execute again with `replot()`.'%__file__)
+print('[PLOTTER] running plots via __file__="%s"; you can execute again with `replot()`'%__file__)
 #---execute once and user can repeat 
 replot()

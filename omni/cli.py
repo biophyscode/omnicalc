@@ -5,11 +5,11 @@ Omnicalc command-line interface.
 """
 
 #---expose interface functions from omnicalc.py as well
-__all__ = ['locate','set_config','nuke','setup','compute','plot','pipeline','clone_calcs']
+__all__ = ['locate','set_config','nuke','setup','compute','plot','pipeline','clone_calcs','look']
 
 import os,sys,re
 from config import read_config,write_config,is_terminal_command,bash,abspath,set_config
-from omnicalc import compute,plot,pipeline
+from omnicalc import compute,plot,pipeline,look,WorkSpace
 
 default_config = {'commands': ['omni/cli.py'],'commands_aliases': [('set','set_config')]}
 
@@ -26,6 +26,7 @@ def nuke(sure=False):
 
 def locate(keyword):
 	"""
+	Find a function.
 	"""
 	os.system('find ./ -name "*.py" | xargs egrep --color=always "(def|class) \w*%s\w*"'%keyword)
 

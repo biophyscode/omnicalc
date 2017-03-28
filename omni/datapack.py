@@ -27,6 +27,8 @@ sys.path.insert(0,os.path.dirname(os.path.relpath(os.path.abspath(__file__),os.g
 __all__ = ['DotDict','yamlb']
 _not_all = ['DotDict','yamlb']
 
+str_types = [str,unicode] if sys.version_info<(3,0) else [str]
+
 class DotDict(dict):
 	"""
 	Use dots to access dictionary items.
@@ -131,7 +133,6 @@ def yamlb(text,style=None,ignore_json=False):
 	Development note: doesn't prevent errors with multiple keys in a dictionary!
 	"""
 	unpacked,compacts = {},{}
-	str_types = [str,unicode] if sys.version_info<(3,0) else [str]
 	#---evaluate code blocks first
 	regex_block_standard = r"^\s*([^\n]*?)\s*(?:\s*:\s*\|)\s*([^\n]*?)\n(\s+)(.*?)\n(?!\3)"
 	regex_block_tabbed = r"^\s*([^\n]*?)\s*(?:\s*:\s*\|)\s*\n(.*?)\n(?!\t)"
@@ -246,7 +247,7 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False):
 		''.join([(vertic if d not in last else ' ')+' '*wide for d in range(1,depth)])
 		)+c+horizo*wide) for (k,c) in [('mid',corner),('end',corner_end)]])
 	spacer = spacer_both['mid']
-	if type(obj) in [str,float,int,bool,unicode]:
+	if type(obj) in [float,int,bool]+str_types:
 		if depth == 0: print(spacer+str(obj)+'\n'+horizo*len(obj))
 		else: print(spacer+str(obj))
 	elif type(obj) == dict and all([type(i) in [str,float,int,bool] for i in obj.values()]) and depth==0:
@@ -254,7 +255,7 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False):
 	elif type(obj) in [list,tuple]:
 		for ind,item in enumerate(obj):
 			spacer_this = spacer_both['end'] if ind==len(obj)-1 else spacer
-			if type(item) in [str,float,int,bool,unicode]: print(spacer_this+str(item))
+			if type(item) in [float,int,bool]+str_types: print(spacer_this+str(item))
 			elif item != {}:
 				asciitree(item,depth=depth+1,
 					last=last+([depth] if ind==len(obj)-1 else []),

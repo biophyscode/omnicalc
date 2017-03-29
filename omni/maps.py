@@ -16,11 +16,13 @@ function in "kwargs['calc']['specs']". the incoming warning will tell you which 
 problem
 """
 
+str_types = [str,unicode] if sys.version_info<(3,0) else [str]
+
 def fix_integers(series):
 	"""Cast integer strings as integers, recursively."""
 	for k,v in series.items():
 		if type(v) == dict: fix_integers(v)
-		elif type(v)in [str,unicode] and v.isdigit(): series[k] = int(v)
+		elif type(v)in str_types and v.isdigit(): series[k] = int(v)
 
 class NamingConvention:
 

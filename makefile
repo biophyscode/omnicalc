@@ -1,6 +1,8 @@
+
 ### makeface (MAKEfile interFACE)
-### a crude but convenient way of making CLI's for python
+### a crude but convenient way of making CLIs for python
 ### this file requires makeface.py (see the documentation there)
+### current with makeface.py as of 2017.3.28
 
 # connect to runner
 makeface = omni/makeface.py
@@ -20,8 +22,10 @@ $(eval $(RUN_ARGS):;@:)
 
 # valid function names from the python script
 TARGETS := $(shell python $(python_flags) $(makeface) | \
-	perl -ne 'print $$1 . "\n" if /.+\:(.*?)\n/')
-
+	perl -ne 'print $$1 . "\n" if /.+targets\:(.*?)\n/')
+# makeface.py can specify a preliminary command to source the environment
+ENV_CMD := $(shell python $(python_flags) $(makeface) | \
+	perl -ne 'print $$1 if /.+environment\:\s*(.+)/')
 # make without arguments first
 default: $(checkfile)
 # make with arguments
@@ -42,8 +46,14 @@ endif
 touchup:
 	@touch $(checkfile)
 $(checkfile): touchup
-	@/bin/echo "[STATUS] calling controller: python $(python_flags) \
-	$(makeface) ${RUN_ARGS} ${MAKEFLAGS}"
+ifeq ($(ENV_CMD),)
 	@env PYTHON_DEBUG=$(PYTHON_DEBUG) python $(python_flags) \
 	$(makeface) ${RUN_ARGS} ${MAKEFLAGS} && \
 	echo "[STATUS] done" || { echo "[STATUS] fail"; exit 1; }
+else
+	@/bin/echo "[STATUS] environment prefix is: \""$(ENV_CMD)"\""
+	( source "$(ENV_CMD)" && \
+	env PYTHON_DEBUG=$(PYTHON_DEBUG) python $(python_flags) \
+	$(makeface) ${RUN_ARGS} ${MAKEFLAGS} && \
+	echo "[STATUS] done" ) || { echo "[STATUS] fail"; exit 1; }
+endif

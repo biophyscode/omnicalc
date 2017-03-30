@@ -16,7 +16,14 @@ and ``**kwargs`` because arguments are passed from the ``Makefile`` to the pytho
 functions from the terminal by running ``make my_python_function some_true_bool_flag kwarg="some value"``. 
 Set ``commands`` in the ``config.py`` managed by :any:`acme <acme>` to specify which files provide functions 
 to the interface. You can set ``__all__`` in these files to hide extraneous functions from ``make``. 
+
+This makefile was forked from factory and updated with prechecker and zombie mode ca 2017.3.29.
 """
+
+default_config = {
+	'commands': ['omni/config.py','omni/cli.py'],
+	'commands_aliases': [('set','set_config')],
+	'precheck':'omni/precheck.py'}
 
 #---settings for globbing for functions
 config_fn = 'config.py'
@@ -135,8 +142,7 @@ def makeface(*arglist):
 	arglist = list(arglist)
 	funcname = arglist.pop(0)
 	#---regex for kwargs. note that the makefile organizes the flags for us
-	#---note that the following regex is important. it includes e.g. wildcards for use with double quotes
-	regex_kwargs = r'^(\w+)\="?([\w:~\-\.\/\s\*]+)"?$'
+	regex_kwargs = r'^(\w+)\="?([\w:~\-\.\/\s]+)"?$'
 	while arglist:
 		arg = arglist.pop(0)
 		#---note that it is crucial that the following group contains all incoming 
@@ -178,20 +184,23 @@ def makeface(*arglist):
 			sys.exit(1)
 
 if __name__ == "__main__": 
-	from logo import logo
-	#except: logo = ""
+	zombie_mode = False
+	try: from logo import logo
+	except: logo = ""
 	if logo: print(logo)
 	#---read configuration to retrieve source scripts
 	#---note this happens every time (even on make tab-completion) to collect scripts
 	#---...from all open-ended sources. timing: it only requires about 3 ms
 	if not os.path.isfile(config_fn): 
-		#---write a default config for omnicalc if config is missing
-		default_config = {'commands': ['omni/cli.py'],'commands_aliases': [('set','set_config')]}
 		with open(config_fn,'w') as fp: fp.write(str(default_config))
 	if 'config_fn' in globals() and 'config_key' in globals(): 
 		with open(config_fn) as fp: configurator = eval(fp.read())
 		source_scripts = str_or_list(configurator.get('commands',[]))
 	else: raise Exception('need to specify config_fn and config_key')
+	#---before running makeface we do any necessary pre-checks
+	if 'precheck' in configurator: 
+		try: exec(open(configurator['precheck']))
+		except Exception as zombie_mode: print('[WARNING] prechecker failed. continuing as zombie.')
 	#---filter sys.argv
 	argvs = [i for i in sys.argv if i not in drop_flags]
 	if source_scripts:
@@ -206,19 +215,24 @@ if __name__ == "__main__":
 				#---import as a local module
 				if (os.path.join(os.getcwd(),os.path.dirname(fn)) in sys.path
 					or os.path.dirname(fn)=='.'): 
-					new_funcs = import_local(fn)
+					if zombie_mode: 
+						try: new_funcs = import_local(fn)
+						except Exception as e: new_funcs = {}
+					else: new_funcs = import_local(fn)
 					makeface_funcs.update(**new_funcs)
 					if len(argvs)==1 and verbose: 
 						print('[NOTE] imported remotely from %s'%fn)
 						print('[NOTE] added functions: %s'%(' '.join(new_funcs)))
 				else: 
-					new_funcs = import_remote(fn)
+					if zombie_mode: 
+						try: new_funcs = import_local(fn)
+						except Exception as e: new_funcs = {}
+					else: new_funcs = import_remote(fn)
 					makeface_funcs.update(**new_funcs)
 					if len(argvs)==1: 
 						if verbose: 
 							print('[NOTE] imported remotely from %s'%fn)
 							print('[NOTE] added functions: %s'%(' '.join(new_funcs)))
-
 	#---prune non-callables from the list of makeface functions
 	for name,obj in list(makeface_funcs.items()):
 		if not hasattr(obj,'__call__'): 
@@ -226,6 +240,9 @@ if __name__ == "__main__":
 			del makeface_funcs[name]
 	#---command aliases for usability
 	commands_aliases = configurator.get('commands_aliases',[])
+	#---environment handler
+	env_prepend = configurator.get('activate_env','')
+	if env_prepend: print('[STATUS] config.py: activate environment: "%s"'%env_prepend)
 	if any([len(i)!=2 for i in commands_aliases]): 
 		raise Exception('commands_aliases must be a list of tuples that specify (target,alias) functions')
 	#----fails on docs.py when looking for preplist

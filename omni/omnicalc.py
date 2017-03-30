@@ -2,6 +2,7 @@
 
 import os,sys,re,glob,copy,json,time,tempfile
 from config import read_config,bash
+
 from base.tools import catalog,delve,str_or_list,status
 from base.hypothesis import hypothesis
 from maps import NamingConvention,PostDat,ComputeJob,Calculation,Slice,SliceMeta,DatSpec

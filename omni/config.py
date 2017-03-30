@@ -5,6 +5,8 @@ from makeface import abspath
 from datapack import delveset
 import subprocess
 
+__all__ = ['set_config','unset']
+
 #---hardcoded config
 config_fn = 'config.py'
 
@@ -87,7 +89,7 @@ def set_config(*args,**kwargs):
 	This was adapted from the automacs.runner.acme version to be more generic.
 	"""
 	config_toc = {'post_plot_spot':'single','post_data_spot':'single','calculations_repo':'single',
-		'meta_filter':'many'}
+		'meta_filter':'many','activate_env':'single'}
 	if len(args)>=2: what,args = args[0],args[1:]
 	elif len(args)==1: raise Exception('cannot accept a single argument')
 	else: what = None
@@ -108,6 +110,16 @@ def set_config(*args,**kwargs):
 			elif config_toc[key]=='many': add_config(key,value=val,many=True)
 			else: raise Exception('DEV')
 	return
+
+def unset(*args):
+	"""
+	Remove items from config.
+	"""
+	config = read_config()
+	for arg in args: 
+		if arg in config: del config[arg]
+		else: print('[WARNING] cannot unset %s because it is absent'%arg)
+	write_config(config)
 
 def add_config(*args,**kwargs):
 	"""

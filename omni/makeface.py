@@ -22,8 +22,7 @@ This makefile was forked from factory and updated with prechecker and zombie mod
 
 default_config = {
 	'commands': ['omni/config.py','omni/cli.py'],
-	'commands_aliases': [('set','set_config')],
-	'precheck':'omni/precheck.py'}
+	'commands_aliases': [('set','set_config')],}
 
 #---settings for globbing for functions
 config_fn = 'config.py'
@@ -198,6 +197,7 @@ if __name__ == "__main__":
 		source_scripts = str_or_list(configurator.get('commands',[]))
 	else: raise Exception('need to specify config_fn and config_key')
 	#---before running makeface we do any necessary pre-checks
+	#---! precheck is defunct because any precheck failure messes up the make target list anyway
 	if 'precheck' in configurator: 
 		try: exec(open(configurator['precheck']))
 		except Exception as zombie_mode: print('[WARNING] prechecker failed. continuing as zombie.')

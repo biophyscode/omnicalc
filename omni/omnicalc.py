@@ -5,10 +5,12 @@ from config import read_config,bash
 
 from base.tools import catalog,delve,str_or_list,status
 from base.hypothesis import hypothesis
-from maps import NamingConvention,PostDat,ComputeJob,Calculation,Slice,SliceMeta,DatSpec
-from datapack import asciitree
+from maps import NamingConvention,PostDat,ComputeJob,Calculation,Slice,SliceMeta,DatSpec,CalcMeta
+from datapack import asciitree,delve,delveset
 import yaml,h5py
 import numpy as np
+
+str_types = [str,unicode] if sys.version_info<(3,0) else [str]
 
 class WorkSpace:
 
@@ -23,7 +25,7 @@ class WorkSpace:
 	#---! currently hard-coded
 	nprocs = 4
 
-	def __init__(self,plot=None,plot_call=False,pipeline=None,meta=None):
+	def __init__(self,plot=None,plot_call=False,pipeline=None,meta=None,confirm_compute=False):
 		"""
 		Prepare the workspace.
 		"""
@@ -56,6 +58,8 @@ class WorkSpace:
 		if not self.calcs: return
 		if not self.calcs and self.slices: 
 			raise Exception('cannot continue to calculations without slices')
+		#---catalog calculation requests from the metadata
+		self.calc_meta = CalcMeta(self.calcs,work=self)
 		#---catalog post-processing data
 		self.postdat = PostDat(where=self.config.get('post_data_spot',None),namer=self.namer,work=self)
 		#---catalog slice requests from the metadata
@@ -66,7 +70,7 @@ class WorkSpace:
 		if not plot and not pipeline:
 			#---match calculation codes with target slices
 			self.jobs = self.prepare_calculations()
-			self.compute()
+			self.compute(confirm=confirm_compute)
 		elif plot: self.plot(plotname=plot,plot_call=plot_call,meta=meta_incoming)
 		elif pipeline: self.pipeline(name=pipeline,plot_call=plot_call,meta=meta_incoming)
 
@@ -179,7 +183,7 @@ class WorkSpace:
 				raise Exception('possibly loop in your graph of dependent calculations')
 		return calckeys
 
-	def unroll_loops(self,details,return_stubs=False):
+	def unroll_loops_MOVED(self,details,return_stubs=False):
 		"""
 		The jobs list may contain loops. We "unroll" them here.
 		"""
@@ -281,6 +285,127 @@ class WorkSpace:
 		#---! check if these files don't exist
 		return [base_name+tag+i for i in ['.dat','.spec','']]
 
+	def infer_group(self,calc):
+		"""
+		"""
+		if False:
+			def get_upstream_groups(*args):
+				"""Recurse the dependency list for upstream groups."""
+				for arg in args:
+					if 'group' in self.calcs[arg]: yield self.calcs[arg]['group']
+					else: up_again.append(arg)
+		#---! non-recursive method
+		groups,pending_groupsearch = [],list(calc['specs']['upstream'].keys())
+		while pending_groupsearch:
+			key = pending_groupsearch.pop()
+			if 'group' in self.calcs[key]: groups.append(self.calcs[key]['group'])
+			elif 'upstream' in self.calcs[key]['specs']:
+				pending_groupsearch.extend(self.calcs[key]['specs']['upstream'].keys())
+			else: raise Exception('no group and no upstream')
+		#---! end non-recursive method
+		#groups = get_upstream_groups(*calc['specs']['upstream'].keys())
+		groups_consensus = list(set(groups))
+		if len(groups_consensus)!=1: 
+			raise Exception('cannot achieve upstream group consensus')
+		group = groups_consensus[0]
+		return group
+
+	def infer_pbc(self,calc):
+		"""
+		"""
+		back_namer = dict([(self.namer.short_namer(key),key) for key in self.slices.keys()])
+		sn = back_namer[calc['slice']['short_name']]
+		calcname = calc['calc']['calc_name']
+		try: pbc = self.slices[sn]['slices'][self.calcs[calcname]['slice_name']]['pbc']
+		except:
+			import ipdb;ipdb.set_trace()
+		return pbc
+
+	def chase_upstream(self,specs,warn=False):
+		"""
+		Fill in upstream information. Works in-place on specs.
+		"""
+		specs_cursors = [copy.deepcopy(specs)]
+		while specs_cursors:
+			sc = specs_cursors.pop()
+			if 'upstream' in sc:
+				for calcname in sc['upstream']:
+					#if calcname=='ion_binding_combinator':
+					#	import ipdb;ipdb.set_trace()
+					if sc['upstream'][calcname]:
+						try:
+							sc['upstream'][calcname].items()
+						except:
+							import ipdb;ipdb.set_trace()
+						for key,val in sc['upstream'][calcname].items():
+							if type(val) in str_types:
+								#---! this is pretty crazy. wrote it real fast pattern-matching
+								expanded = self.calcs[calcname]['specs'][key]['loop'][
+									sc['upstream'][calcname][key]]
+								#---replace with the expansion
+								specs[key] = copy.deepcopy(expanded)
+								del specs['upstream'][calcname][key]
+							#---! assert empty?
+						del specs['upstream'][calcname]
+					else: del specs['upstream'][calcname]
+		if 'upstream' in specs:
+			if specs['upstream']: raise Exception('failed to clear upstream')
+			else: del specs['upstream']
+
+	def chase_upstream_newish(self,specs,warn=False):
+		"""
+		"""
+		refolded = {}
+		unfolded = list(catalog(specs))
+		for keylist,child_val in unfolded:
+			if 'upstream' not in keylist: delveset(refolded,*keylist,value=child_val)
+			elif 'upstream' in keylist and child_val==None: continue
+			else:
+				#---get the positions where we have an 'upstream'
+				ups_inds = [ii for ii,i in enumerate(keylist) if i=='upstream']
+				#---make sure they are above something in the dictionary
+				if not all([len(keylist)>ii+1 and keylist[ii+1]!='upstream' for ii in ups_inds]):
+					raise Exception('incorrect use of "upstream"')
+				#---not sure how to handle raw specs in the upstream nesting
+				if type(child_val) not in str_types: raise Exception('dev')
+				#---we work backwards through the list of upstream signifiers
+				for pivot in ups_inds[::-1]:
+					#---at each encounter with "upstream" we find the upstream calculation
+					#---! and hold it?
+					calcname,keyword = keylist[pivot+1:]
+					#---currently we expect all "upstream" references point to keywords that lie inside a
+					#---...loop section of another calculation (however we could also try to make this
+					#---...fully explicit). so we do not "unroll" the loop and instead use the keyword
+					if calcname not in self.calcs: 
+						raise Exception('searching for upstream data for spec "%s" '%specs+
+							'but calculation %s is not in the metadata'%calcname)
+					if 'specs' not in self.calcs[calcname]:
+						raise Exception('searching for upstream data for spec "%s" '%specs+
+							'and the calculation %s has no specs in the metadata'%calcname)
+					if keyword not in self.calcs[calcname]['specs']:
+						raise Exception('searching for upstream data for spec "%s" '%specs+
+							'and the calculation %s has no spec named %s in the metadata'%(calcname,keyword))
+					if keyword not in self.calcs[calcname]['specs']:
+						raise Exception('searching for upstream data for spec "%s" '%specs+
+							'and we cannot find the loop keyword under %s,%s '%(calcname,keyword)+
+							'DEVNOTE: this is a development opportunity. associate-by-value instead of '+
+							'just associate-by-reference!')
+					if not child_val in self.calcs[calcname]['specs'][keyword]['loop']:
+						raise Exception('searching for upstream data for spec "%s" '%specs+
+							'and we could not find the reference %s in the loop for %s,%s'%(
+							child_val,calcname,keyword))
+					expansion = self.calcs[calcname]['specs'][keyword]['loop'][child_val]
+					refolded.update(**expansion)
+					#self.calcs[calcname]['specs'][keyword]
+					#[item for item in self.unroll_loops(self.calcs[calcname]) if keyword in item['specs']]
+				import ipdb;ipdb.set_trace()
+				#---work up from the leaf of the tree
+				#for pivot in ups_inds[::-1]:
+				#	keys_not_upstream = [i for i in self.calcs[keylist[pivot+1]]['specs'] if i!='upstream']
+				#	import ipdb;ipdb.set_trace()
+				#---convert the upstream commands into instructions
+				
+
 	def store(self,obj,name,path,attrs=None,print_types=False,verbose=True):
 		"""
 		Use h5py to store a dictionary of data.
@@ -322,10 +447,9 @@ class WorkSpace:
 			#---get the calculation spec
 			calc_with_loops = self.calcs[calckey]
 			#---unroll the calculation if loops
-			calcs = self.unroll_loops(calc_with_loops)
+			#calcs = self.unroll_loops(calc_with_loops)
+			import ipdb;ipdb.set_trace()
 			for calc in calcs:
-				#---! replace "calc" with "this_calculation"
-				this_calculation = Calculation(name=calckey,**calc)
 				#---get slice name
 				slice_name = calc['slice_name']
 				#---loop over simulations
@@ -337,16 +461,10 @@ class WorkSpace:
 				group = calc.get('group',None)
 				#---group is absent if this is a downstream calculation
 				if not group:
-					def get_upstream_groups(*args):
-						"""Recurse the dependency list for upstream groups."""
-						for arg in args:
-							if 'group' in self.calcs[arg]: yield self.calcs[arg]['group']
-							else: up_again.append(arg)
-					groups = get_upstream_groups(calc['specs']['upstream'].keys())
-					groups_consensus = list(set(groups))
-					if len(groups_consensus)!=1: 
-						raise Exception('cannot achieve upstream group consensus')
-					group = groups_consensus[0]
+					group = self.infer_group(calc)
+				#---put everything in a calculation
+				this_calculation = Calculation(work=self,name=calckey,group=group,
+					**dict([(i,j) for i,j in calc.items() if i!='group']))
 				#---loop over simulations
 				for sn in sns:
 					#---prepare a slice according to the specification in the calculation
@@ -357,7 +475,7 @@ class WorkSpace:
 		#---! which other uses?
 		return jobs
 
-	def compute(self):
+	def compute(self,confirm=False):
 		"""
 		Run through computations.
 		"""
@@ -369,7 +487,10 @@ class WorkSpace:
 			if not job.result:
 				post = DatSpec(job=job)
 				tasks.append((post.basename(),{'post':post,'job':job}))
-		#import ipdb;ipdb.set_trace()
+		if confirm:
+			print('LOOK THINGS OVER DUDE')
+			print(len(tasks))
+			import ipdb;ipdb.set_trace()
 		#---iterate over compute tasks
 		for jnum,(jkey,incoming) in enumerate(tasks):
 			print('[JOB] running calculation job %d/%d'%(jnum+1,len(pending)))
@@ -546,11 +667,11 @@ class WorkSpace:
 
 ###---INTERFACE
 
-def compute(meta=None):
+def compute(meta=None,confirm=False):
 	"""
 	Expose the workspace to the command line.
 	"""
-	work = WorkSpace(meta=meta)
+	work = WorkSpace(meta=meta,confirm_compute=confirm)
 
 def plot(name,meta=None):
 	"""

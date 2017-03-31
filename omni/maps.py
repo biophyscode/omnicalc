@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 import os,sys,glob,re,json,copy,time
-from datapack import asciitree
+from datapack import asciitree,delve,delveset,catalog
+from base.hypothesis import hypothesis
 
 ###---SUPPORT
 
@@ -18,11 +19,12 @@ problem
 
 str_types = [str,unicode] if sys.version_info<(3,0) else [str]
 
-def fix_integers(series):
-	"""Cast integer strings as integers, recursively."""
+def json_type_fixer(series):
+	"""Cast integer strings as integers, recursively. We also fix 'None'."""
 	for k,v in series.items():
-		if type(v) == dict: fix_integers(v)
+		if type(v) == dict: json_type_fixer(v)
 		elif type(v)in str_types and v.isdigit(): series[k] = int(v)
+		elif type(v)in str_types and v=='None': series[k] = None
 
 class NamingConvention:
 
@@ -53,6 +55,12 @@ class NamingConvention:
 				'(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
 				'(?P<group>%(wild)s+)\.pbc(?P<pbc>%(wild)s+)\.(?P<calc_name>%(wild)s+)'+
 				'\.n(?P<nnum>\d+)\.(dat|spec)$',}),
+		(('standard_obvious','datspec'),{
+			#---we append the dat/spec suffix and the nnum later
+			'd2n':r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(calc_name)s',
+			'n2d':'^(?P<short_name>%(wild)s+)\.'+
+				'(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
+				'(?P<calc_name>%(wild)s+)\.n(?P<nnum>\d+)\.(dat|spec)$',}),
 		(('raw','datspec'),{
 			#---we append the dat/spec suffix and the nnum later
 			#---! should this include the number?
@@ -156,7 +164,7 @@ class PostDat(NamingConvention):
 				#---if this is a datspec file we find its pair and read the spec file
 				if namedat['dat_type']=='datspec':
 					basename = self.get_twin(name,('dat','spec'))
-					self.toc[basename] = DatSpec(fn=basename,dn=work.paths['post_data_spot'])
+					self.toc[basename] = DatSpec(fn=basename,dn=work.paths['post_data_spot'],work=self.work)
 				#---everything else must be a slice
 				#---! alternate check for different slice types?
 				else: 
@@ -204,10 +212,11 @@ class DatSpec(NamingConvention):
 	Parent class for identifying a piece of post-processed data.
 	"""
 
-	def __init__(self,fn=None,dn=None,job=None):
+	def __init__(self,fn=None,dn=None,job=None,work=None):
 		"""
 		We construct the DatSpec to mirror a completed result on disk OR a job we would like to run.
 		"""
+		self.work = work
 		if fn and job: raise Exception('cannot send specs if you send a file')
 		elif fn and not dn: raise Exception('send the post directory')
 		elif fn and dn: self.from_file(fn,dn)
@@ -221,6 +230,10 @@ class DatSpec(NamingConvention):
 		path = os.path.join(dn,fn)
 		self.files = {'dat':fn+'.dat','spec':fn+'.spec'}
 		self.specs = json.load(open(path+'.spec'))
+		#---for posterity we copy the specs before formatting everything
+		self.specs_raw = copy.deepcopy(self.specs)
+		json_type_fixer(self.specs_raw)
+		json_type_fixer(self.specs)
 		self.namedat = self.interpret_name(fn+'.spec')
 		#---! why is this exception not in interpret_name?
 		if not self.namedat: raise Exception('name interpreter failure')
@@ -240,7 +253,26 @@ class DatSpec(NamingConvention):
 			#---version 2 has a simple calc dictionary
 			self.specs['calc'] = {'calc_name':self.namedat['body']['calc_name']}
 			#---! for some reason short_name is in the top?
-			#self.specs['short_name'] = self.namedat['body']['short_name'] 
+			#self.specs['short_name'] = self.namedat['body']['short_name']
+		#---we fill in groups and pbc for certain slice types
+		if (self.specs['slice']['slice_type']=='standard' and 
+			self.specs['slice']['dat_type']=='gmx' and 
+			any([i not in self.specs['slice'] for i in ['group','pbc']])):
+			if 'group' not in self.specs['slice']: 
+				self.specs['slice']['group'] = self.work.infer_group(self.specs)
+			if 'pbc' not in self.specs['slice']:
+				self.specs['slice']['pbc'] = self.work.infer_pbc(self.specs)
+		#---first time in the execution that we encounter calculation specs
+		self.specs['calc'] = CalcSpec(self.specs['calc'])
+		if False:
+			#---legacy spec files have "upstream" entries with pointers and not data
+			#---...note that this was highly stupid. we replace the upstream information here, but 
+			#---...obviously cannot guarantee that the data are consistent without checking the `dat` files
+			#---...which get the final word on what's in the data
+			if 'upstream' in self.specs['specs']:
+				#print('FUUUUUUUUU')
+				self.work.chase_upstream(self.specs['specs'])
+				#import ipdb;ipdb.set_trace()
 
 	def from_job(self,job):
 		"""
@@ -286,14 +318,150 @@ class Calculation:
 	A calculation, including settings.
 	"""
 
-	def __init__(self,**kwargs):
+	def __init__(self,work=None,**kwargs):
 		"""
 		"""
 		for key in ['name','uptype','group','slice_name','collections']:
-			if key not in kwargs: raise Exception('calculation requires %s'%key)
+			if key not in kwargs: 
+				import ipdb;ipdb.set_trace()
+				raise Exception('calculation requires %s'%key)
 			self.__dict__[key] = kwargs.pop(key)
 		self.specs = kwargs.pop('specs',{})
 		if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
+		#---recursively fill in the specs when we generate the calculation
+		json_type_fixer(self.specs)
+		#---for posterity
+		self.specs_raw = copy.deepcopy(self.specs)
+		work.chase_upstream(self.specs)
+		if False:
+			specs_cursors = [copy.deepcopy(self.specs)]
+			while specs_cursors:
+				sc = specs_cursors.pop()
+				if 'upstream' in sc:
+					for calcname in sc['upstream']:
+						for key,val in sc['upstream'][calcname].items():
+							if type(val) in str_types:
+								#---! this is pretty crazy. wrote it real fast pattern-matching
+								expanded = work.calcs[calcname]['specs'][key]['loop'][
+									sc['upstream'][calcname][key]]
+								#---replace with the expansion
+								self.specs[key] = copy.deepcopy(expanded)
+								del self.specs['upstream'][calcname][key]
+							#---! assert empty?
+						del self.specs['upstream'][calcname]
+					#import ipdb;ipdb.set_trace()		
+				#if 'upstream' in self.specs:self.specs.get('upstream',None): raise Exception('failed to clear upstream')
+			if 'upstream' in self.specs:
+				if self.specs['upstream']: raise Exception('failed to clear upstream')
+				else: del self.specs['upstream']
+			#import ipdb;ipdb.set_trace()
+		#else: del self.specs['upstream']
+		#import ipdb;ipdb.set_trace()
+		#---! somehow the above works on one level. need check if it does the nesting. probably doesn't...
+
+class CalcSpec:
+
+	"""
+	Calculation specs may have loops and/or upstream values in them. These are handled here.
+	"""
+
+	def __init__(self,incoming):
+		self.body = incoming
+
+class CalcMeta:
+
+	"""
+	Listing of calculations for cross-referencing.
+	"""
+
+	def __init__(self,meta,**kwargs):
+		"""
+		"""
+		self.work = kwargs.pop('work')
+		if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
+		#---unroll each calculation and store the stubs because they map from the keyword used in the 
+		#---...parameter sweeps triggered by "loop" and the full specs
+		self.toc = {}
+		for calcname,calc in meta.items():
+			expanded_calcs,expanded_stubs = self.unroll_loops(calc,return_stubs=True)
+			self.toc[calcname] = {'specs':expanded_calcs,'stubs':expanded_stubs}
+		#import ipdb;ipdb.set_trace()
+
+		#self.toc = dict([(calcname,self.unroll_loops(spec)) for calcname,spec in meta.items()])
+		#---! mirror
+		#self.toc_raw = dict([(calcname,spec) for calcname,spec in meta.items()])
+		#self.internal_referencer()
+
+	def unroll_loops(self,details,return_stubs=False):
+		"""
+		The jobs list may contain loops. We "unroll" them here.
+		"""
+		#---this loop interpreter allows for a loop key at any point over specs in list or dict
+		#---trim a copy of the specs so all loop keys are terminal
+		details_trim = copy.deepcopy(details)
+		#---get all paths to a loop
+		nonterm_paths = list([tuple(j) for j in set([tuple(i[:i.index('loop')+1]) 
+			for i,j in catalog(details_trim) if 'loop' in i[:-1]])])
+		#---some loops end in a list instead of a sub-dictionary
+		nonterm_paths_list = list([tuple(j) for j in set([tuple(i[:i.index('loop')+1]) 
+			for i,j in catalog(details_trim) if i[-1]=='loop'])])
+		#---for each non-terminal path we save everything below and replace it with a key
+		nonterms = []
+		for path in nonterm_paths:
+			base = copy.deepcopy(delve(details_trim,*path[:-1]))
+			nonterms.append(base['loop'])
+			pivot = delve(details_trim,*path[:-1])
+			pivot['loop'] = base['loop'].keys()
+		#---hypothesize over the reduced specifications dictionary
+		sweeps = [{'route':i[:-1],'values':j} for i,j in catalog(details_trim) if 'loop' in i]
+		#---! note that you cannot have loops within loops (yet?) but this would be the right place for it
+		if sweeps == []: new_calcs = [copy.deepcopy(details)]
+		else: new_calcs = hypothesis(sweeps,default=details_trim)
+		new_calcs_stubs = copy.deepcopy(new_calcs)
+		#---replace non-terminal loop paths with their downstream dictionaries
+		for ii,i in enumerate(nonterms):
+			for nc in new_calcs:
+				downkey = delve(nc,*nonterm_paths[ii][:-1])
+				upkey = nonterm_paths[ii][-2]
+				point = delve(nc,*nonterm_paths[ii][:-2])
+				point[upkey] = nonterms[ii][downkey]
+		#---loops over lists (instead of dictionaries) carry along the entire loop which most be removed
+		for ii,i in enumerate(nonterm_paths_list):
+			for nc in new_calcs: 
+				#---! this section is supposed to excise the redundant "loop" list if it still exists
+				#---! however the PPI project had calculation metadata that didn't require it so we just try
+				try:
+					pivot = delve(nc,*i[:-2]) if len(i)>2 else nc
+					val = delve(nc,*i[:-1])[i[-2]]
+					pivot[i[-2]] = val
+				except: pass
+		return new_calcs if not return_stubs else (new_calcs,new_calcs_stubs)
+
+	def find_calculation_internallywise(self,calcname,**kwargs):
+		"""
+		ONLY HANDLES INTERNAL POINTERS NOW.
+		"""
+		pointers = kwargs.pop('pointers',None)
+		if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
+		if not pointers: raise Exception('dev')
+		#---! pointers has to specify the whole specs but this seems unreasonable?
+		matches = [ii for ii in range(len(self.toc[calcname]['stubs'])) 
+			if self.toc[calcname]['stubs'][ii]['specs']==pointers]
+		if len(matches)==1: return self.toc[calcname]['specs'][ii]
+		else:
+			print('too strict')
+			import ipdb;ipdb.set_trace()
+
+	def internal_referencer(self):
+		"""
+		SET ASIDE FOR NOW
+		"""
+		#---! internal reference example starts here
+		spec = self.toc['lipid_areas2d']['specs'][1]
+		cat = list(catalog(spec['specs']))
+		self.find_calculation_internallywise('lipid_abstractor',pointers={'selector':'lipid_chol_com'})
+		import ipdb;ipdb.set_trace()
+		#[ii for ii,i in enumerate(self.toc_raw[calcname]['specs']) if all([key in i and 'loop' in i[key] for key,val in pointers.items()])]
 
 class SliceMeta:
 
@@ -322,9 +490,12 @@ class SliceMeta:
 							raise Exception(
 								'redundant slice named %s for simulation %s in the metadata'%(
 								slice_name,sn))
-						self.slices[sn][(slice_name,None)] = dict(slice_type='readymade_namd',spec=spec)
+						self.slices[sn][(slice_name,None)] = dict(slice_type='readymade_namd',
+							dat_type=None,spec=spec)
 				elif slice_type=='slices':
 					for slice_name,spec in slice_group.items():
+						#---without deepcopy you will pop the dictionary and screw up the internal refs
+						spec = copy.deepcopy(spec)
 						if slice_name in self.slices[sn]:
 							raise Exception(
 								'redundant slice named %s for simulation %s in the metadata'%(
@@ -336,7 +507,7 @@ class SliceMeta:
 									'cannot find corresponding group %s in slice %s in simulation %s'%
 									(group,slice_name,sn))
 							self.slices[sn][(slice_name,group)] = dict(
-								slice_type='standard',spec=dict(group=group,**spec))
+								slice_type='standard',dat_type='gmx',spec=dict(group=group,**spec))
 		#---now we reproces each slice into a Slice instance for later comparison
 		for sn in self.slices:
 			for slice_name,group_name in self.slices[sn]:
@@ -380,20 +551,31 @@ class Slice:
 			figure out dat_type
 		"""
 		self.__dict__.update(**kwargs)
+		json_type_fixer(self.__dict__)
 
 	def flat(self):
 		"""
 		Reduce a slice into a more natural form.
 		"""
-		slice_type = self.namedat.get('slice_type')
-		if not slice_type: slice_type = self.__dict__.get('slice_type')
-		if not slice_type: raise Exception('indeterminate slice type')
-		me = dict(slice_type=slice_type,**self.namedat.get('body',{}))
+		#---we include dat_type with slice_type
+		for key in ['slice_type','dat_type']:
+			this_type = self.namedat.get(key)
+			if not this_type: this_type = self.__dict__.get(key)
+			if not this_type: raise Exception('indeterminate data type')
+			#---! clumsy
+			if key=='slice_type': slice_type = str(this_type)
+			elif key=='dat_type': dat_type = str(this_type)
+		me = dict(slice_type=slice_type,dat_type=dat_type,**self.namedat.get('body',{}))
 		me.update(**self.__dict__.get('spec',{}))
 		if 'short_name' not in me and 'short_name' in self.__dict__:
 			me['short_name'] = self.short_name
 		#---trick to fix integers
-		fix_integers(me)
+		json_type_fixer(me)
+
+		#---check for group/pbc for gmx
+		if 'slice_type' in me and me['slice_type']=='standard' and me['dat_type']=='gmx' and any(
+			[i not in me for i in ['group','pbc']]):
+			import ipdb;ipdb.set_trace()
 		return me
 
 class ComputeJob:
@@ -411,7 +593,11 @@ class ComputeJob:
 		#---search the slice requests list to get more information about the target slice
 		#---...note that in the mock up, the slice requests list represents subtype "b", above is "c"
 		slices_by_sn = self.work.slice_meta.slices.get(sl.sn,None)
-		if not slices_by_sn: raise Exception('cannot find simulation %s in slice requests'%sl.sn)
+		if not slices_by_sn: 
+			print(self.work.namer.short_namer(sl.sn))
+			import ipdb;ipdb.set_trace()
+			print(self.work.slice_meta.slices.get(self.work.namer.short_namer(sl.sn),None))
+			if not slices_by_sn: raise Exception('cannot find simulation %s in slice requests'%sl.sn)
 		name_group = None
 		#---some slices cannot have names (e.g. readymade_namd) so we are permissive here
 		for pair in [(sl.slice_name,sl.group),(sl.slice_name,None)]:
@@ -439,10 +625,47 @@ class ComputeJob:
 		target = {'specs':self.calc.specs,
 			'calc':{'calc_name':self.calc.name},
 			'slice':self.slice.flat()}
+		#---! hack to fix integers ??! should be done in Slice constructor
+		for key,val in self.work.postdat.posts().items(): json_type_fixer(val.specs)
 		#---we search for a result object by directly comparing the DatSpec.specs object
 		matches = [key for key,val in self.work.postdat.posts().items() if val.specs==target]
-		if len(matches)>1: raise Exception('multiple unique matches in the spec files. major error upstream?')
+		if len(matches)>1: 
+			#---fallback to direct comparison of the raw specs
+			#---! note that this is not sustainable! FIX IT!
+			rematch = [key for key in matches if self.calc.specs_raw==self.work.postdat.toc[key].specs_raw]
+			if len(rematch)==1: 
+				print('[WARNING] ULTRAWARNING we had a rematch!')
+				return rematch[0]
+			raise Exception('multiple unique matches in the spec files. major error upstream?')
 		elif len(matches)==1: return matches[0]
+		#---! note that in order to port omnicalc back to ptdins, rpb added dat_type to Slice.flat()
+		#---here we allow more stuff in the spec than you have in the meta file since the legacy
+		#---...simulations added data to the specs
+		#---!...I THINK !??!
+		#matches2 = [dict(copy.deepcopy(target),**val.specs)==val in self.work.postdat.posts().items()]
+		#---tried
+		#[key for key,val in self.work.postdat.posts().items() if dict(val.specs,**target)==val.specs]
+		"""
+		ipdb> target
+		{'slice': {'end': 108000, 'short_name': 'v509', 'skip': 100, 'start': 28000, 'pbc': 'mol', 'group': 'all', 'dat_type': 'gmx', 'slice_type': 'standard'}, 'calc': {'calc_name': 'hydrogen_bonding'}, 'specs': {'distance_cutoff': 3.4, 'angle_cutoff': 160.0}}
+		ipdb> self.work.postdat.toc['v509.28000-108000-100.all.pbcmol.hydrogen_bonding.n0'].specs==target
+		True
+		ipdb> matches
+		[]
+		self.work.postdat.toc['v509.28000-108000-100.all.pbcmol.lipid_abstractor.n0'].specs
+		"""
+		#key = 'v509.28000-108000-100.all.pbcmol.electron_density_profile.n0'
+		#asciitree({'have':self.work.postdat.toc[key].specs,'target':target})
+		matches_sub = [key for key,val in self.work.postdat.posts().items() if 
+			all([val.specs[subkey].viewitems()>=target[subkey].viewitems() for subkey in target.keys()])]
+		if len(matches_sub)>1: 
+			raise Exception('multiple unique SUB-matches in the spec files. major error upstream?')
+		elif len(matches_sub)==1: 
+			print('[WARNING] using subset match. you had more attributes than specs!')
+			#import ipdb;ipdb.set_trace()
+			return matches_sub[0]
+		#print('FUUUCK')
+		#import ipdb;ipdb.set_trace()
 		return
 
 	def make_name(self):
@@ -458,5 +681,6 @@ class ComputeJob:
 		elif slice_type=='readymade_namd':
 			print('namd')
 		else: raise Exception('invalid slice type %s'%slice_type)
-		namesss = self.work.namer.name_slice(kind='standard',sn=self.slice.flat()['short_name'],**dict([(key,self.slice.flat()[key]) for key in ['start','end','group','skip','pbc']]))
+		namesss = self.work.namer.name_slice(kind='standard',sn=self.slice.flat()['short_name'],
+			**dict([(key,self.slice.flat()[key]) for key in ['start','end','group','skip','pbc']]))
 		import ipdb;ipdb.set_trace()

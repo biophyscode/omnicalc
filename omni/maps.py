@@ -3,6 +3,7 @@
 import os,sys,glob,re,json,copy,time
 from datapack import asciitree,delve,delveset,catalog
 from base.hypothesis import hypothesis
+from base.tools import status
 
 ###---SUPPORT
 
@@ -151,16 +152,18 @@ class PostDat(NamingConvention):
 		#---! weird reference to the workspace namer?
 		if namer: self.namer = namer
 		self.toc = {}
+		nfiles,nchars = len(self.stable),max([len(j) for j in self.stable])
 		#---master classification loop
 		while self.stable: 
 			name = self.stable.pop()
+			status(name,tag='import',i=nfiles-len(self.stable),looplen=nfiles+1,pad=nchars+2)
 			#---interpret the name
 			namedat = self.interpret_name(name)
 			if not namedat: 
 				#---this puts the slice in limbo
 				#---! it would be useful to match these up later...
 				self.toc[name] = {}
-			else:	
+			else:
 				#---if this is a datspec file we find its pair and read the spec file
 				if namedat['dat_type']=='datspec':
 					basename = self.get_twin(name,('dat','spec'))
@@ -262,17 +265,22 @@ class DatSpec(NamingConvention):
 				self.specs['slice']['group'] = self.work.infer_group(self.specs)
 			if 'pbc' not in self.specs['slice']:
 				self.specs['slice']['pbc'] = self.work.infer_pbc(self.specs)
-		#---first time in the execution that we encounter calculation specs
-		self.specs['calc'] = CalcSpec(self.specs['calc'])
+		#---! good opportunity to match a calc on disk with a calc in calc_meta
+		self.specs['calc'] = self.work.calc_meta.find_calculation(
+			name=self.specs['calc']['calc_name'],specs=self.specs['specs'])
 		if False:
-			#---legacy spec files have "upstream" entries with pointers and not data
-			#---...note that this was highly stupid. we replace the upstream information here, but 
-			#---...obviously cannot guarantee that the data are consistent without checking the `dat` files
-			#---...which get the final word on what's in the data
-			if 'upstream' in self.specs['specs']:
-				#print('FUUUUUUUUU')
-				self.work.chase_upstream(self.specs['specs'])
-				#import ipdb;ipdb.set_trace()
+			#---first time in the execution that we encounter calculation specs
+			import ipdb;ipdb.set_trace()
+			self.specs['calc'] = CalcSpec(self.specs['calc'])
+			if False:
+				#---legacy spec files have "upstream" entries with pointers and not data
+				#---...note that this was highly stupid. we replace the upstream information here, but 
+				#---...obviously cannot guarantee that the data are consistent without checking the `dat` files
+				#---...which get the final word on what's in the data
+				if 'upstream' in self.specs['specs']:
+					#print('FUUUUUUUUU')
+					self.work.chase_upstream(self.specs['specs'])
+					#import ipdb;ipdb.set_trace()
 
 	def from_job(self,job):
 		"""
@@ -281,8 +289,12 @@ class DatSpec(NamingConvention):
 		#---retain the pointer to the job
 		self.job = job
 		#---construct specs for a new job
-		#---new specs VERSION 2 include top-level: specs, calc_name, slice
-		self.specs = {'specs':self.job.calc.specs,
+		#---the following defines the VERSION 2 output which adds more, standardized data to the spec file
+		#---...in hopes that this will one day allow you to use arbitrary filenames for datspec objects. 
+		#---...note that we discard everything from the calculation except the calc_name which is the sole
+		#---...entry in the calc subdict and the specs, which are at the top level. we discard e.g. the 
+		#---...calculation collection and uptype because it's either obvious or has no bearing
+		self.specs = {'specs':self.job.calc.specs['specs'],
 			'calc':{'calc_name':self.job.calc.name},'slice':job.slice.flat()}
 
 	def flat_DEPRECATED(self):
@@ -312,7 +324,7 @@ class DatSpec(NamingConvention):
 		#---note that the basename does not have the nN number yet (nnum)
 		return basename
 
-class Calculation:
+class Calculation_Deprecated:
 
 	"""
 	A calculation, including settings.
@@ -354,9 +366,6 @@ class Calculation:
 			if 'upstream' in self.specs:
 				if self.specs['upstream']: raise Exception('failed to clear upstream')
 				else: del self.specs['upstream']
-			#import ipdb;ipdb.set_trace()
-		#else: del self.specs['upstream']
-		#import ipdb;ipdb.set_trace()
 		#---! somehow the above works on one level. need check if it does the nesting. probably doesn't...
 
 class CalcSpec:
@@ -368,10 +377,30 @@ class CalcSpec:
 	def __init__(self,incoming):
 		self.body = incoming
 
+class Calculation:
+
+	"""
+	A calculation, including settings.
+	"""
+
+	def __init__(self,name,specs,stub):
+		"""
+		We represent the calculation with the full specs as well as the stubs that, with the help of the 
+		parent CalcMeta object which helps find them OR SOMETHING?
+		"""
+		self.name = name
+		self.specs = specs
+		self.stub = stub
+		self.twined = None
+		#---allow users to omit calculation specs
+		if 'specs' not in self.specs: self.specs['specs'] = {}
+
 class CalcMeta:
 
 	"""
 	Listing of calculations for cross-referencing.
+	All calculations are identified by the name and the index of the "unrolled" version i.e. the specific
+	calculation after loops are applied.
 	"""
 
 	def __init__(self,meta,**kwargs):
@@ -384,13 +413,93 @@ class CalcMeta:
 		self.toc = {}
 		for calcname,calc in meta.items():
 			expanded_calcs,expanded_stubs = self.unroll_loops(calc,return_stubs=True)
-			self.toc[calcname] = {'specs':expanded_calcs,'stubs':expanded_stubs}
-		#import ipdb;ipdb.set_trace()
+			self.toc[calcname] = [Calculation(calcname,spec,stub) 
+				for spec,stub in zip(expanded_calcs,expanded_stubs)]
+		#---fix json
+		for calcname in self.toc:
+			for calc in self.toc[calcname]: json_type_fixer(calc.specs)
+		#---instantiate internal references
+		for calcname in self.toc:
+			for cnum,calc in enumerate(self.toc[calcname]):
+				if 'specs' not in calc.specs:
+					print('???')
+					import ipdb;ipdb.set_trace()
+				calc.specs_linked = copy.deepcopy(calc.specs)
+				upstream = calc.specs_linked['specs'].pop('upstream',None)
+				ups = self.get_upstream(upstream) or []
+				#---tag and link the upstream calculations
+				for calc in ups: 
+					self.toc[calcname][cnum].specs_linked['specs'][('up',calc.name)] = calc
 
-		#self.toc = dict([(calcname,self.unroll_loops(spec)) for calcname,spec in meta.items()])
-		#---! mirror
-		#self.toc_raw = dict([(calcname,spec) for calcname,spec in meta.items()])
-		#self.internal_referencer()
+	def get_upstream(self,specs):
+		"""
+		"""
+		upstream_calcs = []
+		####? ??
+		if not specs:
+			return specs
+		for key,val in specs.items():
+			#---! upstream keys need to recurse or something?
+			if key=='upstream':
+				for key_up,val_up in val.items():
+					import ipdb;ipdb.set_trace()
+			else:
+				matches = [i for ii,i in enumerate(self.toc[key]) if i.stub['specs']==val]
+				#---try to match the stubs. this will work if you point to an upstream calculation with the 
+				#---...name of a subdictionary that represents a single calculation under a loop
+				if len(matches)!=1:
+					#---the None key implies there is only one calculation with no specs
+					if not val:
+						if len(self.toc[key])!=1: 
+							raise Exception('received None for %s but there are %d calculations'%(
+								key,len(self.toc[key])))
+						else: upstream_calcs.append(self.toc[key][0])
+					#---we can also identify upstream calculations by their specifications explicitly
+					#---...by searching the toc. we allow the match to be a subset of the upstream 
+					#---...calculations and only require that the match be unique
+					else:
+						explicit_matches = [i for ii,i in enumerate(self.toc[key]) 
+							if i.specs['specs'].viewitems()>=val.viewitems()]
+						if len(explicit_matches)==1: upstream_calcs.append(explicit_matches[0])
+						else:
+							print('othershit happened')
+							import ipdb;ipdb.set_trace()
+				else: upstream_calcs.append(matches[0])
+		return upstream_calcs
+
+	def get_upstream1(self,key,val):
+		"""
+		"""
+		upstream_calcs = []
+		if val.keys()==['upstream']: 
+			for subkey,subval in val['upstream'].items():
+				print('subkey %s'%subkey)
+				upstream_calcs.extend(self.get_upstream(subkey,subval))
+		else:
+			#---pick the right one
+			print('getting key %s'%key)
+			matches = [i for ii,i in enumerate(self.toc[key]) if i.stub['specs']==val]
+			if len(matches)!=1:
+				print('othershit happened')
+				import ipdb;ipdb.set_trace()
+			else: upstream_calcs.append(matches[0])
+		return upstream_calcs
+
+	def get_calcref(self,specs,cumulant):
+		"""
+		Receive specs starting with "upstream" and recurse the references.
+		"""
+		upstream = specs.pop('upstream',None)
+		for key,val in upstream.items():
+			import ipdb;ipdb.set_trace()
+
+	def calcjobs(self,name):
+		"""
+		Return calculations by name, including loops.
+		Called by prepare_calculations.
+		"""
+		if name not in self.toc: raise Exception('no calculation named %s'%name)
+		else: return self.toc[name]
 
 	def unroll_loops(self,details,return_stubs=False):
 		"""
@@ -437,7 +546,31 @@ class CalcMeta:
 				except: pass
 		return new_calcs if not return_stubs else (new_calcs,new_calcs_stubs)
 
-	def find_calculation_internallywise(self,calcname,**kwargs):
+	def find_calculation(self,name,specs):
+		"""
+		Find a calculation in the master CalcMeta list by specs.
+		"""
+		if name not in self.toc: 
+			import ipdb;ipdb.set_trace()
+			raise Exception('invalid calculation: %s'%name)
+		#---try to match calc specs explicitly
+		matches = [calc for calc in self.toc[name] 
+			if calc.specs['specs'].viewitems()>=specs.viewitems()]
+		if len(matches)==1: return matches[0]
+		else: 
+			#---try to match the stub
+			#---! ytf does the following fail?
+			if False:
+				matches = [calc for calc in self.toc[name] 
+					if calc.stub['specs'].viewitems()>=specs.viewitems()]
+			#---! paranoid use of deepcopy below?
+			matches = [calc for calc in self.toc[name] 
+				if dict(copy.deepcopy(specs),**copy.deepcopy(calc.stub['specs']))==specs]
+			if len(matches)==1: return matches[0]
+			else:
+				raise Exception('failed to find calculation %s with specs %s in the CalcMeta'%(name,specs))
+
+	def find_calculation_internallywise_DEPRECATED_I_THINK(self,calcname,**kwargs):
 		"""
 		ONLY HANDLES INTERNAL POINTERS NOW.
 		"""
@@ -533,6 +666,12 @@ class SliceMeta:
 				if len(valid_slices)>1: raise Exception('multiple valid slices')
 				elif len(valid_slices)==0: raise Exception('DEVELOPMENT. cannot find slice')
 				else: self.slices[sn][(slice_name,group_name)] = self.work.postdat.toc[valid_slices[0]]
+		#---we tag all slices with useful metadata
+		for sn in self.slices:
+			for slice_name,group_name in self.slices[sn]:
+				self.slices[sn][(slice_name,group_name)].sn = sn
+				self.slices[sn][(slice_name,group_name)].slice_name = slice_name
+				self.slices[sn][(slice_name,group_name)].group = group_name
 
 class Slice:
 
@@ -559,7 +698,7 @@ class Slice:
 		"""
 		#---we include dat_type with slice_type
 		for key in ['slice_type','dat_type']:
-			this_type = self.namedat.get(key)
+			this_type = self.namedat.get(key,None) if hasattr(self,'namedat') else None
 			if not this_type: this_type = self.__dict__.get(key)
 			if not this_type: raise Exception('indeterminate data type')
 			#---! clumsy
@@ -611,6 +750,7 @@ class ComputeJob:
 		self.result = self.match_result()
 		#---keep the simulation name
 		self.sn = sl.sn
+		self.slice = sl
 
 	def match_result(self):
 		"""
@@ -656,17 +796,25 @@ class ComputeJob:
 		"""
 		#key = 'v509.28000-108000-100.all.pbcmol.electron_density_profile.n0'
 		#asciitree({'have':self.work.postdat.toc[key].specs,'target':target})
-		matches_sub = [key for key,val in self.work.postdat.posts().items() if 
-			all([val.specs[subkey].viewitems()>=target[subkey].viewitems() for subkey in target.keys()])]
-		if len(matches_sub)>1: 
-			raise Exception('multiple unique SUB-matches in the spec files. major error upstream?')
-		elif len(matches_sub)==1: 
-			print('[WARNING] using subset match. you had more attributes than specs!')
-			#import ipdb;ipdb.set_trace()
-			return matches_sub[0]
-		#print('FUUUCK')
-		#import ipdb;ipdb.set_trace()
+
+		#---! upgrades to the data structures are such that calculations can be directly matched
+		#---! ...however the slices need to be matched
+		matches = [name for name,post in self.work.postdat.posts().items() 
+			if post.specs['calc']==self.calc and self.slice.flat()==post.specs['slice']]
+		if len(matches)==1: return matches[0]
+		#---match failure returns nothing
 		return
+
+		#---! before making calculations into an explicit object
+		if False:
+			matches_sub = [key for key,val in self.work.postdat.posts().items() if 
+				all([val.specs[subkey].viewitems()>=target[subkey].viewitems() for subkey in target.keys()])]
+			if len(matches_sub)>1: 
+				raise Exception('multiple unique SUB-matches in the spec files. major error upstream?')
+			elif len(matches_sub)==1: 
+				print('[WARNING] using subset match. you had more attributes than specs!')
+				#import ipdb;ipdb.set_trace()
+				return matches_sub[0]
 
 	def make_name(self):
 		"""

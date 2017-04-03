@@ -1,6 +1,8 @@
-#!/usr/bin/env python
+#!/bin/bash
+"exec" "python" "-iB" "$0" "$@"
 
-"""
+
+__doc__ = """
 PLOTTING HEADER
 Header file which runs automatically before any plotting.
 This handles backwards compatibility with old plots --- just remove any header junk.
@@ -28,12 +30,22 @@ if run_type=='plot': work = WorkSpace(plot=plotname,meta=meta)
 elif run_type=='pipeline': work = WorkSpace(pipeline=plotname,meta=meta)
 else: raise Exception('invalid run_type for this header: %s'%run_type)
 
+import base.store
+#---distribute the workspace to the store module
+#---...we have to distribute this way, or internalize these function
+base.store.work = work
 from base.store import plotload,picturesave
 from base.tools import status
 from plotter import mpl,plt
 from plotter.panels import panelplot
 from makeface import tracebacker
 import numpy as np
+
+#---plot scripts with special names
+if run_type=='plot':
+	for fn in ['figures','colors']:
+		if os.path.isfile(os.path.join('calcs','specs',fn+'.py')):
+			with open(os.path.join('calcs','specs',fn+'.py')) as fp: exec(fp.read())
 
 def replot():
 	"""

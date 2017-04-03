@@ -54,7 +54,7 @@ def str_or_list(incoming):
 	elif type(incoming)!=list: raise Exception('str_or_list received neither a string nor a list')
 	else: return incoming
 
-def status(string,i=0,looplen=None,bar_character=None,width=25,tag='',start=None):
+def status(string,i=0,looplen=None,bar_character=None,width=25,tag='',start=None,pad=None):
 	"""
 	Show a status bar and counter for a fixed-length operation.
 	Taken from AUTOMACS to work in python 2 and 3.
@@ -68,6 +68,7 @@ def status(string,i=0,looplen=None,bar_character=None,width=25,tag='',start=None
 		left,right,bb = u'\u2590',u'\u258C',(u'\u2592' if bar_character==None else bar_character)
 	else: left,right,bb = '|','|','='
 	string = '[%s] '%tag.upper()+string if tag != '' else string
+	if pad: string = ('%-'+str(int(pad))+'s')%string
 	if not looplen:
 		if not logfile: sys.stdout.write(string+'\n')
 		else: sys.stdout.write(string+'\n')

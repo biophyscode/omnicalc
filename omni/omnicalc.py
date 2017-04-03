@@ -58,6 +58,9 @@ class WorkSpace:
 		if not self.calcs: return
 		if not self.calcs and self.slices: 
 			raise Exception('cannot continue to calculations without slices')
+		#---! note that pipeline/plot cause imports to happen twice which is somewhat inefficient
+		#---! ...however it is necessary since we need to make sure jobs are complete, and then import
+		#---! ...again when calling the plot function, which requires a separate python call
 		#---catalog calculation requests from the metadata
 		self.calc_meta = CalcMeta(self.calcs,work=self)
 		#---catalog post-processing data
@@ -67,6 +70,7 @@ class WorkSpace:
 		#---get the right calculation order
 		self.calc_order = self.infer_calculation_order()
 		#---plot and pipeline skip calculations and call the target script
+		self.plot_status,self.pipeline_status = plot,pipeline
 		if not plot and not pipeline:
 			#---match calculation codes with target slices
 			self.jobs = self.prepare_calculations()
@@ -288,27 +292,44 @@ class WorkSpace:
 	def infer_group(self,calc):
 		"""
 		"""
-		if False:
-			def get_upstream_groups(*args):
-				"""Recurse the dependency list for upstream groups."""
-				for arg in args:
-					if 'group' in self.calcs[arg]: yield self.calcs[arg]['group']
-					else: up_again.append(arg)
-		#---! non-recursive method
-		groups,pending_groupsearch = [],list(calc['specs']['upstream'].keys())
-		while pending_groupsearch:
-			key = pending_groupsearch.pop()
-			if 'group' in self.calcs[key]: groups.append(self.calcs[key]['group'])
-			elif 'upstream' in self.calcs[key]['specs']:
-				pending_groupsearch.extend(self.calcs[key]['specs']['upstream'].keys())
-			else: raise Exception('no group and no upstream')
-		#---! end non-recursive method
-		#groups = get_upstream_groups(*calc['specs']['upstream'].keys())
-		groups_consensus = list(set(groups))
-		if len(groups_consensus)!=1: 
-			raise Exception('cannot achieve upstream group consensus')
-		group = groups_consensus[0]
-		return group
+		if type(calc)==dict:
+			#---failed recursion method
+			if False:
+				def get_upstream_groups(*args):
+					"""Recurse the dependency list for upstream groups."""
+					for arg in args:
+						if 'group' in self.calcs[arg]: yield self.calcs[arg]['group']
+						else: up_again.append(arg)
+			#---! non-recursive method
+			groups,pending_groupsearch = [],list(calc['specs']['upstream'].keys())
+			while pending_groupsearch:
+				key = pending_groupsearch.pop()
+				if 'group' in self.calcs[key]: groups.append(self.calcs[key]['group'])
+				elif 'upstream' in self.calcs[key]['specs']:
+					pending_groupsearch.extend(self.calcs[key]['specs']['upstream'].keys())
+				else: raise Exception('no group and no upstream')
+			#---! end non-recursive method
+			#groups = get_upstream_groups(*calc['specs']['upstream'].keys())
+			groups_consensus = list(set(groups))
+			if len(groups_consensus)!=1: 
+				raise Exception('cannot achieve upstream group consensus')
+			group = groups_consensus[0]
+			return group
+		#---use the fully-linked calculations to figure out the group.
+		else:
+			groups_consensus = []
+			check_calcs = [v for k,v in calc.specs_linked['specs'].items() 
+				if type(k)==tuple and k[0]=='up']
+			while check_calcs:
+				this_calc = check_calcs.pop()
+				ups = [v for k,v in this_calc.specs_linked['specs'].items() 
+					if type(k)==tuple and k[0]=='up']
+				if 'group' in this_calc.specs_linked: groups_consensus.append(this_calc.specs['group'])
+				#---! the following uses the fully-linked calculation naming scheme which is clumsy
+				check_calcs.extend([v for k,v in 
+					this_calc.specs_linked['specs'].items() if type(k)==tuple and k[0]=='up'])
+			if len(groups_consensus)!=1: raise Exception('cannot achieve upstream group consensus')
+			return groups_consensus[0]
 
 	def infer_pbc(self,calc):
 		"""
@@ -444,33 +465,48 @@ class WorkSpace:
 		jobs = []
 		#---loop over calculations
 		for calckey in (self.calc_order if not calcnames else str_or_list(calcnames)):
-			#---get the calculation spec
-			calc_with_loops = self.calcs[calckey]
-			#---unroll the calculation if loops
-			#calcs = self.unroll_loops(calc_with_loops)
-			import ipdb;ipdb.set_trace()
-			for calc in calcs:
+			#---loop over calculation jobs expanded by the "loop" keyword by the CalcMeta class
+			calcset = self.calc_meta.calcjobs(calckey)
+			for calc in self.calc_meta.calcjobs(calckey):
 				#---get slice name
-				slice_name = calc['slice_name']
+				slice_name = calc.specs['slice_name']
 				#---loop over simulations
 				if not sns_overrides: 
-					sns = self.get_simulations_in_collection(*str_or_list(calc['collections']))
+					sns = self.get_simulations_in_collection(*str_or_list(calc.specs['collections']))
 				#---custom simulation name request will whittle the sns list here
 				else: sns = list(sns_overrides)
 				#---get the group
-				group = calc.get('group',None)
+				group = calc.specs.get('group',None)
 				#---group is absent if this is a downstream calculation
 				if not group:
 					group = self.infer_group(calc)
 				#---put everything in a calculation
-				this_calculation = Calculation(work=self,name=calckey,group=group,
-					**dict([(i,j) for i,j in calc.items() if i!='group']))
+
+
+				#---note that the calc object here includes the specs with out expansions
+				#---...but they can be cross-referenced back to the stub to get the full calculation specs
+				#import ipdb;ipdb.set_trace()
+				####### YOU ARE HERE NOW. somehow 
+				"""
+				you need to get the calculation-metacalc pair from self.calc_meta
+				then later you check incoming calcs from datspec files against e.g. calc_meta if they are 
+				legacy.
+				"""
+				#import ipdb;ipdb.set_trace()
+				#---get the calculation from the master listing in the CalcMeta class
+				#...???
+				#this_calculation = Calculation(work=self,name=calckey,group=group,
+				#	**dict([(i,j) for i,j in calc.items() if i!='group']))
+
 				#---loop over simulations
 				for sn in sns:
-					#---prepare a slice according to the specification in the calculation
-					request_slice = Slice(sn=sn,slice_name=slice_name,group=group,work=self)
+					#---! previously: prepare a slice according to the specification in the calculation
+					if False:
+						request_slice = Slice(sn=sn,slice_name=slice_name,group=group,work=self)
+					#---! get a proper slice?
+					request_slice = self.slice_meta.slices[sn][(slice_name,group)]
 					#---join the slice and calculation in a job
-					jobs.append(ComputeJob(sl=request_slice,calc=this_calculation,work=self))
+					jobs.append(ComputeJob(sl=request_slice,calc=calc,work=self))
 		#---this function populates workspace.jobs but also has other uses
 		#---! which other uses?
 		return jobs
@@ -488,8 +524,8 @@ class WorkSpace:
 				post = DatSpec(job=job)
 				tasks.append((post.basename(),{'post':post,'job':job}))
 		if confirm:
-			print('LOOK THINGS OVER DUDE')
-			print(len(tasks))
+			print('[NOTE] there are %d pending jobs'%len(pending))
+			print('[QUESTION] okay to continue?')
 			import ipdb;ipdb.set_trace()
 		#---iterate over compute tasks
 		for jnum,(jkey,incoming) in enumerate(tasks):
@@ -506,8 +542,21 @@ class WorkSpace:
 		function = self.get_calculation_function(job.calc.name)
 		#---prepare data for shipping to the function
 		outgoing = {'calc':{'specs':job.calc.specs},'workspace':self,'sn':job.sn}
+
+		#---regardless of uptype we decorate the outgoing kwargs with upstream data objects
+		upstreams = [(key,item) for key,item in job.calc.specs_linked['specs'].items() 
+			if type(key)==tuple and key[0]=='up']
+		if upstreams: outgoing['upstream'] = {}
+		for unum,((upmark,calcname),calc) in enumerate(upstreams):
+			status('caching upstream: %s'%calcname,tag='status',looplen=len(upstreams),i=unum)
+			result = ComputeJob(sl=job.slice,calc=calc,work=self).result
+			outgoing['upstream'][calcname] = self.load(
+				name=self.postdat.toc[result].files['dat'],cwd=self.paths['post_data_spot'])
+		#---for backwards compatibility we decorate the kwargs with the slice name and group
+		outgoing.update(slice_name=job.slice.slice_name,group=job.slice.group)
+
 		#---THE MOST IMPORTANT LINES IN THE WHOLE CODE (here we call the calculation function)
-		if job.calc.uptype=='simulation':
+		if job.calc.specs['uptype']=='simulation':
 			if job.slice.flat()['slice_type']=='standard':
 				if not self.postdat.toc[job.slice.name].__dict__['namedat']['dat_type']=='gmx':
 					raise Exception('dat_type is not gmx')
@@ -515,44 +564,58 @@ class WorkSpace:
 					suffix=suffix,**job.slice.flat()) for suffix in ['gro','xtc']]
 				struct_file,traj_file = [os.path.join(self.paths['post_data_spot'],i) 
 					for i in [struct_file,traj_file]]
-				result,attrs = function(struct_file,traj_file,**outgoing)
+				#---! use explicit kwargs to the function however it would be useful to 
+				#---! ...introspect on the arguments e.g. grofile vs struct
+				result,attrs = function(grofile=struct_file,trajfile=traj_file,**outgoing)
 			elif job.slice.flat()['slice_type']=='readymade_namd':
 				#---no dat_type for readymade_namd unlike standard/gmx
 				struct_file = os.path.join(self.paths['post_data_spot'],job.slice.flat()['psf'])
 				traj_file = [os.path.join(self.paths['post_data_spot'],i) for i in 
 					str_or_list(job.slice.flat()['dcds'])]
-				result,attrs = function(struct_file,traj_file,**outgoing)
+				result,attrs = function(grofile=struct_file,trajfile=traj_file,**outgoing)
 			else: raise Exception('unclear trajectory mode')
-		elif job.calc.uptype=='post':
-			#---acquire upstream data
-			#---! multiple upstreams. double upstreams. loops. specs. etc. THIS IS REALLY COMPLICATED.
-			upstreams = str_or_list(job.calc.specs['upstream'])
-			outgoing['upstream'] = {}
-			for upcalc in upstreams:
-				#---get a jobs list for this single simulation since post data is one-simulation only
-				upstream_jobs = self.prepare_calculations(calcnames=upstreams,sns=[job.sn])
-				missing_ups = [j for j in upstream_jobs if not j.result]
-				if any(missing_ups):
-					raise Exception('missing upstream data from: %s'%missing_ups)
-				for upstream_job in upstream_jobs:
-					outgoing['upstream'][upcalc] = self.load(
-						name=self.postdat.toc[upstream_job.result].files['dat'],
-						cwd=self.paths['post_data_spot'])
-			#---for backwards compatibility we decorate the kwargs with the slice name and group
-			outgoing.update(slice_name=job.calc.slice_name,group=job.calc.group)
+		elif job.calc.specs['uptype']=='post':
+			#---! new upstream method above
+			if False:
+				#---acquire upstream data
+				#---! multiple upstreams. double upstreams. loops. specs. etc. THIS IS REALLY COMPLICATED.
+				upstreams = str_or_list(job.calc.specs['upstream'])
+				outgoing['upstream'] = {}
+				for upcalc in upstreams:
+					#---get a jobs list for this single simulation since post data is one-simulation only
+					upstream_jobs = self.prepare_calculations(calcnames=upstreams,sns=[job.sn])
+					missing_ups = [j for j in upstream_jobs if not j.result]
+					if any(missing_ups):
+						raise Exception('missing upstream data from: %s'%missing_ups)
+					for upstream_job in upstream_jobs:
+						outgoing['upstream'][upcalc] = self.load(
+							name=self.postdat.toc[upstream_job.result].files['dat'],
+							cwd=self.paths['post_data_spot'])
 			result,attrs = function(**outgoing)
 		else: raise Exception('invalid uptype: %s'%job.calc.uptype)
 
+		import ipdb;ipdb.set_trace()
+
+		#---! currently post.specs['specs'] has the real specs in a subdictionary 
+		#---! ...alongsize simulation and collection names !!!
+
 		#---check the attributes against the specs so we don't underspecify the data in the spec file
 		#---...if any calculation specifications are not in attributes we warn the user here
-		if 'specs' in job.calc.__dict__: unaccounted = [i for i in job.calc.specs if i not in attrs]
+		if 'specs' in post.specs['specs']:
+			unaccounted = [i for i in post.specs['specs'] if i not in attrs]
 		else: unaccounted = []
 		if 'upstream' in unaccounted and 'upstream' not in attrs: 
 			status('automatically appending upstream data',tag='status')
 			unaccounted.remove('upstream')
-			attrs['upstream'] = job.calc.specs['upstream']
+			#---! this sets upstream information so that it mirrors the meta file
+			#---! ...however if the meta file changes, it will be out of date
+			#---! ...this can be solved with a checker on the dat files and some stern documentation
+			#---! ...or we can fill in the actual upstream specs somehow, but then they might need
+			#---! ...to get read on the matching steps
+			attrs['upstream'] = post.specs['specs']['upstream']
 		if any(unaccounted):
 			import textwrap
+			from maps import computer_error_attrs_passthrough
 			print('\n'.join(['[ERROR] %s'%i for i in 
 				textwrap.wrap(computer_error_attrs_passthrough,width=80)]))
 			raise Exception('some calculation specs were not saved: %s'%unaccounted)
@@ -607,7 +670,7 @@ class WorkSpace:
 		header_script = 'omni/base/header.py'
 		#---custom arguments passed to the header so it knows how to execute the plot script
 		meta_out = ' '.join(meta) if type(meta)==list else ('null' if not meta else meta)
-		if plot_call: bash('python -iB %s %s %s %s %s'%(header_script,script_name,name,'pipeline',meta_out))
+		if plot_call: bash('./%s %s %s %s %s'%(header_script,script_name,name,'pipeline',meta_out))
 
 	def load(self,name,cwd=None,verbose=False,exclude_slice_source=False,filename=False):
 		"""
@@ -665,6 +728,18 @@ class WorkSpace:
 		#---! the plot spec points to the upstream data but they are always accessible in the workspace
 		return data,self.calcs[plotname]
 
+	def sns(self):
+		"""
+		For backwards compatibility with plot programs, we serve the list of simulations for a 
+		particular plot using this function with no arguments.
+		"""
+		if not self.plot_status:
+			raise Exception('you can only call WorkSpace.sns if you are plot')
+		collections = str_or_list(self.plots[self.plot_status]['collections'])
+		sns = sorted(list(set([i for j in [self.vars['collections'][k] 
+			for k in collections] for i in j])))
+		return sns
+
 ###---INTERFACE
 
 def compute(meta=None,confirm=False):
@@ -693,4 +768,3 @@ def look(method=None):
 	"""
 	header_script = 'omni/base/header_look.py'
 	bash('python -iB %s %s'%(header_script,'null' if not method else method))
-

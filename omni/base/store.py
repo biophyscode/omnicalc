@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+"""
+Storage functions. Require a workspace in globals so do an import/export.
+"""
+
 import os,sys,re,glob,json
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -7,14 +11,14 @@ from base.tools import str_or_list,status
 from PIL import Image
 from PIL import PngImagePlugin
 
-def picturesave(savename,work,directory='./',meta=None,extras=[],backup=False,
+def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	dpi=300,form='png',version=False,pdf=False,tight=True,pad_inches=0):
 	"""
 	Function which saves the global matplotlib figure without overwriting.
 	"""
 	status('saving picture',tag='store')
 	#---intervene here to check the wordspace for picture-saving "hooks" that apply to all new pictures
-	from base.header import work
+	################### this was highly stupid: from base.header import work
 	if 'picture_hooks' in work.vars:
 		extra_meta = work.vars['picture_hooks']
 		#---redundant keys are not allowed: either they are in picture_hooks or passed to picturesave
@@ -58,8 +62,9 @@ def picturesave(savename,work,directory='./',meta=None,extras=[],backup=False,
 		#---convert pdf to png
 		os.system('convert -density %d %s %s'%(dpi,alt_name,base_fn))
 		os.remove(alt_name)
-	else: plt.savefig(base_fn,dpi=dpi,bbox_extra_artists=extras,
-		bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None)
+	else: 
+		plt.savefig(base_fn,dpi=dpi,bbox_extra_artists=extras,
+			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None)
 	plt.close()
 	#---add metadata to png
 	if meta != None:
@@ -105,7 +110,7 @@ def picturefind(savename,directory='./',meta=None):
 			picturedat(os.path.basename(fn),directory=directory)) for fn,num in nums]) 
 	return matches if not matches else matches[0]
 
-def plotload(plotname,work,specfile=None,choice_override=None,use_group=False):
+def plotload(plotname,specfile=None,choice_override=None,use_group=False):
 	"""
 	Wrapper around WorkSpace.plotload method for backwards compatibility with plot scripts, which 
 	expect to find this function in globals to get data.

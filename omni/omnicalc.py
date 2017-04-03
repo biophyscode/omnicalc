@@ -511,6 +511,11 @@ class WorkSpace:
 		#---! which other uses?
 		return jobs
 
+	def job_print(self,job):
+		"""
+		"""
+		asciitree(dict(**{job.calc.name:dict(specs=job.calc.specs['specs'])}))
+
 	def compute(self,confirm=False):
 		"""
 		Run through computations.
@@ -530,6 +535,7 @@ class WorkSpace:
 		#---iterate over compute tasks
 		for jnum,(jkey,incoming) in enumerate(tasks):
 			print('[JOB] running calculation job %d/%d'%(jnum+1,len(pending)))
+			self.job_print(incoming['job'])
 			self.compute_single(incoming)
 
 	def compute_single(self,incoming):
@@ -541,7 +547,9 @@ class WorkSpace:
 		#---retrieve the function
 		function = self.get_calculation_function(job.calc.name)
 		#---prepare data for shipping to the function
-		outgoing = {'calc':{'specs':job.calc.specs},'workspace':self,'sn':job.sn}
+		#---note that we send the specs subdictionary of the calc specs because that is what the 
+		#---...calculation function expects to find
+		outgoing = {'calc':{'specs':job.calc.specs['specs']},'workspace':self,'sn':job.sn}
 
 		#---regardless of uptype we decorate the outgoing kwargs with upstream data objects
 		upstreams = [(key,item) for key,item in job.calc.specs_linked['specs'].items() 
@@ -594,8 +602,6 @@ class WorkSpace:
 			result,attrs = function(**outgoing)
 		else: raise Exception('invalid uptype: %s'%job.calc.uptype)
 
-		import ipdb;ipdb.set_trace()
-
 		#---! currently post.specs['specs'] has the real specs in a subdictionary 
 		#---! ...alongsize simulation and collection names !!!
 
@@ -636,6 +642,9 @@ class WorkSpace:
 				dat_fn_full,spec_fn_full))
 		#---attach the result to the postdat listing to close the loop
 		post.files = {'dat':base_name_indexed+'.dat','spec':base_name_indexed+'.spec'}
+		#---note that incoming DatSpec objects have their calculation subdictionaries replaced with proper
+		#---...calculation objects. We do the replacement here to stay consistent.
+		post.specs['calc'] = job.calc
 		self.postdat.toc[base_name_indexed] = post
 
 	###---INTERFACES

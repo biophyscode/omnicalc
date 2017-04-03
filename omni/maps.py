@@ -390,6 +390,7 @@ class Calculation:
 		"""
 		self.name = name
 		self.specs = specs
+		self.specs_raw = copy.deepcopy(specs)
 		self.stub = stub
 		self.twined = None
 		#---allow users to omit calculation specs
@@ -563,6 +564,7 @@ class CalcMeta:
 			if False:
 				matches = [calc for calc in self.toc[name] 
 					if calc.stub['specs'].viewitems()>=specs.viewitems()]
+			if len(self.toc[name])==1: return self.toc[name][0]
 			#---! paranoid use of deepcopy below?
 			matches = [calc for calc in self.toc[name] 
 				if dict(copy.deepcopy(specs),**copy.deepcopy(calc.stub['specs']))==specs]
@@ -747,10 +749,11 @@ class ComputeJob:
 			raise Exception('cannot find slice name %s for simulation %s for calculation %s'%
 			(sl.slice_name,sl.sn,calc.name))
 		self.slice = slices_by_sn[name_group] 
-		self.result = self.match_result()
 		#---keep the simulation name
 		self.sn = sl.sn
 		self.slice = sl
+		#---match this job to a result
+		self.result = self.match_result()
 
 	def match_result(self):
 		"""
@@ -762,13 +765,27 @@ class ComputeJob:
 		"""
 		#---assemble a VERSION 2 spec file for comparison
 		#---this mirrors the creation of a VERSION 2 spec file at DatSpec.__init__
-		target = {'specs':self.calc.specs,
+		#---! working on ptdins and needs reworked for banana. found that self.calc.specs is used as the 
+		#---! ...specs below, but this includes the full calculation and we only need its specs
+		#---! ...hence the following change which needs testing to self.calc.specs['specs']
+		target = {'specs':self.calc.specs['specs'],
 			'calc':{'calc_name':self.calc.name},
 			'slice':self.slice.flat()}
 		#---! hack to fix integers ??! should be done in Slice constructor
 		for key,val in self.work.postdat.posts().items(): json_type_fixer(val.specs)
 		#---we search for a result object by directly comparing the DatSpec.specs object
-		matches = [key for key,val in self.work.postdat.posts().items() if val.specs==target]
+		#---! see the note above on the specs garbage.
+		### matches = [key for key,val in self.work.postdat.posts().items() if val.specs==target]
+		#---! switching to itemwise comparison
+		#---! this is weird because it was working for ptdins ?!!?
+		try: matches = [key for key,val in self.work.postdat.posts().items() if all([
+			val.specs['slice']==target['slice'],
+			val.specs.get('specs',None)==target['specs'],
+			#---! calc spec objects sometimes have Calculation type or dictionary ... but why?
+			val.specs['calc'].name==target['calc']['calc_name'],
+			])]
+		except:
+			import ipdb;ipdb.set_trace()
 		if len(matches)>1: 
 			#---fallback to direct comparison of the raw specs
 			#---! note that this is not sustainable! FIX IT!
@@ -776,8 +793,10 @@ class ComputeJob:
 			if len(rematch)==1: 
 				print('[WARNING] ULTRAWARNING we had a rematch!')
 				return rematch[0]
+			import ipdb;ipdb.set_trace()
 			raise Exception('multiple unique matches in the spec files. major error upstream?')
 		elif len(matches)==1: return matches[0]
+
 		#---! note that in order to port omnicalc back to ptdins, rpb added dat_type to Slice.flat()
 		#---here we allow more stuff in the spec than you have in the meta file since the legacy
 		#---...simulations added data to the specs
@@ -796,7 +815,11 @@ class ComputeJob:
 		"""
 		#key = 'v509.28000-108000-100.all.pbcmol.electron_density_profile.n0'
 		#asciitree({'have':self.work.postdat.toc[key].specs,'target':target})
-
+		
+		this_key = 'v003.0-400000-200.proteins.pbcmol.protein_abstractor.n0'
+		this_key = 'v003.0-400000-200.all.pbcmol.lipid_abstractor.n2'
+		#import ipdb;ipdb.set_trace()
+		
 		#---! upgrades to the data structures are such that calculations can be directly matched
 		#---! ...however the slices need to be matched
 		matches = [name for name,post in self.work.postdat.posts().items() 

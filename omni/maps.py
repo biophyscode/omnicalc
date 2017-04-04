@@ -186,6 +186,8 @@ class PostDat(NamingConvention):
 		results = [key for key in flats if flats[key]==target]
 		if not results:
 			import ipdb;ipdb.set_trace()
+			raise Exception('DEVELOPMENT ERROR. at this point we would normally make the slice for you. '+
+				'failed to find slice: %s'%kwargs)
 		return results
 
 	def get_twin(self,name,pair):
@@ -436,13 +438,22 @@ class CalcMeta:
 		"""
 		"""
 		upstream_calcs = []
-		####? ??
-		if not specs:
-			return specs
+		if not specs: return specs
+		#---if the get_upstream function receives a string, it is probably an "upstream: calcname" entry
+		#---...which we typically write as {'upstream':{calcname:None}} in the past. we now allow the more 
+		#---...compact syntax and return the string name because it refers to the upstream calculation
+		elif type(specs) in str_types: 
+			upstream_calcname = specs
+			if not len(self.toc[upstream_calcname])==1: 
+				raise Exception('the get_upstream function received a string "%s" indicating an upstream '+
+					'calculation with no free parameters, however there are non-unique matches: %s'%
+					self.toc[upstream_calcname])
+			return [self.toc[upstream_calcname][0]]
 		for key,val in specs.items():
 			#---! upstream keys need to recurse or something?
 			if key=='upstream':
 				for key_up,val_up in val.items():
+					#---! why has rpb not encountered this yet?
 					import ipdb;ipdb.set_trace()
 			else:
 				matches = [i for ii,i in enumerate(self.toc[key]) if i.stub['specs']==val]
@@ -463,7 +474,7 @@ class CalcMeta:
 							if i.specs['specs'].viewitems()>=val.viewitems()]
 						if len(explicit_matches)==1: upstream_calcs.append(explicit_matches[0])
 						else:
-							print('othershit happened')
+							print('otherstuff happened??')
 							import ipdb;ipdb.set_trace()
 				else: upstream_calcs.append(matches[0])
 		return upstream_calcs
@@ -596,7 +607,8 @@ class CalcMeta:
 		cat = list(catalog(spec['specs']))
 		self.find_calculation_internallywise('lipid_abstractor',pointers={'selector':'lipid_chol_com'})
 		import ipdb;ipdb.set_trace()
-		#[ii for ii,i in enumerate(self.toc_raw[calcname]['specs']) if all([key in i and 'loop' in i[key] for key,val in pointers.items()])]
+		#[ii for ii,i in enumerate(self.toc_raw[calcname]['specs']) 
+		# ... if all([key in i and 'loop' in i[key] for key,val in pointers.items()])]
 
 class SliceMeta:
 
@@ -626,7 +638,7 @@ class SliceMeta:
 								'redundant slice named %s for simulation %s in the metadata'%(
 								slice_name,sn))
 						self.slices[sn][(slice_name,None)] = dict(slice_type='readymade_namd',
-							dat_type=None,spec=spec)
+							dat_type='namd',spec=spec)
 				elif slice_type=='slices':
 					for slice_name,spec in slice_group.items():
 						#---without deepcopy you will pop the dictionary and screw up the internal refs
@@ -674,6 +686,21 @@ class SliceMeta:
 				self.slices[sn][(slice_name,group_name)].sn = sn
 				self.slices[sn][(slice_name,group_name)].slice_name = slice_name
 				self.slices[sn][(slice_name,group_name)].group = group_name
+
+	def get_slice(self,sn,group,slice_name):
+		"""
+		Get slices. Group is permissive so we retrieve slices with this function.
+		"""
+		if sn not in self.slices: raise Excpetion('the slice (meta) object has no simulation %s'%sn)
+		if (slice_name,group) in self.slices[sn]: 
+			return self.slice_meta.slices[sn][(slice_name,group)]
+		#---revert to group None if we cannot find it. this happens for no-group slices from e.g. NAMD
+		elif (slice_name,None) in self.slices[sn]:
+			return self.slices[sn][(slice_name,None)]
+		else:
+			asciitree(self.slice_meta.slices[sn])
+			raise Exception('see slices (meta) above. '+
+				'cannot find slice for simulation %s: %s,%s'%(sn,slice_name,group))
 
 class Slice:
 

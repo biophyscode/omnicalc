@@ -744,7 +744,13 @@ class WorkSpace:
 		#---...we always loop over self.sns because it provides the simulations for this plot
 
 		#---use the calculation finder to get the right calc
-		calc = self.calc_meta.find_calculation('lipid_areas2d',plot_spec['specs'])
+		#---! RYAN YOU HAVE TO ALLOW NO SPECS IN THE PLOT. TEST THIS !!!!!!!!!!!!!!!!!!
+		#---! ... find_calculation needs a calculation, but calcnames may be longer than 1. DEVELOP THAT!
+		if len(calcnames)>1: raise Exception('development error. need multiple calcs for a plot')
+		else: calcname = calcnames[0]
+		#---! this is the part where we treat plots like calculations to get the right upstream data
+		#---! note that the return below uses calcname as well!
+		calc = self.calc_meta.find_calculation(calcname,plot_spec['specs'])
 
 		#---prepare the outgoing data
 		data = dict([(sn,{}) for sn in self.sns()])		
@@ -773,7 +779,7 @@ class WorkSpace:
 
 		#---for backwards compatibility we always send data with the plot spec however this is redundant
 		#---! the plot spec points to the upstream data but they are always accessible in the workspace
-		return data,self.calcs[plotname]
+		return data,self.calcs[calcname]
 
 	def sns(self):
 		"""

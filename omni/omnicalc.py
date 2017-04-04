@@ -428,7 +428,6 @@ class WorkSpace:
 				#	import ipdb;ipdb.set_trace()
 				#---convert the upstream commands into instructions
 				
-
 	def store(self,obj,name,path,attrs=None,print_types=False,verbose=True):
 		"""
 		Use h5py to store a dictionary of data.
@@ -445,11 +444,9 @@ class WorkSpace:
 				print('[WRITING] '+key+' dtype='+str(obj[key].dtype))
 			#---python3 cannot do unicode so we double check the type
 			#---! the following might be wonky
-			try:
-				if re.match('^str',obj[key].dtype.name) and 'U' in obj[key].dtype.str:
-					obj[key] = obj[key].astype('S')
-			except:
-				import ipdb;ipdb.set_trace()
+			if (type(obj[key])==np.ndarray and re.match('^str',obj[key].dtype.name) 
+				and 'U' in obj[key].dtype.str):
+				obj[key] = obj[key].astype('S')
 			try: dset = fobj.create_dataset(key,data=obj[key])
 			except: 
 				raise Exception("failed to write this object so it's probably not numpy"+
@@ -762,7 +759,7 @@ class WorkSpace:
 			elif len(job_filter)==0: 
 				raise Exception('cannot locate upstream job for plot %s and simulation %s'%(plotname,sn))
 			upstream_job = job_filter[0]
-			status('reading %s\n'%self.postdat.toc[upstream_job.result].files['dat'],
+			status('reading %s'%self.postdat.toc[upstream_job.result].files['dat'],
 				tag='load',i=snum,looplen=len(self.sns()))
 			data[upstream_job.sn]['data'] = self.load(
 				name=self.postdat.toc[upstream_job.result].files['dat'],

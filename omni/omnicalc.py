@@ -312,7 +312,7 @@ class WorkSpace:
 			#groups = get_upstream_groups(*calc['specs']['upstream'].keys())
 			groups_consensus = list(set(groups))
 			if len(groups_consensus)!=1: 
-				raise Exception('cannot achieve upstream group consensus')
+				raise Exception('cannot achieve upstream group consensus: %s'%groups_consensus)
 			group = groups_consensus[0]
 			return group
 		#---use the fully-linked calculations to figure out the group.
@@ -328,7 +328,9 @@ class WorkSpace:
 				#---! the following uses the fully-linked calculation naming scheme which is clumsy
 				check_calcs.extend([v for k,v in 
 					this_calc.specs_linked['specs'].items() if type(k)==tuple and k[0]=='up'])
-			if len(groups_consensus)!=1: raise Exception('cannot achieve upstream group consensus')
+			groups_consensus = list(set(groups_consensus))
+			if len(groups_consensus)!=1: 
+				raise Exception('cannot achieve upstream group consensus: %s'%groups_consensus)
 			return groups_consensus[0]
 
 	def infer_pbc(self,calc):

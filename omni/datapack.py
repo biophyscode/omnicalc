@@ -260,7 +260,7 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False):
 				asciitree(item,depth=depth+1,
 					last=last+([depth] if ind==len(obj)-1 else []),
 					recursed=True)
-			else: print('unhandled tree object')
+			else: print(str(item))#print('unhandled tree object')
 	elif type(obj) == dict and obj != {}:
 		for ind,key in enumerate(obj.keys()):
 			spacer_this = spacer_both['end'] if ind==len(obj)-1 else spacer
@@ -284,6 +284,6 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False):
 					recursed=True)
 			elif (type(obj[key])==list and obj[key]==[]) or (type(obj[key])==dict and obj[key]=={}):
 				print(spacer_this+str(key)+' = (empty)')
-			else: print('unhandled tree object')
-	else: print('unhandled tree object')
+			else: print(str(obj[key]))#print('unhandled tree object')
+	else: print(str(obj))#print('unhandled tree object')
 	if not recursed: print('\n')

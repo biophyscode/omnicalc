@@ -144,11 +144,11 @@ class WorkSpace:
 						for key,val in topval.items():
 							if key not in specs[topkey]: specs[topkey][key] = val
 							else: 
-								print('careful merging problem???')
-								import pdb;pdb.set_trace()
-								raise Exception(
-								('[ERROR] performing careful merge in the top-level specs dictionary "%s" '+
-								' but there is already a child key "%s"')%(topkey,key))
+								raise Exception(('performing careful merge in the top-level specs '+
+									'dictionary "%s" but there is already a child key "%s". this error '+
+									'usuall occurs because you have many meta files and you only want '+
+									'to use one. try the "meta" keyword argument to specify the path '+
+									'to the meta file you want.')%(topkey,key))
 		else: raise Exception('\n[ERROR] unclear meta specs merge method %s'%merge_method)
 		self.vars = specs['variables']
 		specs_unpacked = self.variable_unpacker(specs)
@@ -505,8 +505,14 @@ class WorkSpace:
 					#---! previously: prepare a slice according to the specification in the calculation
 					if False:
 						request_slice = Slice(sn=sn,slice_name=slice_name,group=group,work=self)
-					#---! get a proper slice?
-					request_slice = self.slice_meta.slices[sn][(slice_name,group)]
+					if False:
+						#---! get a proper slice?
+						if (slice_name,group) not in self.slice_meta.slices[sn]:
+							asciitree(self.slice_meta.slices)
+							raise Exception('see slices (meta) above. '+
+								'cannot find slice for simulation %s: %s,%s'%(sn,slice_name,group))
+						request_slice = self.slice_meta.slices[sn][(slice_name,group)]
+					request_slice = self.slice_meta.get_slice(sn=sn,slice_name=slice_name,group=group)
 					#---join the slice and calculation in a job
 					jobs.append(ComputeJob(sl=request_slice,calc=calc,work=self))
 		#---this function populates workspace.jobs but also has other uses
@@ -516,7 +522,8 @@ class WorkSpace:
 	def job_print(self,job):
 		"""
 		"""
-		asciitree(dict(**{job.calc.name:dict(specs=job.calc.specs['specs'])}))
+		asciitree({job.sn:dict(**{job.calc.name:dict(
+			specs=job.calc.specs['specs'],slice=job.slice.flat())})})
 
 	def compute(self,confirm=False):
 		"""

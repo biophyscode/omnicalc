@@ -459,8 +459,9 @@ class CalcMeta:
 					import ipdb;ipdb.set_trace()
 			else:
 				#---previously we required that `i.stub['specs']==val` but this is too strict
+				#---! val cannot be None below??
 				matches = [i for ii,i in enumerate(self.toc[key]) 
-					if val.viewitems()<=i.stub['specs'].viewitems()]
+					if val!=None and val.viewitems()<=i.stub['specs'].viewitems()]
 				#---try to match the stubs. this will work if you point to an upstream calculation with the 
 				#---...name of a subdictionary that represents a single calculation under a loop
 				if len(matches)!=1:

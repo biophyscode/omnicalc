@@ -336,10 +336,11 @@ class WorkSpace:
 	def infer_pbc(self,calc):
 		"""
 		"""
-		back_namer = dict([(self.namer.short_namer(key),key) for key in self.slices.keys()])
-		sn = back_namer[calc['slice']['short_name']]
-		calcname = calc['calc']['calc_name']
-		try: pbc = self.slices[sn]['slices'][self.calcs[calcname]['slice_name']]['pbc']
+		try: 
+			back_namer = dict([(self.namer.short_namer(key),key) for key in self.slices.keys()])
+			sn = back_namer[calc['slice']['short_name']]
+			calcname = calc['calc']['calc_name']
+			pbc = self.slices[sn]['slices'][self.calcs[calcname]['slice_name']]['pbc']
 		except:
 			import ipdb;ipdb.set_trace()
 		return pbc
@@ -734,14 +735,40 @@ class WorkSpace:
 		if any([not j.result for j in upstream_jobs]):
 			#---! this exception does not route through tracebacker because we call python with bash in plot
 			raise Exception('at least one of the jobs is missing a result. did you forget `make compute`?')
+
 		#---load the data
-		data = dict([(sn,{}) for sn in sorted(list(set([j.sn for j in upstream_jobs])))])
-		for unum,upstream_job in enumerate(upstream_jobs):
-			status('reading %s'%self.postdat.toc[upstream_job.result].files['dat'],
-				tag='load',i=unum,looplen=len(upstream_jobs))
+		#data = dict([(sn,{}) for sn in sorted(list(set([j.sn for j in upstream_jobs])))])
+		#---check for redundant incoming data, in which case the user needs to intervene in the plot meta.
+		#---...we always loop over self.sns because it provides the simulations for this plot
+
+		#---use the calculation finder to get the right calc
+		calc = self.calc_meta.find_calculation('lipid_areas2d',plot_spec['specs'])
+
+		#---prepare the outgoing data
+		data = dict([(sn,{}) for sn in self.sns()])		
+		for snum,sn in enumerate(self.sns()):
+			job_filter = [j for j in upstream_jobs if j.calc==calc and j.sn==sn]
+			if len(job_filter)>1: raise Exception('multiple upstream jobs for plot %s and simulation %s. '%(
+				plotname,sn)+'remember that plots resemble calculations. upstream loops require you to '+
+				'specify the keyword for the item in the loop that you want.')
+			elif len(job_filter)==0: 
+				raise Exception('cannot locate upstream job for plot %s and simulation %s'%(plotname,sn))
+			upstream_job = job_filter[0]
+			status('reading %s\n'%self.postdat.toc[upstream_job.result].files['dat'],
+				tag='load',i=snum,looplen=len(self.sns()))
 			data[upstream_job.sn]['data'] = self.load(
 				name=self.postdat.toc[upstream_job.result].files['dat'],
 				cwd=self.paths['post_data_spot'])
+
+		#---! NEED TO DO SELECTIONS HERE. RYAN DO THIS FOR LIPID AREAS ASAP!
+		if False:
+			for unum,upstream_job in enumerate(upstream_jobs):
+				status('reading %s\n'%self.postdat.toc[upstream_job.result].files['dat'],
+					tag='load',i=unum,looplen=len(upstream_jobs))
+				data[upstream_job.sn]['data'] = self.load(
+					name=self.postdat.toc[upstream_job.result].files['dat'],
+					cwd=self.paths['post_data_spot'])
+
 		#---for backwards compatibility we always send data with the plot spec however this is redundant
 		#---! the plot spec points to the upstream data but they are always accessible in the workspace
 		return data,self.calcs[plotname]

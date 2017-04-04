@@ -693,12 +693,12 @@ class SliceMeta:
 		"""
 		if sn not in self.slices: raise Excpetion('the slice (meta) object has no simulation %s'%sn)
 		if (slice_name,group) in self.slices[sn]: 
-			return self.slice_meta.slices[sn][(slice_name,group)]
+			return self.slices[sn][(slice_name,group)]
 		#---revert to group None if we cannot find it. this happens for no-group slices from e.g. NAMD
 		elif (slice_name,None) in self.slices[sn]:
 			return self.slices[sn][(slice_name,None)]
 		else:
-			asciitree(self.slice_meta.slices[sn])
+			asciitree(self.slices[sn])
 			raise Exception('see slices (meta) above. '+
 				'cannot find slice for simulation %s: %s,%s'%(sn,slice_name,group))
 

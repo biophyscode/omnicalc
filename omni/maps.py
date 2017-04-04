@@ -198,7 +198,9 @@ class PostDat(NamingConvention):
 		this_suffix = re.match('^.+\.(%s)$'%'|'.join(pair),name).group(1)
 		basename = re.sub('\.(%s)$'%'|'.join(pair),'',name)
 		twin = basename+'.%s'%dict([pair,pair[::-1]])[this_suffix]
-		if twin not in self.stable: raise Exception('cannot find dat-spec twin of %s'%name)
+		if twin not in self.stable: raise Exception('cannot find dat-spec twin of %s. '%name+
+			'this is typically due to a past failure to write the dat after writing the spec. '+
+			'we recommend deleting the existing dat/spec file after you fix the error.')
 		else: self.stable.remove(twin)
 		return basename
 
@@ -456,7 +458,9 @@ class CalcMeta:
 					#---! why has rpb not encountered this yet?
 					import ipdb;ipdb.set_trace()
 			else:
-				matches = [i for ii,i in enumerate(self.toc[key]) if i.stub['specs']==val]
+				#---previously we required that `i.stub['specs']==val` but this is too strict
+				matches = [i for ii,i in enumerate(self.toc[key]) 
+					if val.viewitems()<=i.stub['specs'].viewitems()]
 				#---try to match the stubs. this will work if you point to an upstream calculation with the 
 				#---...name of a subdictionary that represents a single calculation under a loop
 				if len(matches)!=1:

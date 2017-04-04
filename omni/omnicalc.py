@@ -253,7 +253,6 @@ class WorkSpace:
 			fns.extend([dirpath+'/'+fn for fn in filenames])
 		search = [fn for fn in fns if re.match('^%s\.py'%name,os.path.basename(fn))]
 		if len(search)==0: 
-			import ipdb;ipdb.set_trace()
 			raise Exception('\n[ERROR] cannot find %s.py'%name)
 		elif len(search)>1: raise Exception('\n[ERROR] redundant matches: %s'%str(search))
 		#---manually import the function
@@ -446,8 +445,11 @@ class WorkSpace:
 				print('[WRITING] '+key+' dtype='+str(obj[key].dtype))
 			#---python3 cannot do unicode so we double check the type
 			#---! the following might be wonky
-			if re.match('^str',obj[key].dtype.name) and 'U' in obj[key].dtype.str:
-				obj[key] = obj[key].astype('S')
+			try:
+				if re.match('^str',obj[key].dtype.name) and 'U' in obj[key].dtype.str:
+					obj[key] = obj[key].astype('S')
+			except:
+				import ipdb;ipdb.set_trace()
 			try: dset = fobj.create_dataset(key,data=obj[key])
 			except: 
 				raise Exception("failed to write this object so it's probably not numpy"+
@@ -643,7 +645,7 @@ class WorkSpace:
 		for fn in [dat_fn,spec_fn]:
 			if os.path.isfile(dat_fn): raise Exception('file %s exists'%fn)
 		#---save the results
-		self.store(obj=result,name=dat_fn,path=self.paths['post_data_spot'],attrs=attrs)
+		self.store(obj=result,name=dat_fn,path=self.paths['post_data_spot'],attrs=attrs,verbose=True)
 		#---write a lightweight "spec" file, always paired with dat file
 		with open(spec_fn_full,'w') as fp: 
 			fp.write(json.dumps(post.specs))

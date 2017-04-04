@@ -473,9 +473,9 @@ class CalcMeta:
 						explicit_matches = [i for ii,i in enumerate(self.toc[key]) 
 							if i.specs['specs'].viewitems()>=val.viewitems()]
 						if len(explicit_matches)==1: upstream_calcs.append(explicit_matches[0])
-						else:
-							print('otherstuff happened??')
+						else: 
 							import ipdb;ipdb.set_trace()
+							raise Exception('failed to locate upstream data')
 				else: upstream_calcs.append(matches[0])
 		return upstream_calcs
 

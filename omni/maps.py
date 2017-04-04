@@ -563,8 +563,8 @@ class CalcMeta:
 		Find a calculation in the master CalcMeta list by specs.
 		"""
 		if name not in self.toc: 
-			import ipdb;ipdb.set_trace()
-			raise Exception('invalid calculation: %s'%name)
+			raise Exception('calculation named %s is not in the CalcMeta table of contents: %s'%(
+				name,self.toc.keys()))
 		#---try to match calc specs explicitly
 		matches = [calc for calc in self.toc[name] 
 			if calc.specs['specs'].viewitems()>=specs.viewitems()]

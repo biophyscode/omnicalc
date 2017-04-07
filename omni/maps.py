@@ -270,8 +270,11 @@ class DatSpec(NamingConvention):
 			if 'pbc' not in self.specs['slice']:
 				self.specs['slice']['pbc'] = self.work.infer_pbc(self.specs)
 		#---! good opportunity to match a calc on disk with a calc in calc_meta
-		self.specs['calc'] = self.work.calc_meta.find_calculation(
-			name=self.specs['calc']['calc_name'],specs=self.specs['specs'])
+		try:
+			self.specs['calc'] = self.work.calc_meta.find_calculation(
+				name=self.specs['calc']['calc_name'],specs=self.specs['specs'])
+		#---sometimes we hide calculations that are already complete because we are adding data
+		except: pass
 		if False:
 			#---first time in the execution that we encounter calculation specs
 			import ipdb;ipdb.set_trace()

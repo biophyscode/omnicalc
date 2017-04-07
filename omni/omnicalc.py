@@ -747,7 +747,7 @@ class WorkSpace:
 		else: calcname = calcnames[0]
 		#---! this is the part where we treat plots like calculations to get the right upstream data
 		#---! note that the return below uses calcname as well!
-		calc = self.calc_meta.find_calculation(calcname,plot_spec['specs'])
+		calc = self.calc_meta.find_calculation(calcname,plot_spec.get('specs',{}))
 
 		#---prepare the outgoing data
 		data = dict([(sn,{}) for sn in self.sns()])		

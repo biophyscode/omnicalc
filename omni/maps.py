@@ -274,7 +274,14 @@ class DatSpec(NamingConvention):
 			self.specs['calc'] = self.work.calc_meta.find_calculation(
 				name=self.specs['calc']['calc_name'],specs=self.specs['specs'])
 		#---sometimes we hide calculations that are already complete because we are adding data
-		except: pass
+		except: 
+			#---create a dummy calcspec if we cannot find the calculation in the meta
+			#---! note that we may wish to populate this more. this error was found when trying to find a
+			#---! ...match later, and the find_match function was trying to look in the CalcSpec for a 
+			#---! ...calculation which had been removed from the meta
+			#---we supply a name because find_match will be looking for one
+			self.specs['calc'] = Calculation(name=None,specs={},stub=[])
+			#---! NOTE THAT CALCSPEC IS NO MOR! REMOVE ITTTTTTTTT
 		if False:
 			#---first time in the execution that we encounter calculation specs
 			import ipdb;ipdb.set_trace()
@@ -342,7 +349,6 @@ class Calculation_Deprecated:
 		"""
 		for key in ['name','uptype','group','slice_name','collections']:
 			if key not in kwargs: 
-				import ipdb;ipdb.set_trace()
 				raise Exception('calculation requires %s'%key)
 			self.__dict__[key] = kwargs.pop(key)
 		self.specs = kwargs.pop('specs',{})
@@ -431,7 +437,7 @@ class CalcMeta:
 			for cnum,calc in enumerate(self.toc[calcname]):
 				if 'specs' not in calc.specs:
 					print('???')
-					import ipdb;ipdb.set_trace()
+					raise Exception('???')
 				calc.specs_linked = copy.deepcopy(calc.specs)
 				upstream = calc.specs_linked['specs'].pop('upstream',None)
 				ups = self.get_upstream(upstream) or []
@@ -459,7 +465,7 @@ class CalcMeta:
 			if key=='upstream':
 				for key_up,val_up in val.items():
 					#---! why has rpb not encountered this yet?
-					import ipdb;ipdb.set_trace()
+					raise Exception('???')
 			else:
 				#---previously we required that `i.stub['specs']==val` but this is too strict
 				#---! val cannot be None below??
@@ -482,7 +488,6 @@ class CalcMeta:
 							if i.specs['specs'].viewitems()>=val.viewitems()]
 						if len(explicit_matches)==1: upstream_calcs.append(explicit_matches[0])
 						else: 
-							import ipdb;ipdb.set_trace()
 							raise Exception('failed to locate upstream data')
 				else: upstream_calcs.append(matches[0])
 		return upstream_calcs
@@ -500,8 +505,7 @@ class CalcMeta:
 			print('getting key %s'%key)
 			matches = [i for ii,i in enumerate(self.toc[key]) if i.stub['specs']==val]
 			if len(matches)!=1:
-				print('othershit happened')
-				import ipdb;ipdb.set_trace()
+				raise Exception('othershit happened')
 			else: upstream_calcs.append(matches[0])
 		return upstream_calcs
 
@@ -511,7 +515,7 @@ class CalcMeta:
 		"""
 		upstream = specs.pop('upstream',None)
 		for key,val in upstream.items():
-			import ipdb;ipdb.set_trace()
+			raise Exception('???')
 
 	def calcjobs(self,name):
 		"""
@@ -603,8 +607,7 @@ class CalcMeta:
 			if self.toc[calcname]['stubs'][ii]['specs']==pointers]
 		if len(matches)==1: return self.toc[calcname]['specs'][ii]
 		else:
-			print('too strict')
-			import ipdb;ipdb.set_trace()
+			raise Exception('too strict')
 
 	def internal_referencer(self):
 		"""
@@ -614,6 +617,7 @@ class CalcMeta:
 		spec = self.toc['lipid_areas2d']['specs'][1]
 		cat = list(catalog(spec['specs']))
 		self.find_calculation_internallywise('lipid_abstractor',pointers={'selector':'lipid_chol_com'})
+		raise Exception('???')
 		import ipdb;ipdb.set_trace()
 		#[ii for ii,i in enumerate(self.toc_raw[calcname]['specs']) 
 		# ... if all([key in i and 'loop' in i[key] for key,val in pointers.items()])]
@@ -749,9 +753,10 @@ class Slice:
 		json_type_fixer(me)
 
 		#---check for group/pbc for gmx
-		if 'slice_type' in me and me['slice_type']=='standard' and me['dat_type']=='gmx' and any(
-			[i not in me for i in ['group','pbc']]):
-			import ipdb;ipdb.set_trace()
+		#if 'slice_type' in me and me['slice_type']=='standard' and me['dat_type']=='gmx' and any(
+		#	[i not in me for i in ['group','pbc']]):
+
+			#import ipdb;ipdb.set_trace()
 		return me
 
 class ComputeJob:
@@ -771,7 +776,7 @@ class ComputeJob:
 		slices_by_sn = self.work.slice_meta.slices.get(sl.sn,None)
 		if not slices_by_sn: 
 			print(self.work.namer.short_namer(sl.sn))
-			import ipdb;ipdb.set_trace()
+			#import ipdb;ipdb.set_trace()
 			print(self.work.slice_meta.slices.get(self.work.namer.short_namer(sl.sn),None))
 			if not slices_by_sn: raise Exception('cannot find simulation %s in slice requests'%sl.sn)
 		name_group = None
@@ -818,9 +823,11 @@ class ComputeJob:
 			val.specs.get('specs',None)==target['specs'],
 			#---! calc spec objects sometimes have Calculation type or dictionary ... but why?
 			val.specs['calc'].name==target['calc']['calc_name'],
+			#---! ... 2017.4.19
+			#val.specs['calc']['calc_name']==target['calc']['calc_name'],
 			])]
 		except:
-			import ipdb;ipdb.set_trace()
+			import pdb;pdb.set_trace()
 		if len(matches)>1: 
 			#---fallback to direct comparison of the raw specs
 			#---! note that this is not sustainable! FIX IT!

@@ -48,7 +48,7 @@ class WorkSpace:
 			#---...the calcs/specs folder since that is the only acceptable location for meta files
 			#---...we detect meta files here and send them as a list, otherwise read_specs gets a string
 			#---...from the CLI which is a glob with the full path to calcs/specs
-			meta_incoming = [i for j in [glob.glob(os.path.join('calcs','specs',g)) 
+			meta_incoming = [i for j in [glob.glob(os.path.join(self.cwd,'calcs','specs',g)) 
 				for g in self.config['meta_filter']] for i in j]
 		#---read the specs according to incoming meta flags
 		self.specs = self.read_specs(meta=meta_incoming)
@@ -150,7 +150,7 @@ class WorkSpace:
 									'dictionary "%s" but there is already a child key "%s". this error '+
 									'usually occurs because you have many meta files and you only want '+
 									'to use one. try the "meta" keyword argument to specify the path '+
-									'to the meta file you want.')%(topkey,key))
+									'to the meta file you want. note meta is "%s"')%(topkey,key,meta))
 		else: raise Exception('\n[ERROR] unclear meta specs merge method %s'%merge_method)
 		self.vars = specs['variables']
 		specs_unpacked = self.variable_unpacker(specs)

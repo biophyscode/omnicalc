@@ -148,7 +148,7 @@ class WorkSpace:
 							else: 
 								raise Exception(('performing careful merge in the top-level specs '+
 									'dictionary "%s" but there is already a child key "%s". this error '+
-									'usuall occurs because you have many meta files and you only want '+
+									'usually occurs because you have many meta files and you only want '+
 									'to use one. try the "meta" keyword argument to specify the path '+
 									'to the meta file you want.')%(topkey,key))
 		else: raise Exception('\n[ERROR] unclear meta specs merge method %s'%merge_method)

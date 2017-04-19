@@ -14,11 +14,12 @@ config_fn = 'config.py'
 Manipulate the config.py in root.
 """
 
-def read_config(source=None):
+def read_config(cwd=None,source=None):
 	"""
 	Read the configuration from a single dictionary literal in config.py (or the config_fn).
 	"""
 	source = config_fn if not source else source
+	if cwd: source = os.path.join(cwd,source)
 	if not os.path.isfile(abspath(source)): raise Exception('cannot find file "%s"'%source)
 	try: return eval(open(abspath(source)).read())
 	except: raise Exception('[ERROR] failed to read master config from "%s"'%source)

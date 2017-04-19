@@ -25,13 +25,17 @@ class WorkSpace:
 	#---! currently hard-coded
 	nprocs = 4
 
-	def __init__(self,plot=None,plot_call=False,pipeline=None,meta=None,confirm_compute=False):
+	def __init__(self,plot=None,plot_call=False,pipeline=None,meta=None,
+		confirm_compute=False,cwd=None):
 		"""
 		Prepare the workspace.
 		"""
+		if not cwd: self.cwd = os.getcwd()
+		else: self.cwd = os.path.join(cwd,'')
+		if not os.path.isdir(self.cwd): raise Exception('invalid cwd for this WorkSpace: %s'%self.cwd)
 		if plot and pipeline: raise Exception('only plot or pipeline')
 		#---read the omnicalc config and specs files
-		self.config = read_config()
+		self.config = read_config(cwd=self.cwd)
 		#---unpack the paths right into the workspace for calculation functions
 		#---add paths here for backwards compatibility at the plotting stage
 		self.paths = dict([(key,self.config[key]) for key in ['post_plot_spot','post_data_spot']])
@@ -103,23 +107,21 @@ class WorkSpace:
 		Lifted directly from old workspace.load_specs.
 		"""
 		if merge_method!='careful': raise Exception('dev')
-		if not meta: specs_files = glob.glob(os.path.join(*self.specs_path))
+		if not meta: specs_files = glob.glob(os.path.join(self.cwd,*self.specs_path))
 		else: 
 			#---if meta is a string we assume it is a glob and check for files
 			#---note that using the CLI to set meta requires all paths relative to the omnicalc root
 			#---...hence they must point to calcs/specs to find valid files
 			#---...however globs saved to meta_filter in the config.py via `make set` do not 
 			#---...need to be prepended with calcs/specs since this location is assumed
-			if type(meta)==str: specs_files = glob.glob(meta)
+			if type(meta)==str: specs_files = glob.glob(os.path.join(self.cwd,meta))
 			#---if meta is a list then it must have come from meta_filter and hence includes valid files
 			else:
 				if not all([os.path.isfile(i) for i in meta]): 
-					import ipdb;ipdb.set_trace()
 					raise Exception('received invalid meta files in a list')
 				specs_files = meta
 		if not specs_files: 
-			import ipdb;ipdb.set_trace()
-			raise Exception('cannot find meta files')
+			raise Exception('cannot find meta files. cwd is %s'%os.getcwd())
 		allspecs = []
 		for fn in specs_files:
 			with open(fn) as fp: 

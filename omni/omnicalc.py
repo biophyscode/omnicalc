@@ -117,11 +117,11 @@ class WorkSpace:
 			if type(meta)==str: specs_files = glob.glob(os.path.join(self.cwd,meta))
 			#---if meta is a list then it must have come from meta_filter and hence includes valid files
 			else:
-				if not all([os.path.isfile(i) for i in meta]): 
+				if not all([os.path.isfile(os.path.join(self.cwd,i)) for i in meta]): 
 					raise Exception('received invalid meta files in a list')
 				specs_files = meta
 		if not specs_files: 
-			raise Exception('cannot find meta files. cwd is %s'%os.getcwd())
+			raise Exception('cannot find meta files')
 		allspecs = []
 		for fn in specs_files:
 			with open(fn) as fp: 

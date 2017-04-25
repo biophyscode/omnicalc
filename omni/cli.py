@@ -5,7 +5,8 @@ Omnicalc command-line interface.
 """
 
 #---expose interface functions from omnicalc.py as well
-__all__ = ['locate','set_config','nuke','setup','compute','plot','pipeline','clone_calcs','look']
+__all__ = ['locate','set_config','nuke','setup','compute','plot','pipeline','clone_calcs','look',
+	'blank_meta']
 
 import os,sys,re
 from config import read_config,write_config,is_terminal_command,bash,abspath,set_config
@@ -55,3 +56,16 @@ def clone_calcs(source):
 	bash('git clone %s calcs'%source)
 	config['calculations_repo'] = source
 	write_config(config)
+
+calcs_template = """
+variables: {}
+collections: {}
+plots: {}
+""".strip()
+
+def blank_meta():
+	"""
+	"""
+	if not os.path.isdir('calcs/specs'): os.mkdir('calcs/specs')
+	if not os.path.isfile('calcs/specs/meta.yaml'):
+		with open('calcs/specs/meta.yaml','w') as fp: fp.write(calcs_template)

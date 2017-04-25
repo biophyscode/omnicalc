@@ -251,7 +251,7 @@ class WorkSpace:
 		"""
 		#---find the script with the funtion
 		fns = []
-		for (dirpath, dirnames, filenames) in os.walk(root): 
+		for (dirpath, dirnames, filenames) in os.walk(os.path.join(self.cwd,root)): 
 			fns.extend([dirpath+'/'+fn for fn in filenames])
 		search = [fn for fn in fns if re.match('^%s\.py'%name,os.path.basename(fn))]
 		if len(search)==0: 

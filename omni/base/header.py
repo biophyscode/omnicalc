@@ -47,6 +47,9 @@ if run_type=='plot':
 		if os.path.isfile(os.path.join('calcs','specs',fn+'.py')):
 			with open(os.path.join('calcs','specs',fn+'.py')) as fp: exec(fp.read())
 
+#---flag for IPython notebook use
+is_live = False
+
 def replot():
 	"""
 	This function re-executes the script.

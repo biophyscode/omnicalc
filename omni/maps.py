@@ -156,7 +156,7 @@ class PostDat(NamingConvention):
 		#---master classification loop
 		while self.stable: 
 			name = self.stable.pop()
-			status(name,tag='import',i=nfiles-len(self.stable),looplen=nfiles+1,pad=nchars+2)
+			status(name,tag='import',i=nfiles-len(self.stable),looplen=nfiles+1,pad=nchars+2,width=4)
 			#---interpret the name
 			namedat = self.interpret_name(name)
 			if not namedat: 
@@ -420,6 +420,7 @@ class CalcMeta:
 	def __init__(self,meta,**kwargs):
 		"""
 		"""
+		if 'work' not in kwargs: raise Exception('sorry! send work manually in kwargs please')
 		self.work = kwargs.pop('work')
 		if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
 		#---unroll each calculation and store the stubs because they map from the keyword used in the 
@@ -469,8 +470,10 @@ class CalcMeta:
 			else:
 				#---previously we required that `i.stub['specs']==val` but this is too strict
 				#---! val cannot be None below??
-				matches = [i for ii,i in enumerate(self.toc[key]) 
+				try: matches = [i for ii,i in enumerate(self.toc[key]) 
 					if val!=None and val.viewitems()<=i.stub['specs'].viewitems()]
+				except: 
+					import ipdb;ipdb.set_trace()
 				#---try to match the stubs. this will work if you point to an upstream calculation with the 
 				#---...name of a subdictionary that represents a single calculation under a loop
 				if len(matches)!=1:
@@ -488,6 +491,7 @@ class CalcMeta:
 							if i.specs['specs'].viewitems()>=val.viewitems()]
 						if len(explicit_matches)==1: upstream_calcs.append(explicit_matches[0])
 						else: 
+							import ipdb;ipdb.set_trace()
 							raise Exception('failed to locate upstream data')
 				else: upstream_calcs.append(matches[0])
 		return upstream_calcs
@@ -582,6 +586,7 @@ class CalcMeta:
 			if calc.specs['specs'].viewitems()>=specs.viewitems()]
 		if len(matches)==1: return matches[0]
 		else: 
+			match_len_first = len(matches)
 			#---try to match the stub
 			#---! ytf does the following fail?
 			if False:
@@ -593,7 +598,13 @@ class CalcMeta:
 				if dict(copy.deepcopy(specs),**copy.deepcopy(calc.stub['specs']))==specs]
 			if len(matches)==1: return matches[0]
 			else:
-				raise Exception('failed to find calculation %s with specs %s in the CalcMeta'%(name,specs))
+				if len(self.toc[name])>0:
+					print('[WARNING] here is a hint because we are excepting soon. '+
+						'the first specs of the toc for this calculation is: %s'%self.toc[name][0].specs)
+				else: print('[WARNING] here is a hint because we are excepting soon: there are no calcs')
+				raise Exception('failed to find calculation %s with specs %s in the CalcMeta'%(name,specs)+
+					'. it is likely that you need to *be more specific* (found %d then %d matches)'%(
+						match_len_first,len(matches)))
 
 	def find_calculation_internallywise_DEPRECATED_I_THINK(self,calcname,**kwargs):
 		"""

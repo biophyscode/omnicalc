@@ -745,27 +745,33 @@ class WorkSpace:
 		#---use the calculation finder to get the right calc
 		#---! RYAN YOU HAVE TO ALLOW NO SPECS IN THE PLOT. TEST THIS !!!!!!!!!!!!!!!!!!
 		#---! ... find_calculation needs a calculation, but calcnames may be longer than 1. DEVELOP THAT!
-		if len(calcnames)>1: raise Exception('development error. need multiple calcs for a plot')
-		else: calcname = calcnames[0]
+		#if len(calcnames)>1: 
+		#	import ipdb;ipdb.set_trace()
+		#	raise Exception('development error. need multiple calcs for a plot')
+		#else: calcname = calcnames[0]
 		#---! this is the part where we treat plots like calculations to get the right upstream data
 		#---! note that the return below uses calcname as well!
-		calc = self.calc_meta.find_calculation(calcname,plot_spec.get('specs',{}))
+		#---! moved below 
+		#calc = self.calc_meta.find_calculation(calcname,plot_spec.get('specs',{}))
 
-		#---prepare the outgoing data
-		data = dict([(sn,{}) for sn in self.sns()])		
-		for snum,sn in enumerate(self.sns()):
-			job_filter = [j for j in upstream_jobs if j.calc==calc and j.sn==sn]
-			if len(job_filter)>1: raise Exception('multiple upstream jobs for plot %s and simulation %s. '%(
-				plotname,sn)+'remember that plots resemble calculations. upstream loops require you to '+
-				'specify the keyword for the item in the loop that you want.')
-			elif len(job_filter)==0: 
-				raise Exception('cannot locate upstream job for plot %s and simulation %s'%(plotname,sn))
-			upstream_job = job_filter[0]
-			status('reading %s'%self.postdat.toc[upstream_job.result].files['dat'],
-				tag='load',i=snum,looplen=len(self.sns()))
-			data[upstream_job.sn]['data'] = self.load(
-				name=self.postdat.toc[upstream_job.result].files['dat'],
-				cwd=self.paths['post_data_spot'])
+		#---prepare the outgoing data in data, indexed by calcname, but elevate it if only one, at the end
+		data = dict([(calcname,dict([(sn,{}) for sn in self.sns()])) for calcname in calcnames])
+		#---loop over data for each calculation
+		for calcname in calcnames:
+			calc = self.calc_meta.find_calculation(calcname,plot_spec.get('specs',{}))
+			for snum,sn in enumerate(self.sns()):
+				job_filter = [j for j in upstream_jobs if j.calc==calc and j.sn==sn]
+				if len(job_filter)>1: raise Exception('multiple upstream jobs for plot %s and simulation %s. '%(
+					plotname,sn)+'remember that plots resemble calculations. upstream loops require you to '+
+					'specify the keyword for the item in the loop that you want.')
+				elif len(job_filter)==0: 
+					raise Exception('cannot locate upstream job for plot %s and simulation %s'%(plotname,sn))
+				upstream_job = job_filter[0]
+				status('reading %s'%self.postdat.toc[upstream_job.result].files['dat'],
+					tag='load',i=snum,looplen=len(self.sns()))
+				data[calcname][upstream_job.sn]['data'] = self.load(
+					name=self.postdat.toc[upstream_job.result].files['dat'],
+					cwd=self.paths['post_data_spot'])
 
 		#---! NEED TO DO SELECTIONS HERE. RYAN DO THIS FOR LIPID AREAS ASAP!
 		if False:
@@ -778,7 +784,114 @@ class WorkSpace:
 
 		#---for backwards compatibility we always send data with the plot spec however this is redundant
 		#---! the plot spec points to the upstream data but they are always accessible in the workspace
-		return data,self.calcs[calcname]
+		if len(calcnames)==1: return data[calcnames[0]],self.calcs[calcname]
+		#---if we have multiple calcnames we send the data in a dictionary otherwise we promote
+		else: return data,self.calcs
+
+
+	def plotload2(self,plotname):
+		"""
+		"""
+		#---get the calculations from the plot dictionary in the meta files
+		plot_spec = self.plots.get(plotname,None)
+
+		#---!!!!!!!!!!!
+		plots_with_calcs = copy.deepcopy(self.calcs)
+		plots_with_calcs.update(**self.plots)
+		plot_meta = CalcMeta(plots_with_calcs,work=self)
+		#import ipdb;ipdb.set_trace()
+
+		if not plot_spec: 
+			raise Exception('cannot find plot %s in the plots section of the meta files'%plotname)
+		calcnames = str_or_list(plot_spec['calculation'])
+		#---instead of repeating the logic, we run the calculation prep to get the jobs out
+		#---...this mimics the upstream_jobs section of compute_single above
+		upstream_jobs = self.prepare_calculations(calcnames=calcnames)
+		if any([not j.result for j in upstream_jobs]):
+			#---! this exception does not route through tracebacker because we call python with bash in plot
+			raise Exception('at least one of the jobs is missing a result. did you forget `make compute`?')
+		#---prepare the outgoing data in data, indexed by calcname, but elevate it if only one, at the end
+		data = dict([(calcname,dict([(sn,{}) for sn in self.sns()])) for calcname in calcnames])
+		#---loop over data for each calculation
+		for calcname in calcnames:
+			#---now search in plot_meta instead of self.calc_meta
+			#calc = plot_meta.find_calculation(calcname,plot_spec.get('specs',{}))
+			calc = self.calc_meta.find_calculation(calcname,plot_spec.get('specs',{}))
+			for snum,sn in enumerate(self.sns()):
+				job_filter = [j for j in upstream_jobs if j.calc==calc and j.sn==sn]
+				if len(job_filter)>1: 
+					raise Exception('multiple upstream jobs for plot %s and simulation %s. '%(
+					plotname,sn)+'remember that plots resemble calculations. upstream loops require you to '+
+					'specify the keyword for the item in the loop that you want.')
+				elif len(job_filter)==0: 
+					import ipdb;ipdb.set_trace()
+					raise Exception('cannot locate upstream job for plot %s and simulation %s'%(plotname,sn)+
+						'. note that the calc.specs is %s'%calc.specs)
+				upstream_job = job_filter[0]
+				status('reading %s'%self.postdat.toc[upstream_job.result].files['dat'],
+					tag='load',i=snum,looplen=len(self.sns()))
+				data[calcname][upstream_job.sn]['data'] = self.load(
+					name=self.postdat.toc[upstream_job.result].files['dat'],
+					cwd=self.paths['post_data_spot'])
+		#---for backwards compatibility we always send data with the plot spec however this is redundant
+		#---! the plot spec points to the upstream data but they are always accessible in the workspace
+		if len(calcnames)==1: return data[calcnames[0]],self.calcs[calcname]
+		#---if we have multiple calcnames we send the data in a dictionary otherwise we promote
+		else: return data,self.calcs
+
+	def plotload3(self,plotname):
+		"""
+		goal: 
+		pseudocode
+			1. get the plot subdictionary
+			2. for each calculation, go get the calculation
+				if specs then expand the calculation
+			3. 
+			end. run self.load with an upstream job which is accurate
+		WHY WUZ THIS SOOO HARD????
+		"""
+		#---get the calculations from the plot dictionary in the meta files
+		plot_spec = self.plots.get(plotname,None)
+		#---loop over calculations in the plot
+		if type(plot_spec['calculation'])!=dict: raise Exception('dev')
+		calcs = plot_spec['calculation']
+		#---cache the upstream jobs for all calculations
+		upstream_jobs = self.prepare_calculations(calcnames=calcs.keys())
+		#---data indexed by calculation name then simulation name
+		data = dict([(calc_name,{}) for calc_name in calcs.keys()])
+		#---loop over calculations and dig up the right ones
+		for calc_name,specs in plot_spec['calculation'].items():
+			calc = self.calc_meta.find_calculation(calc_name,specs)
+			#---! correct to loop over this? is this set by the plotname?
+			for sn in self.sns():
+				job_filter = [j for j in upstream_jobs if j.calc==calc and j.sn==sn]
+				if len(job_filter)!=1:
+					print('job_filter fail... ')
+					import ipdb;ipdb.set_trace()
+				else: 
+					job = job_filter[0]
+					data[calc_name][job.sn] = {'data':self.load(
+						name=self.postdat.toc[job.result].files['dat'],
+						cwd=self.paths['post_data_spot'])}
+		#---previous codes expect specs to hold the specs in the calcs from plotload
+		calcs_reform = dict([(c,{'specs':v}) for c,v in calcs.items()])
+		return data,calcs_reform
+
+
+	def plotload_manual(self,calcname,specs):
+		"""
+		Temporary fix to manually load the plotload stuff.
+		"""
+		data = {}
+		for snum,sn in enumerate(self.sns()[:1]):
+			upstream_jobs = self.prepare_calculations(calcnames=[calcname])
+			if len(upstream_jobs)!=0:
+				print('oops')
+				import ipdb;ipdb.set_trace()
+			else: job = upstream_jobs[0]
+			data[sn] = self.load(name=self.postdat.toc[job.result].files['dat'],
+				cwd=self.paths['post_data_spot'])
+		import ipdb;ipdb.set_trace()
 
 	def sns(self):
 		"""

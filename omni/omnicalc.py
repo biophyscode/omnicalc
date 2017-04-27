@@ -152,7 +152,7 @@ class WorkSpace:
 									'to use one. try the "meta" keyword argument to specify the path '+
 									'to the meta file you want. note meta is "%s"')%(topkey,key,meta))
 		else: raise Exception('\n[ERROR] unclear meta specs merge method %s'%merge_method)
-		self.vars = specs['variables']
+		self.vars = specs.get('variables',{})
 		specs_unpacked = self.variable_unpacker(specs)
 		self.meta = specs.get('meta',{})
 		#---for backwards compatibility we put collections in vars

@@ -107,6 +107,7 @@ class WorkSpace:
 		Lifted directly from old workspace.load_specs.
 		"""
 		if merge_method!='careful': raise Exception('dev')
+		#---note that we handle cwd when defining the specs_files, not when checking them
 		if not meta: specs_files = glob.glob(os.path.join(self.cwd,*self.specs_path))
 		else: 
 			#---if meta is a string we assume it is a glob and check for files
@@ -117,8 +118,9 @@ class WorkSpace:
 			if type(meta)==str: specs_files = glob.glob(os.path.join(self.cwd,meta))
 			#---if meta is a list then it must have come from meta_filter and hence includes valid files
 			else:
-				if not all([os.path.isfile(os.path.join(self.cwd,i)) for i in meta]): 
-					raise Exception('received invalid meta files in a list')
+				if not all([os.path.isfile(i) for i in meta]): 
+					missing = [i for i in meta if not os.path.isfile(i)]
+					raise Exception('received invalid meta files in a list (cwd="%s"): %s'%(self.cwd,missing))
 				specs_files = meta
 		if not specs_files: 
 			raise Exception('cannot find meta files')
@@ -305,6 +307,9 @@ class WorkSpace:
 			groups,pending_groupsearch = [],list(calc['specs']['upstream'].keys())
 			while pending_groupsearch:
 				key = pending_groupsearch.pop()
+				if key not in self.calcs: 
+					raise Exception(
+						'cannot find calculation %s in the metadata hence we cannot infer the group'%key)
 				if 'group' in self.calcs[key]: groups.append(self.calcs[key]['group'])
 				elif 'upstream' in self.calcs[key]['specs']:
 					pending_groupsearch.extend(self.calcs[key]['specs']['upstream'].keys())
@@ -337,13 +342,13 @@ class WorkSpace:
 	def infer_pbc(self,calc):
 		"""
 		"""
-		try: 
-			back_namer = dict([(self.namer.short_namer(key),key) for key in self.slices.keys()])
-			sn = back_namer[calc['slice']['short_name']]
-			calcname = calc['calc']['calc_name']
-			pbc = self.slices[sn]['slices'][self.calcs[calcname]['slice_name']]['pbc']
-		except:
-			import ipdb;ipdb.set_trace()
+		back_namer = dict([(self.namer.short_namer(key),key) for key in self.slices.keys()])
+		if calc['slice']['short_name'] not in back_namer:
+			raise Exception('check that you have the right short_namer in the meta dictionary. '+
+				'back_namer lacks %s: %s'%(calc['slice']['short_name'],back_namer))
+		sn = back_namer[calc['slice']['short_name']]
+		calcname = calc['calc']['calc_name']
+		pbc = self.slices[sn]['slices'][self.calcs[calcname]['slice_name']]['pbc']
 		return pbc
 
 	def chase_upstream(self,specs,warn=False):

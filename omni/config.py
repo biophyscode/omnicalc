@@ -2,7 +2,7 @@
 
 import os,sys
 from makeface import abspath
-from datapack import delveset
+from datapack import delve,delveset
 import subprocess
 
 __all__ = ['set_config','unset']
@@ -102,7 +102,9 @@ def set_config(*args,**kwargs):
 			if len(args)<1: raise Exception('must have an argument to set config %s'%what)
 			elif len(args)>1: raise Exception('too many arguments for singleton setting %s: %s'%(what,args))
 			add_config(what,value=args[0],many=False)
-		else: raise Exception('DEV')
+		elif config_toc[what] == 'many': 
+			for arg in args: add_config(what,value=arg,many=True)
+		else: raise Exception('?')
 	if kwargs:
 		invalids = [i for i in kwargs if i not in config_toc]
 		if invalids: raise Exception('invalid keys: %s'%invalids)

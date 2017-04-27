@@ -58,6 +58,7 @@ def status(string,i=0,looplen=None,bar_character=None,width=25,tag='',start=None
 	"""
 	Show a status bar and counter for a fixed-length operation.
 	Taken from AUTOMACS to work in python 2 and 3.
+	!NOTE need to fix the thing where lines get shorter and garbage is left behind...
 	"""
 	#---! it would be useful to receive a signal here to suppress the status bar from 
 	#---! ...printing to the log file on backrun.

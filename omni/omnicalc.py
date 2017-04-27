@@ -7,7 +7,12 @@ from base.tools import catalog,delve,str_or_list,status
 from base.hypothesis import hypothesis
 from maps import NamingConvention,PostDat,ComputeJob,Calculation,Slice,SliceMeta,DatSpec,CalcMeta
 from datapack import asciitree,delve,delveset
-import yaml,h5py
+#---typical first encounger with super-python reqs so we warn the user if they have no good env yet
+msg_needs_env = ('\n[ERROR] failed to load a key requirement (yaml) '
+	'which means you probably need to source the environment. '
+	'go to the factory root and run e.g. `source env/bin/activate py2`')
+try: import yaml,h5py
+except: raise Exception(msg_needs_env)
 import numpy as np
 
 str_types = [str,unicode] if sys.version_info<(3,0) else [str]
@@ -93,7 +98,9 @@ class WorkSpace:
 			point = delve(specs,*path[:-1])
 			point[path[-1]][point[path[-1]].index(sub)] = source
 		for path,sub in [(i,j) for i,j in catalog(specs) if type(j)==str and re.match('^\+',j)]:
-			source = delve(self.vars,*sub.strip('+').split('/'))
+			path_parsed = sub.strip('+').split('/')
+			try: source = delve(self.vars,*path_parsed)
+			except: raise Exception('failed to locate internal reference with path: %s'%path_parsed)
 			point = delve(specs,*path[:-1])
 			point[path[-1]] = source
 		#---refresh variables in case they have internal references
@@ -117,7 +124,7 @@ class WorkSpace:
 			if type(meta)==str: specs_files = glob.glob(os.path.join(self.cwd,meta))
 			#---if meta is a list then it must have come from meta_filter and hence includes valid files
 			else:
-				if not all([os.path.isfile(os.path.join(self.cwd,i)) for i in meta]): 
+				if not all([os.path.isfile(i) for i in meta]): 
 					raise Exception('received invalid meta files in a list')
 				specs_files = meta
 		if not specs_files: 
@@ -852,15 +859,17 @@ class WorkSpace:
 		"""
 		#---get the calculations from the plot dictionary in the meta files
 		plot_spec = self.plots.get(plotname,None)
+		if type(plot_spec['calculation']) in str_types:
+			calcs = {plot_spec['calculation']:self.calcs[plot_spec['calculation']]}
 		#---loop over calculations in the plot
-		if type(plot_spec['calculation'])!=dict: raise Exception('dev')
-		calcs = plot_spec['calculation']
+		elif type(plot_spec['calculation'])!=dict: raise Exception('dev')
+		else: calcs = plot_spec['calculation']
 		#---cache the upstream jobs for all calculations
 		upstream_jobs = self.prepare_calculations(calcnames=calcs.keys())
 		#---data indexed by calculation name then simulation name
 		data = dict([(calc_name,{}) for calc_name in calcs.keys()])
 		#---loop over calculations and dig up the right ones
-		for calc_name,specs in plot_spec['calculation'].items():
+		for calc_name,specs in calcs.items():
 			calc = self.calc_meta.find_calculation(calc_name,specs)
 			#---! correct to loop over this? is this set by the plotname?
 			for sn in self.sns():
@@ -875,8 +884,8 @@ class WorkSpace:
 						cwd=self.paths['post_data_spot'])}
 		#---previous codes expect specs to hold the specs in the calcs from plotload
 		calcs_reform = dict([(c,{'specs':v}) for c,v in calcs.items()])
-		return data,calcs_reform
-
+		if len(calcs.keys())==1: return data[calcs.keys()[0]],calcs_reform[calcs.keys()[0]]
+		else: return data,calcs_reform
 
 	def plotload_manual(self,calcname,specs):
 		"""

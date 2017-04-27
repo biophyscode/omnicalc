@@ -603,8 +603,9 @@ class CalcMeta:
 						'the first specs of the toc for this calculation is: %s'%self.toc[name][0].specs)
 				else: print('[WARNING] here is a hint because we are excepting soon: there are no calcs')
 				raise Exception('failed to find calculation %s with specs %s in the CalcMeta'%(name,specs)+
-					'. it is likely that you need to *be more specific* (found %d then %d matches)'%(
-						match_len_first,len(matches)))
+					'. it is likely that you need to *be more specific* (found %d then %d matches). '%
+					(match_len_first,len(matches))+
+					'remember that you can specify calculation specs as a dictionary in the plot request')
 
 	def find_calculation_internallywise_DEPRECATED_I_THINK(self,calcname,**kwargs):
 		"""

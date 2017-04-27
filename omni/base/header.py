@@ -1,7 +1,6 @@
 #!/bin/bash
 "exec" "python" "-iB" "$0" "$@"
 
-
 __doc__ = """
 PLOTTING HEADER
 Header file which runs automatically before any plotting.
@@ -42,6 +41,7 @@ from makeface import tracebacker
 import numpy as np
 
 #---plot scripts with special names
+#---! deprecated!
 if run_type=='plot':
 	for fn in ['figures','colors']:
 		if os.path.isfile(os.path.join('calcs','specs',fn+'.py')):
@@ -49,6 +49,15 @@ if run_type=='plot':
 
 #---flag for IPython notebook use
 is_live = False
+
+#---custom art director
+from plotter.art_director_importer import import_art_director
+art_director = work.vars.get('art_director',None)
+if art_director: 
+	art_vars = import_art_director(art_director,cwd='calcs')
+	#---unpack these into global
+	for key,val in art_vars.items(): globals()[key] = val
+del art_director,art_vars
 
 def replot():
 	"""

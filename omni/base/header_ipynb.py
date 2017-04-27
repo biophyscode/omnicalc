@@ -35,10 +35,27 @@ from plotter.panels import panelplot
 from makeface import tracebacker
 import numpy as np
 
+#---! deprecated!
 for fn in ['figures','colors']:
 	if os.path.isfile(os.path.join('calcs','specs',fn+'.py')):
 		with open(os.path.join('calcs','specs',fn+'.py')) as fp: exec(fp.read())
 
+#---! make a link to the art file
+#---! figure out how to reload the art file after user makes changes *without* having to shutdown the notebook
+
+#---custom art director
+from plotter.art_director_importer import import_art_director
+art_director = work.vars.get('art_director',None)
+if art_director: 
+	#---reload the art settings if they are already loaded
+	mod_name = re.match('^(.+)\.py$',os.path.basename(art_director)).group(1)
+	if mod_name in sys.modules: reload(sys.modules[mod_name])
+	art_vars = import_art_director(art_director,cwd='../calcs')
+	#---unpack these into global
+	for key,val in art_vars.items(): globals()[key] = val
+del art_director,art_vars
+
+#---decorate picturesave so plots are visible in the notebook
 picturesave_omni = picturesave
 def picturesave(*args,**kwargs):
 	plt.show()

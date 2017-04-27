@@ -115,7 +115,7 @@ def plotload(plotname,specfile=None,choice_override=None,use_group=False):
 	Wrapper around WorkSpace.plotload method for backwards compatibility with plot scripts, which 
 	expect to find this function in globals to get data.
 	"""
-	data,calc = work.plotload(plotname)
+	data,calc = work.plotload3(plotname)
 	return data,calc
 
 def datmerge(kwargs,name,key,same=False):

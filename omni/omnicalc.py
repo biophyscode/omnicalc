@@ -169,6 +169,12 @@ class WorkSpace:
 		self.vars['collections'] = specs['collections']
 		#---expose the plots
 		self.plots = specs['plots']
+		#---plots can be aliased to themselves
+		for key,val in self.plots.items():
+			if type(val) in str_types: 
+				if key not in self.plots:
+					raise Exception('plot alias from %s to %s is invalid'%(key,val))
+				else: self.plots[key] = copy.deepcopy(self.plots[val])
 		self.plotdir = self.paths['post_plot_spot']
 		return specs_unpacked
 
@@ -683,7 +689,8 @@ class WorkSpace:
 		! Get this out of the workspace.
 		"""
 		plots = self.specs['plots']
-		if plotname not in plots: raise Exception('cannot find plot %s in the specs files'%plotname)
+		if plotname not in plots: 
+			raise Exception('cannot find plot %s in the plots section of the meta files'%plotname)
 		plotspec = plots[plotname]
 		#---we hard-code the plot script naming convention here
 		script_name = self.find_script('plot-%s'%plotname)
@@ -864,6 +871,8 @@ class WorkSpace:
 		"""
 		#---get the calculations from the plot dictionary in the meta files
 		plot_spec = self.plots.get(plotname,None)
+		if not plot_spec: 
+			import ipdb;ipdb.set_trace()
 		if type(plot_spec['calculation']) in str_types:
 			calcs = {plot_spec['calculation']:self.calcs[plot_spec['calculation']]}
 		#---loop over calculations in the plot

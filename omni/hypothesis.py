@@ -54,3 +54,11 @@ def hypothesis(sweep,default=None):
 		#---once we set all the values, the hypothesis is ready
 		hypotheses.append(newhypo)	
 	return hypotheses
+
+def sweeper(**kwargs):
+	"""
+	A simple method for sweeping many parameters. Provides a simple interface to the hypothesis function
+	but does not allow arbitrary nested dictionaries. Instead of supplying explicit routes and values, the
+	keys in kwargs are the routes (hence only one is possible).
+	"""
+	return hypothesis([dict(route=[key],values=val) for key,val in kwargs.items()])

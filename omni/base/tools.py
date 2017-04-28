@@ -54,7 +54,8 @@ def str_or_list(incoming):
 	elif type(incoming)!=list: raise Exception('str_or_list received neither a string nor a list')
 	else: return incoming
 
-def status(string,i=0,looplen=None,bar_character=None,width=25,tag='',start=None,pad=None):
+def status(string,i=0,looplen=None,bar_character=None,width=None,spacer='.',
+	bar_width=25,tag='',start=None,pad=None):
 	"""
 	Show a status bar and counter for a fixed-length operation.
 	Taken from AUTOMACS to work in python 2 and 3.
@@ -69,6 +70,7 @@ def status(string,i=0,looplen=None,bar_character=None,width=25,tag='',start=None
 		left,right,bb = u'\u2590',u'\u258C',(u'\u2592' if bar_character==None else bar_character)
 	else: left,right,bb = '|','|','='
 	string = '[%s] '%tag.upper()+string if tag != '' else string
+	if width: string = string.ljust(width,spacer)
 	if pad: string = ('%-'+str(int(pad))+'s')%string
 	if not looplen:
 		if not logfile: sys.stdout.write(string+'\n')
@@ -79,10 +81,11 @@ def status(string,i=0,looplen=None,bar_character=None,width=25,tag='',start=None
 		if start != None:
 			esttime = (time.time()-start)/(float(i+1)/looplen)
 			timestring = ' %s minutes'%str(abs(round((esttime-(time.time()-start))/60.,1)))
-			width = 15
+			bar_width = 15
 		else: timestring = ''
 		countstring = str(i+1)+'/'+str(looplen)
-		bar = ' %s%s%s '%(left,int(width*(i+1)/looplen)*bb+' '*(width-int(width*(i+1)/looplen)),right)
+		bar = ' %s%s%s '%(left,int(bar_width*(i+1)/looplen)*bb+' '*\
+			(bar_width-int(bar_width*(i+1)/looplen)),right)
 		if not logfile: 
 			output = u'\r'+string+bar+countstring+timestring+' '
 			if sys.version_info<(3,0): output = output.encode('utf-8')

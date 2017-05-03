@@ -26,7 +26,7 @@ The returned axes object only requires two indices: the outside index and the in
 If there is only one outer object (e.g. 'out':{'grid':[2,1]}) then you do not need the outside index number.
 """
 
-def panelplot(layout=None,figsize=(8,8)):
+def panelplot(layout=None,figsize=(8,8),explicit_indexing=False):
 	"""
 	Nested panel plots.
 	"""
@@ -53,4 +53,4 @@ def panelplot(layout=None,figsize=(8,8)):
 		inaxs = [fig.add_subplot(j) for j in inner_grid]
 		axpos.append(list(itertools.product(*[np.arange(i) for i in lay_ins[ii]['grid']])))
 		axes.append(inaxs)
-	return (axes[0] if len(axes)==1 else axes,fig)
+	return (axes[0] if len(axes)==1 and not explicit_indexing else axes,fig)

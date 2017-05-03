@@ -47,9 +47,9 @@ for fn in ['figures','colors']:
 from plotter.art_director_importer import import_art_director,protected_art_words
 art_director = work.vars.get('art_director',None)
 if art_director: 
-	import ipdb;ipdb.set_trace()
 	#---reload the art settings if they are already loaded
 	mod_name = re.match('^(.+)\.py$',os.path.basename(art_director)).group(1)
+	############## PROBLEM!!!!!!!
 	if mod_name in sys.modules: reload(sys.modules[mod_name])
 	art_vars = import_art_director(art_director,cwd='../calcs')
 	#---unpack these into global

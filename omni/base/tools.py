@@ -70,7 +70,7 @@ def status(string,i=0,looplen=None,bar_character=None,width=None,spacer='.',
 		left,right,bb = u'\u2590',u'\u258C',(u'\u2592' if bar_character==None else bar_character)
 	else: left,right,bb = '|','|','='
 	string = '[%s] '%tag.upper()+string if tag != '' else string
-	if width: string = string.ljust(width,spacer)
+	if width: string = string.ljust(width,spacer)[:width]
 	if pad: string = ('%-'+str(int(pad))+'s')%string
 	if not looplen:
 		if not logfile: sys.stdout.write(string+'\n')

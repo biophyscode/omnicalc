@@ -156,7 +156,7 @@ class PostDat(NamingConvention):
 		#---master classification loop
 		while self.stable: 
 			name = self.stable.pop()
-			status(name,tag='import',i=nfiles-len(self.stable),looplen=nfiles+1,bar_width=10,width=65)
+			status(name,tag='import',i=nfiles-len(self.stable),looplen=nfiles,bar_width=10,width=65)
 			#---interpret the name
 			namedat = self.interpret_name(name)
 			if not namedat: 
@@ -470,6 +470,8 @@ class CalcMeta:
 			else:
 				#---previously we required that `i.stub['specs']==val` but this is too strict
 				#---! val cannot be None below??
+				if key not in self.toc: 
+					raise Exception('searching upstream data and cannot find calculation %s'%key)
 				try: matches = [i for ii,i in enumerate(self.toc[key]) 
 					if val!=None and val.viewitems()<=i.stub['specs'].viewitems()]
 				except: 

@@ -176,6 +176,7 @@ class WorkSpace:
 					raise Exception('plot alias from %s to %s is invalid'%(key,val))
 				else: self.plots[key] = copy.deepcopy(self.plots[val])
 		self.plotdir = self.paths['post_plot_spot']
+		self.postdir = self.paths['post_data_spot']
 		return specs_unpacked
 
 	def infer_calculation_order(self):
@@ -275,6 +276,26 @@ class WorkSpace:
 		#---manually import the function
 		return search[0]
 
+	def attach_standard_tools(self,mod):
+		"""
+		Send standard tools to the calculation functions.
+		"""
+		#---! under development
+		#---MASTER LISTING OF STANDARD TOOLS
+		#---MDAnalysis
+		import MDAnalysis
+		mod.MDAnalysis = MDAnalysis
+		#---looping tools
+		from base.tools import status,framelooper
+		mod.status = status
+		mod.framelooper = framelooper
+		#---parallel processing
+		from joblib import Parallel,delayed
+		from joblib.pool import has_shareable_memory
+		mod.Parallel = Parallel
+		mod.delayed = delayed
+		mod.has_shareable_memory = has_shareable_memory
+
 	def get_calculation_function(self,calcname):
 		"""
 		Search the calcs subdirectory for a calculation function.
@@ -285,6 +306,8 @@ class WorkSpace:
 		#---! needs python3
 		sys.path.insert(0,os.path.dirname(script_name))
 		mod = __import__(re.sub('\.py$','',os.path.basename(script_name)),locals(),globals())
+		#---attach standard tools
+		self.attach_standard_tools(mod)
 		if not hasattr(mod,calcname): raise Exception(('performing calculation "%s" and we found '+
 			'%s but it does not contain a function named %s')%(calcame,script_name,calcname))
 		return getattr(mod,calcname)
@@ -557,7 +580,7 @@ class WorkSpace:
 			if not job.result:
 				post = DatSpec(job=job)
 				tasks.append((post.basename(),{'post':post,'job':job}))
-		if confirm:
+		if confirm and len(tasks)>0:
 			print('[NOTE] there are %d pending jobs'%len(pending))
 			print('[QUESTION] okay to continue?')
 			import ipdb;ipdb.set_trace()
@@ -923,7 +946,10 @@ class WorkSpace:
 		"""
 		if not self.plot_status:
 			raise Exception('you can only call WorkSpace.sns if you are plot')
-		collections = str_or_list(self.plots[self.plot_status]['collections'])
+		#---consult the calculation if the plot does no specify collections
+		if self.plot_status not in self.plots or 'collections' not in self.plots[self.plot_status]:
+			collections = str_or_list(self.calcs[self.plot_status]['collections'])
+		else: collections = str_or_list(self.plots[self.plot_status]['collections'])
 		sns = sorted(list(set([i for j in [self.vars['collections'][k] 
 			for k in collections] for i in j])))
 		return sns

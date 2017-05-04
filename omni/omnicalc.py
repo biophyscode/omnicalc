@@ -385,6 +385,8 @@ class WorkSpace:
 		sn = back_namer[calc['slice']['short_name']]
 		calcname = calc['calc']['calc_name']
 		pbc = self.slices[sn]['slices'][self.calcs[calcname]['slice_name']]['pbc']
+		#except:
+		#	import pdb;pdb.set_trace()
 		return pbc
 
 	def chase_upstream(self,specs,warn=False):

@@ -32,7 +32,7 @@ class WorkSpace:
 	nprocs = 4
 
 	def __init__(self,plot=None,plot_call=False,pipeline=None,meta=None,
-		confirm_compute=False,cwd=None):
+		confirm_compute=False,cwd=None,do_slices=True):
 		"""
 		Prepare the workspace.
 		"""
@@ -76,7 +76,7 @@ class WorkSpace:
 		#---catalog post-processing data
 		self.postdat = PostDat(where=self.config.get('post_data_spot',None),namer=self.namer,work=self)
 		#---catalog slice requests from the metadata
-		self.slice_meta = SliceMeta(self.slices,work=self)
+		self.slice_meta = SliceMeta(self.slices,work=self,do_slices=do_slices)
 		#---get the right calculation order
 		self.calc_order = self.infer_calculation_order()
 		#---plot and pipeline skip calculations and call the target script
@@ -94,6 +94,30 @@ class WorkSpace:
 		"""
 		#---! note that this is self-referential
 		self.raw = ParsedRawData(work=self)
+		#---loop over edr spots
+		sns = []
+		for spotname in [k for k in self.raw.spots if k[1]=='edr']:
+			for key in self.raw.toc[spotname].keys(): sns.append(key)
+		#---add timeseries to the toc
+		for ss,sn in enumerate(sns): 
+			status('reading EDR to collect times for %s'%sn,i=ss,looplen=len(sns),tag='read',width=65)
+			self.raw.get_timeseries(sn)
+
+	def times(self):
+		"""
+		Useful via `make look times`. Shows all of the edr times.
+		"""
+		self.get_importer()
+		view_od = [(k,v) 
+			for spotname in [k for k in self.raw.spots if k[1]=='edr']
+			for k,v in self.raw.toc[spotname].items()]
+		from datapack import asciitree
+		view = dict([(name,[(
+			'%s%s-%s'%k+' part%s: %s%s'%(
+			i,str(round(j['start'],2)).rjust(12,'.'),str(round(j['stop'],2)).rjust(12,'.'))) 
+			for k,v in obj.items() for i,j in v.items()]) for name,obj in view_od])
+		asciitree(view)
+		return view
 
 	def variable_unpacker(self,specs):
 		"""

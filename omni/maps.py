@@ -206,7 +206,7 @@ class PostDat(NamingConvention):
 		this_suffix = re.match('^.+\.(%s)$'%'|'.join(pair),name).group(1)
 		basename = re.sub('\.(%s)$'%'|'.join(pair),'',name)
 		twin = basename+'.%s'%dict([pair,pair[::-1]])[this_suffix]
-		if twin not in self.stable: raise Exception('cannot find the twin %s of %s. '%(pair,name)+
+		if twin not in self.stable: raise Exception('cannot find the twin %s of %s ... '%(pair,name)+
 			'this is typically due to a past failure to write these files together. '+
 			'we recommend deleting the existing file (and fix the upstream error) to continue.')
 		else: self.stable.remove(twin)
@@ -534,6 +534,7 @@ class SliceMeta:
 		This function mostly inverts the structure of the metadata, where the slices dictionary is indexed
 		first by simulation name, then by type.
 		"""
+		self.do_slices = kwargs.pop('do_slices',True)
 		self.work = kwargs.pop('work',None)
 		if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
 		#---first we parse the meta (the slices dictionary from the metadata) into a dictionary
@@ -602,7 +603,7 @@ class SliceMeta:
 				self.slices[sn][(slice_name,group_name)].slice_name = slice_name
 				self.slices[sn][(slice_name,group_name)].group = group_name
 		#---any slices which are not available are sent to the slicer
-		if needs_slices:
+		if needs_slices and self.do_slices:
 			print('[NOTE] there are %d slices we must make'%len(needs_slices))
 			#---PARSE THE SPOTS HERE
 			#---! fix this so the parsed spots are saved somewhere?
@@ -617,6 +618,8 @@ class SliceMeta:
 				new_slice['traj_keyfinder'] = self.work.raw.keyfinder(
 					(spotname,self.work.raw.trajectory_format))
 			#---make slices
+			#---! note that we make slices if they appear in the slices dictionary, regardless of whether we
+			#---! need them or not. this is somewhat different than the current ethos here in maps.py
 			for ns,new_slice in enumerate(needs_slices):
 				print('[SLICE] making slice %d/%d'%(ns+1,len(needs_slices)))
 				asciitree({'slice':dict([(k,v) for k,v in new_slice.items() 
@@ -665,7 +668,7 @@ class ParsedRawData:
 			if not os.path.isdir(rootdir):
 				raise Exception('\n[ERROR] cannot find root directory %s'%rootdir)
 			for part_name,part_regex in details['regexes']['part'].items():
-				status('parsing part')
+				status('[STATUS] parsing %s'%part_name)
 				spot = (name,part_name)
 				self.toc[spot] = {}
 				self.spots[spot] = {

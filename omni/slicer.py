@@ -254,9 +254,6 @@ def slice_trajectory(**kwargs):
 	
 	#---concatenate remaining steps with no errors
 	valid_parts = range(len(cmdlist))
-	for key in range(len(cmdlist)):
-		with open(postdir+'/log-trjconv-%s'%outfile,'r') as fp: lines = fp.readlines()
-		if any(filter(lambda x:re.search('(F|f)atal error',x),lines)): valid_parts.remove(key)
 	bash(gmxpaths['trjcat']+' -o %s.%s -f '%(outkey,output_format)+
 		' '.join(zip(*cmdlist)[0]),cwd=postdir)
 

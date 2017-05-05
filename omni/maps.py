@@ -159,7 +159,8 @@ class PostDat(NamingConvention):
 		#---! weird reference to the workspace namer?
 		if namer: self.namer = namer
 		self.toc = {}
-		nfiles,nchars = len(self.stable),max([len(j) for j in self.stable])
+		if not self.stable: nfiles,nchars = 0,0
+		else: nfiles,nchars = len(self.stable),max([len(j) for j in self.stable])
 		#---master classification loop
 		while self.stable: 
 			name = self.stable.pop()
@@ -664,6 +665,7 @@ class ParsedRawData:
 			if not os.path.isdir(rootdir):
 				raise Exception('\n[ERROR] cannot find root directory %s'%rootdir)
 			for part_name,part_regex in details['regexes']['part'].items():
+				status('parsing part')
 				spot = (name,part_name)
 				self.toc[spot] = {}
 				self.spots[spot] = {

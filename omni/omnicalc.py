@@ -5,7 +5,8 @@ from config import read_config,bash
 
 from base.tools import catalog,delve,str_or_list,status
 from base.hypothesis import hypothesis
-from maps import NamingConvention,PostDat,ComputeJob,Calculation,Slice,SliceMeta,DatSpec,CalcMeta
+from maps import NamingConvention,PostDat,ComputeJob,Calculation
+from maps import Slice,SliceMeta,DatSpec,CalcMeta,ParsedRawData
 from datapack import asciitree,delve,delveset
 #---typical first encounger with super-python reqs so we warn the user if they have no good env yet
 msg_needs_env = ('\n[ERROR] failed to load a key requirement (yaml) '
@@ -87,6 +88,13 @@ class WorkSpace:
 		elif plot: self.plot(plotname=plot,plot_call=plot_call,meta=meta_incoming)
 		elif pipeline: self.pipeline(name=pipeline,plot_call=plot_call,meta=meta_incoming)
 
+	def get_importer(self):
+		"""
+		Development purposes.
+		"""
+		#---! note that this is self-referential
+		self.raw = ParsedRawData(work=self)
+
 	def variable_unpacker(self,specs):
 		"""
 		Internal variable substitutions using the "+" syntax.
@@ -161,14 +169,15 @@ class WorkSpace:
 									'to use one. try the "meta" keyword argument to specify the path '+
 									'to the meta file you want. note meta is "%s"')%(topkey,key,meta))
 		else: raise Exception('\n[ERROR] unclear meta specs merge method %s'%merge_method)
+		if not specs: raise Exception('no metadata have been read. need "collections: {}" at a minimum')
 		self.vars = specs.get('variables',{})
 		specs_unpacked = self.variable_unpacker(specs)
 		self.meta = specs.get('meta',{})
 		#---for backwards compatibility we put collections in vars
 		if 'collections' in self.vars: raise Exception('collection already in vars')
-		self.vars['collections'] = specs['collections']
+		self.vars['collections'] = specs.get('collections',{})
 		#---expose the plots
-		self.plots = specs['plots']
+		self.plots = specs.get('plots',{})
 		#---plots can be aliased to themselves
 		for key,val in self.plots.items():
 			if type(val) in str_types: 

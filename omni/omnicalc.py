@@ -205,51 +205,6 @@ class WorkSpace:
 				raise Exception('possibly loop in your graph of dependent calculations')
 		return calckeys
 
-	def unroll_loops_MOVED(self,details,return_stubs=False):
-		"""
-		The jobs list may contain loops. We "unroll" them here.
-		"""
-		#---this loop interpreter allows for a loop key at any point over specs in list or dict
-		#---trim a copy of the specs so all loop keys are terminal
-		details_trim = copy.deepcopy(details)
-		#---get all paths to a loop
-		nonterm_paths = list([tuple(j) for j in set([tuple(i[:i.index('loop')+1]) 
-			for i,j in catalog(details_trim) if 'loop' in i[:-1]])])
-		#---some loops end in a list instead of a sub-dictionary
-		nonterm_paths_list = list([tuple(j) for j in set([tuple(i[:i.index('loop')+1]) 
-			for i,j in catalog(details_trim) if i[-1]=='loop'])])
-		#---for each non-terminal path we save everything below and replace it with a key
-		nonterms = []
-		for path in nonterm_paths:
-			base = copy.deepcopy(delve(details_trim,*path[:-1]))
-			nonterms.append(base['loop'])
-			pivot = delve(details_trim,*path[:-1])
-			pivot['loop'] = base['loop'].keys()
-		#---hypothesize over the reduced specifications dictionary
-		sweeps = [{'route':i[:-1],'values':j} for i,j in catalog(details_trim) if 'loop' in i]
-		#---! note that you cannot have loops within loops (yet?) but this would be the right place for it
-		if sweeps == []: new_calcs = [copy.deepcopy(details)]
-		else: new_calcs = hypothesis(sweeps,default=details_trim)
-		new_calcs_stubs = copy.deepcopy(new_calcs)
-		#---replace non-terminal loop paths with their downstream dictionaries
-		for ii,i in enumerate(nonterms):
-			for nc in new_calcs:
-				downkey = delve(nc,*nonterm_paths[ii][:-1])
-				upkey = nonterm_paths[ii][-2]
-				point = delve(nc,*nonterm_paths[ii][:-2])
-				point[upkey] = nonterms[ii][downkey]
-		#---loops over lists (instead of dictionaries) carry along the entire loop which most be removed
-		for ii,i in enumerate(nonterm_paths_list):
-			for nc in new_calcs: 
-				#---! this section is supposed to excise the redundant "loop" list if it still exists
-				#---! however the PPI project had calculation metadata that didn't require it so we just try
-				try:
-					pivot = delve(nc,*i[:-2]) if len(i)>2 else nc
-					val = delve(nc,*i[:-1])[i[-2]]
-					pivot[i[-2]] = val
-				except: pass
-		return new_calcs if not return_stubs else (new_calcs,new_calcs_stubs)
-
 	def get_simulations_in_collection(self,*names):
 		"""
 		Read a collections list.
@@ -330,6 +285,7 @@ class WorkSpace:
 
 	def infer_group(self,calc):
 		"""
+		Figure out groups for a downstream calculation.
 		"""
 		if type(calc)==dict:
 			#---failed recursion method
@@ -377,6 +333,7 @@ class WorkSpace:
 
 	def infer_pbc(self,calc):
 		"""
+		Figure out PBC condition for a downstream calculation.
 		"""
 		back_namer = dict([(self.namer.short_namer(key),key) for key in self.slices.keys()])
 		if calc['slice']['short_name'] not in back_namer:
@@ -418,59 +375,6 @@ class WorkSpace:
 			if specs['upstream']: raise Exception('failed to clear upstream')
 			else: del specs['upstream']
 
-	def chase_upstream_newish(self,specs,warn=False):
-		"""
-		"""
-		refolded = {}
-		unfolded = list(catalog(specs))
-		for keylist,child_val in unfolded:
-			if 'upstream' not in keylist: delveset(refolded,*keylist,value=child_val)
-			elif 'upstream' in keylist and child_val==None: continue
-			else:
-				#---get the positions where we have an 'upstream'
-				ups_inds = [ii for ii,i in enumerate(keylist) if i=='upstream']
-				#---make sure they are above something in the dictionary
-				if not all([len(keylist)>ii+1 and keylist[ii+1]!='upstream' for ii in ups_inds]):
-					raise Exception('incorrect use of "upstream"')
-				#---not sure how to handle raw specs in the upstream nesting
-				if type(child_val) not in str_types: raise Exception('dev')
-				#---we work backwards through the list of upstream signifiers
-				for pivot in ups_inds[::-1]:
-					#---at each encounter with "upstream" we find the upstream calculation
-					#---! and hold it?
-					calcname,keyword = keylist[pivot+1:]
-					#---currently we expect all "upstream" references point to keywords that lie inside a
-					#---...loop section of another calculation (however we could also try to make this
-					#---...fully explicit). so we do not "unroll" the loop and instead use the keyword
-					if calcname not in self.calcs: 
-						raise Exception('searching for upstream data for spec "%s" '%specs+
-							'but calculation %s is not in the metadata'%calcname)
-					if 'specs' not in self.calcs[calcname]:
-						raise Exception('searching for upstream data for spec "%s" '%specs+
-							'and the calculation %s has no specs in the metadata'%calcname)
-					if keyword not in self.calcs[calcname]['specs']:
-						raise Exception('searching for upstream data for spec "%s" '%specs+
-							'and the calculation %s has no spec named %s in the metadata'%(calcname,keyword))
-					if keyword not in self.calcs[calcname]['specs']:
-						raise Exception('searching for upstream data for spec "%s" '%specs+
-							'and we cannot find the loop keyword under %s,%s '%(calcname,keyword)+
-							'DEVNOTE: this is a development opportunity. associate-by-value instead of '+
-							'just associate-by-reference!')
-					if not child_val in self.calcs[calcname]['specs'][keyword]['loop']:
-						raise Exception('searching for upstream data for spec "%s" '%specs+
-							'and we could not find the reference %s in the loop for %s,%s'%(
-							child_val,calcname,keyword))
-					expansion = self.calcs[calcname]['specs'][keyword]['loop'][child_val]
-					refolded.update(**expansion)
-					#self.calcs[calcname]['specs'][keyword]
-					#[item for item in self.unroll_loops(self.calcs[calcname]) if keyword in item['specs']]
-				import ipdb;ipdb.set_trace()
-				#---work up from the leaf of the tree
-				#for pivot in ups_inds[::-1]:
-				#	keys_not_upstream = [i for i in self.calcs[keylist[pivot+1]]['specs'] if i!='upstream']
-				#	import ipdb;ipdb.set_trace()
-				#---convert the upstream commands into instructions
-				
 	def store(self,obj,name,path,attrs=None,print_types=False,verbose=True):
 		"""
 		Use h5py to store a dictionary of data.
@@ -525,24 +429,6 @@ class WorkSpace:
 				#---group is absent if this is a downstream calculation
 				if not group:
 					group = self.infer_group(calc)
-				#---put everything in a calculation
-
-
-				#---note that the calc object here includes the specs with out expansions
-				#---...but they can be cross-referenced back to the stub to get the full calculation specs
-				#import ipdb;ipdb.set_trace()
-				####### YOU ARE HERE NOW. somehow 
-				"""
-				you need to get the calculation-metacalc pair from self.calc_meta
-				then later you check incoming calcs from datspec files against e.g. calc_meta if they are 
-				legacy.
-				"""
-				#import ipdb;ipdb.set_trace()
-				#---get the calculation from the master listing in the CalcMeta class
-				#...???
-				#this_calculation = Calculation(work=self,name=calckey,group=group,
-				#	**dict([(i,j) for i,j in calc.items() if i!='group']))
-
 				#---loop over simulations
 				for sn in sns:
 					#---! previously: prepare a slice according to the specification in the calculation
@@ -564,6 +450,7 @@ class WorkSpace:
 
 	def job_print(self,job):
 		"""
+		Describe the job.
 		"""
 		asciitree({job.sn:dict(**{job.calc.name:dict(
 			specs=job.calc.specs['specs'],slice=job.slice.flat())})})
@@ -703,6 +590,7 @@ class WorkSpace:
 
 	def show_specs(self):
 		"""
+		Print specs.
 		"""
 		asciitree(dict([(key,val.specs['specs']) for key,val in self.postdat.posts().items()]))
 
@@ -766,131 +654,7 @@ class WorkSpace:
 
 	def plotload(self,plotname):
 		"""
-		"""
-		#---get the calculations from the plot dictionary in the meta files
-		plot_spec = self.plots.get(plotname,None)
-		if not plot_spec: 
-			raise Exception('cannot find plot %s in the plots section of the meta files'%plotname)
-		calcnames = str_or_list(plot_spec['calculation'])
-		#---instead of repeating the logic, we run the calculation prep to get the jobs out
-		#---...this mimics the upstream_jobs section of compute_single above
-		upstream_jobs = self.prepare_calculations(calcnames=calcnames)
-		if any([not j.result for j in upstream_jobs]):
-			#---! this exception does not route through tracebacker because we call python with bash in plot
-			raise Exception('at least one of the jobs is missing a result. did you forget `make compute`?')
-
-		#---load the data
-		#data = dict([(sn,{}) for sn in sorted(list(set([j.sn for j in upstream_jobs])))])
-		#---check for redundant incoming data, in which case the user needs to intervene in the plot meta.
-		#---...we always loop over self.sns because it provides the simulations for this plot
-
-		#---use the calculation finder to get the right calc
-		#---! RYAN YOU HAVE TO ALLOW NO SPECS IN THE PLOT. TEST THIS !!!!!!!!!!!!!!!!!!
-		#---! ... find_calculation needs a calculation, but calcnames may be longer than 1. DEVELOP THAT!
-		#if len(calcnames)>1: 
-		#	import ipdb;ipdb.set_trace()
-		#	raise Exception('development error. need multiple calcs for a plot')
-		#else: calcname = calcnames[0]
-		#---! this is the part where we treat plots like calculations to get the right upstream data
-		#---! note that the return below uses calcname as well!
-		#---! moved below 
-		#calc = self.calc_meta.find_calculation(calcname,plot_spec.get('specs',{}))
-
-		#---prepare the outgoing data in data, indexed by calcname, but elevate it if only one, at the end
-		data = dict([(calcname,dict([(sn,{}) for sn in self.sns()])) for calcname in calcnames])
-		#---loop over data for each calculation
-		for calcname in calcnames:
-			calc = self.calc_meta.find_calculation(calcname,plot_spec.get('specs',{}))
-			for snum,sn in enumerate(self.sns()):
-				job_filter = [j for j in upstream_jobs if j.calc==calc and j.sn==sn]
-				if len(job_filter)>1: raise Exception('multiple upstream jobs for plot %s and simulation %s. '%(
-					plotname,sn)+'remember that plots resemble calculations. upstream loops require you to '+
-					'specify the keyword for the item in the loop that you want.')
-				elif len(job_filter)==0: 
-					raise Exception('cannot locate upstream job for plot %s and simulation %s'%(plotname,sn))
-				upstream_job = job_filter[0]
-				status('reading %s'%self.postdat.toc[upstream_job.result].files['dat'],
-					tag='load',i=snum,looplen=len(self.sns()))
-				data[calcname][upstream_job.sn]['data'] = self.load(
-					name=self.postdat.toc[upstream_job.result].files['dat'],
-					cwd=self.paths['post_data_spot'])
-
-		#---! NEED TO DO SELECTIONS HERE. RYAN DO THIS FOR LIPID AREAS ASAP!
-		if False:
-			for unum,upstream_job in enumerate(upstream_jobs):
-				status('reading %s\n'%self.postdat.toc[upstream_job.result].files['dat'],
-					tag='load',i=unum,looplen=len(upstream_jobs))
-				data[upstream_job.sn]['data'] = self.load(
-					name=self.postdat.toc[upstream_job.result].files['dat'],
-					cwd=self.paths['post_data_spot'])
-
-		#---for backwards compatibility we always send data with the plot spec however this is redundant
-		#---! the plot spec points to the upstream data but they are always accessible in the workspace
-		if len(calcnames)==1: return data[calcnames[0]],self.calcs[calcname]
-		#---if we have multiple calcnames we send the data in a dictionary otherwise we promote
-		else: return data,self.calcs
-
-
-	def plotload2(self,plotname):
-		"""
-		"""
-		#---get the calculations from the plot dictionary in the meta files
-		plot_spec = self.plots.get(plotname,None)
-
-		#---!!!!!!!!!!!
-		plots_with_calcs = copy.deepcopy(self.calcs)
-		plots_with_calcs.update(**self.plots)
-		plot_meta = CalcMeta(plots_with_calcs,work=self)
-		#import ipdb;ipdb.set_trace()
-
-		if not plot_spec: 
-			raise Exception('cannot find plot %s in the plots section of the meta files'%plotname)
-		calcnames = str_or_list(plot_spec['calculation'])
-		#---instead of repeating the logic, we run the calculation prep to get the jobs out
-		#---...this mimics the upstream_jobs section of compute_single above
-		upstream_jobs = self.prepare_calculations(calcnames=calcnames)
-		if any([not j.result for j in upstream_jobs]):
-			#---! this exception does not route through tracebacker because we call python with bash in plot
-			raise Exception('at least one of the jobs is missing a result. did you forget `make compute`?')
-		#---prepare the outgoing data in data, indexed by calcname, but elevate it if only one, at the end
-		data = dict([(calcname,dict([(sn,{}) for sn in self.sns()])) for calcname in calcnames])
-		#---loop over data for each calculation
-		for calcname in calcnames:
-			#---now search in plot_meta instead of self.calc_meta
-			#calc = plot_meta.find_calculation(calcname,plot_spec.get('specs',{}))
-			calc = self.calc_meta.find_calculation(calcname,plot_spec.get('specs',{}))
-			for snum,sn in enumerate(self.sns()):
-				job_filter = [j for j in upstream_jobs if j.calc==calc and j.sn==sn]
-				if len(job_filter)>1: 
-					raise Exception('multiple upstream jobs for plot %s and simulation %s. '%(
-					plotname,sn)+'remember that plots resemble calculations. upstream loops require you to '+
-					'specify the keyword for the item in the loop that you want.')
-				elif len(job_filter)==0: 
-					import ipdb;ipdb.set_trace()
-					raise Exception('cannot locate upstream job for plot %s and simulation %s'%(plotname,sn)+
-						'. note that the calc.specs is %s'%calc.specs)
-				upstream_job = job_filter[0]
-				status('reading %s'%self.postdat.toc[upstream_job.result].files['dat'],
-					tag='load',i=snum,looplen=len(self.sns()))
-				data[calcname][upstream_job.sn]['data'] = self.load(
-					name=self.postdat.toc[upstream_job.result].files['dat'],
-					cwd=self.paths['post_data_spot'])
-		#---for backwards compatibility we always send data with the plot spec however this is redundant
-		#---! the plot spec points to the upstream data but they are always accessible in the workspace
-		if len(calcnames)==1: return data[calcnames[0]],self.calcs[calcname]
-		#---if we have multiple calcnames we send the data in a dictionary otherwise we promote
-		else: return data,self.calcs
-
-	def plotload3(self,plotname):
-		"""
-		goal: 
-		pseudocode
-			1. get the plot subdictionary
-			2. for each calculation, go get the calculation
-				if specs then expand the calculation
-			3. 
-			end. run self.load with an upstream job which is accurate
-		WHY WUZ THIS SOOO HARD????
+		Get data for plotting programs.
 		"""
 		#---get the calculations from the plot dictionary in the meta files
 		plot_spec = self.plots.get(plotname,None)
@@ -923,21 +687,6 @@ class WorkSpace:
 		calcs_reform = dict([(c,{'specs':v}) for c,v in calcs.items()])
 		if len(calcs.keys())==1: return data[calcs.keys()[0]],calcs_reform[calcs.keys()[0]]
 		else: return data,calcs_reform
-
-	def plotload_manual(self,calcname,specs):
-		"""
-		Temporary fix to manually load the plotload stuff.
-		"""
-		data = {}
-		for snum,sn in enumerate(self.sns()[:1]):
-			upstream_jobs = self.prepare_calculations(calcnames=[calcname])
-			if len(upstream_jobs)!=0:
-				print('oops')
-				import ipdb;ipdb.set_trace()
-			else: job = upstream_jobs[0]
-			data[sn] = self.load(name=self.postdat.toc[job.result].files['dat'],
-				cwd=self.paths['post_data_spot'])
-		import ipdb;ipdb.set_trace()
 
 	def sns(self):
 		"""

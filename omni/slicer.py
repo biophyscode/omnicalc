@@ -139,7 +139,8 @@ def get_gmx_paths(override=False,gmx_series=False,hostname=None):
 	return gmxpaths
 	
 #---get gmxpaths for this module only once
-gmxpaths = get_gmx_paths()
+try: gmxpaths = get_gmx_paths()
+except: pass
 
 def edrcheck(fn,debug=False):
 	"""

@@ -174,7 +174,8 @@ class PostDat(NamingConvention):
 				#---if this is a datspec file we find its pair and read the spec file
 				if namedat['dat_type']=='datspec':
 					basename = self.get_twin(name,('dat','spec'))
-					self.toc[basename] = DatSpec(fn=basename,dn=work.paths['post_data_spot'],work=self.work)
+					this_datspec = DatSpec(fn=basename,dn=work.paths['post_data_spot'],work=self.work)
+					if this_datspec.valid: self.toc[basename] = this_datspec
 				#---everything else must be a slice
 				#---! alternate check for different slice types?
 				else: 
@@ -230,9 +231,12 @@ class DatSpec(NamingConvention):
 		We construct the DatSpec to mirror a completed result on disk OR a job we would like to run.
 		"""
 		self.work = work
+		self.valid = True
 		if fn and job: raise Exception('cannot send specs if you send a file')
 		elif fn and not dn: raise Exception('send the post directory')
-		elif fn and dn: self.from_file(fn,dn)
+		elif fn and dn: 
+			try: self.from_file(fn,dn)
+			except: self.valid = False
 		elif job and fn: raise Exception('cannot send a file if you send specs')
 		elif job: self.from_job(job)
 		else: raise Exception('this class needs a file or a job')

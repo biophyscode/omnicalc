@@ -32,7 +32,7 @@ class WorkSpace:
 	nprocs = 4
 
 	def __init__(self,plot=None,plot_call=False,pipeline=None,meta=None,
-		confirm_compute=False,cwd=None,do_slices=True):
+		confirm_compute=False,cwd=None,do_slices=True,checkup=False):
 		"""
 		Prepare the workspace.
 		"""
@@ -81,12 +81,15 @@ class WorkSpace:
 		self.calc_order = self.infer_calculation_order()
 		#---plot and pipeline skip calculations and call the target script
 		self.plot_status,self.pipeline_status = plot,pipeline
-		if not plot and not pipeline:
+		if not plot and not pipeline and not checkup:
 			#---match calculation codes with target slices
 			self.jobs = self.prepare_calculations()
 			self.compute(confirm=confirm_compute)
 		elif plot: self.plot(plotname=plot,plot_call=plot_call,meta=meta_incoming)
 		elif pipeline: self.pipeline(name=pipeline,plot_call=plot_call,meta=meta_incoming)
+		elif checkup: 
+			self.jobs = self.prepare_calculations()
+			self.compute(checkup=True)
 
 	def get_importer(self):
 		"""
@@ -163,6 +166,8 @@ class WorkSpace:
 				specs_files = meta
 		if not specs_files: 
 			raise Exception('cannot find meta files')
+		#---save the specs files
+		self.specs_files = specs_files
 		allspecs = []
 		for fn in specs_files:
 			with open(fn) as fp: 
@@ -257,7 +262,7 @@ class WorkSpace:
 		fns = []
 		for (dirpath, dirnames, filenames) in os.walk(os.path.join(self.cwd,root)): 
 			fns.extend([dirpath+'/'+fn for fn in filenames])
-		search = [fn for fn in fns if re.match('^%s\.py'%name,os.path.basename(fn))]
+		search = [fn for fn in fns if re.match('^%s\.py$'%name,os.path.basename(fn))]
 		if len(search)==0: 
 			raise Exception('\n[ERROR] cannot find %s.py'%name)
 		elif len(search)>1: raise Exception('\n[ERROR] redundant matches: %s'%str(search))
@@ -490,7 +495,7 @@ class WorkSpace:
 		asciitree({job.sn:dict(**{job.calc.name:dict(
 			specs=job.calc.specs['specs'],slice=job.slice.flat())})})
 
-	def compute(self,confirm=False):
+	def compute(self,confirm=False,checkup=False,cleanup=None):
 		"""
 		Run through computations.
 		"""
@@ -506,11 +511,14 @@ class WorkSpace:
 			print('[NOTE] there are %d pending jobs'%len(pending))
 			print('[QUESTION] okay to continue?')
 			import ipdb;ipdb.set_trace()
-		#---iterate over compute tasks
-		for jnum,(jkey,incoming) in enumerate(tasks):
-			print('[JOB] running calculation job %d/%d'%(jnum+1,len(pending)))
-			self.job_print(incoming['job'])
-			self.compute_single(incoming)
+		#----the collect options is meant to pass tasks back to the factory
+		if checkup: self.tasks = tasks
+		else:
+			#---iterate over compute tasks
+			for jnum,(jkey,incoming) in enumerate(tasks):
+				print('[JOB] running calculation job %d/%d'%(jnum+1,len(pending)))
+				self.job_print(incoming['job'])
+				self.compute_single(incoming)
 
 	def compute_single(self,incoming):
 		"""
@@ -715,6 +723,10 @@ class WorkSpace:
 					import ipdb;ipdb.set_trace()
 				else: 
 					job = job_filter[0]
+					if job.result not in self.postdat.toc:
+						raise Exception(
+							'cannot find calculation result %s in the requested '%job.result+
+							'post-processing data. are you sure that all of your calculations are complete?')
 					data[calc_name][job.sn] = {'data':self.load(
 						name=self.postdat.toc[job.result].files['dat'],
 						cwd=self.paths['post_data_spot'])}
@@ -740,9 +752,10 @@ class WorkSpace:
 
 ###---INTERFACE
 
-def compute(meta=None,confirm=False):
+def compute(meta=None,confirm=False,kill_switch=None):
 	"""
 	Expose the workspace to the command line.
+	Note that the kill_switch is a dummy which is caught by makeface.py.
 	"""
 	work = WorkSpace(meta=meta,confirm_compute=confirm)
 

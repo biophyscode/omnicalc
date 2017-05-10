@@ -12,7 +12,8 @@ checkfile = .pipeline_up_to_date
 protected_targets=
 # pass debug flag for automatic debugging
 PYTHON_DEBUG = "$(shell echo $$PYTHON_DEBUG)"
-python_flags = "-B"
+# unbuffered output is best for factory-calculator log
+python_flags = "-uB"
 
 # filter and evaluate
 MAKEFLAGS += -s

@@ -87,9 +87,12 @@ class WorkSpace:
 			self.compute(confirm=confirm_compute)
 		elif plot: self.plot(plotname=plot,plot_call=plot_call,meta=meta_incoming)
 		elif pipeline: self.pipeline(name=pipeline,plot_call=plot_call,meta=meta_incoming)
+		#---checkup is for the factory to probe the workspace
 		elif checkup: 
-			self.jobs = self.prepare_calculations()
-			self.compute(checkup=True)
+			try: self.jobs = self.prepare_calculations()
+			except: self.jobs = {'error':'error in prepare_calculations'}
+			try: self.compute(checkup=True)
+			except: self.tasks = {'error':'error in compute'}
 
 	def get_importer(self):
 		"""

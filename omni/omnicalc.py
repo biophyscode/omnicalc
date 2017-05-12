@@ -8,13 +8,15 @@ from base.hypothesis import hypothesis
 from maps import NamingConvention,PostDat,ComputeJob,Calculation
 from maps import Slice,SliceMeta,DatSpec,CalcMeta,ParsedRawData
 from datapack import asciitree,delve,delveset
-#---typical first encounger with super-python reqs so we warn the user if they have no good env yet
-msg_needs_env = ('\n[ERROR] failed to load a key requirement (yaml) '
+#---typical first encounter with super-python reqs so we warn the user if they have no good env yet
+#---note that omnicalc now has automatic loading via activate_env
+msg_needs_env = ('\n[WARNING] failed to load a key requirement (yaml) '
 	'which means you probably need to source the environment. '
 	'go to the factory root and run e.g. `source env/bin/activate py2`')
-try: import yaml,h5py
-except: raise Exception(msg_needs_env)
-import numpy as np
+try: 
+	import yaml
+	import numpy as np
+except: print(msg_needs_env)
 
 str_types = [str,unicode] if sys.version_info<(3,0) else [str]
 
@@ -422,6 +424,7 @@ class WorkSpace:
 		"""
 		Use h5py to store a dictionary of data.
 		"""
+		import h5py
 		#---! cannot do unicode in python 3. needs fixed
 		if type(obj) != dict: raise Exception('except: only dictionaries can be stored')
 		if os.path.isfile(path+'/'+name): raise Exception('except: file already exists: '+path+'/'+name)
@@ -677,6 +680,7 @@ class WorkSpace:
 		fn = os.path.join(cwd,name)
 		if not os.path.isfile(fn): raise Exception('[ERROR] failed to load %s'%fn)
 		data = {}
+		import h5py
 		rawdat = h5py.File(fn,'r')
 		for key in [i for i in rawdat if i!='meta']: 
 			if verbose:
@@ -705,6 +709,7 @@ class WorkSpace:
 		#---get the calculations from the plot dictionary in the meta files
 		plot_spec = self.plots.get(plotname,None)
 		if not plot_spec: 
+			raise Exception('no plot spec....')
 			import ipdb;ipdb.set_trace()
 		if type(plot_spec['calculation']) in str_types:
 			calcs = {plot_spec['calculation']:self.calcs[plot_spec['calculation']]}

@@ -24,6 +24,8 @@ class WorkSpace:
 
 	"""
 	User-facing calculation management.
+	Style note: the workspace instance is passed around to many classes in maps.py. The author is aware
+	that this is highly unusual, but it takes the place of a larger, more hierarchical class.
 	"""
 
 	#---hard-coded paths for specs files
@@ -46,7 +48,7 @@ class WorkSpace:
 		self.config = read_config(cwd=self.cwd)
 		#---unpack the paths right into the workspace for calculation functions
 		#---add paths here for backwards compatibility at the plotting stage
-		self.paths = dict([(key,self.config[key]) for key in ['post_plot_spot','post_data_spot']])
+		self.paths = dict([(key,self.config[key]) for key in ['post_plot_spot','post_data_spot','spots']])
 		meta_incoming = meta
 		#---check the config.py for this omnicalc to find restrictions on metafiles
 		#---...note that this allows us to avoid using git branches and the meta flag in the CLI for 
@@ -385,8 +387,6 @@ class WorkSpace:
 		sn = back_namer[calc['slice']['short_name']]
 		calcname = calc['calc']['calc_name']
 		pbc = self.slices[sn]['slices'][self.calcs[calcname]['slice_name']]['pbc']
-		#except:
-		#	import pdb;pdb.set_trace()
 		return pbc
 
 	def chase_upstream(self,specs,warn=False):
@@ -398,13 +398,8 @@ class WorkSpace:
 			sc = specs_cursors.pop()
 			if 'upstream' in sc:
 				for calcname in sc['upstream']:
-					#if calcname=='ion_binding_combinator':
-					#	import ipdb;ipdb.set_trace()
 					if sc['upstream'][calcname]:
-						try:
-							sc['upstream'][calcname].items()
-						except:
-							import ipdb;ipdb.set_trace()
+						sc['upstream'][calcname].items()
 						for key,val in sc['upstream'][calcname].items():
 							if type(val) in str_types:
 								#---! this is pretty crazy. wrote it real fast pattern-matching
@@ -442,7 +437,9 @@ class WorkSpace:
 				obj[key] = obj[key].astype('S')
 			try: dset = fobj.create_dataset(key,data=obj[key])
 			except: 
-				raise Exception("failed to write this object so it's probably not numpy"+
+				#---multidimensional scipy ndarray must be promoted to a proper numpy list
+				try: dset = fobj.create_dataset(key,data=obj[key].tolist())
+				except: raise Exception("failed to write this object so it's probably not numpy"+
 					"\n"+key+' type='+str(type(obj[key]))+' dtype='+str(obj[key].dtype))
 		if attrs != None: fobj.create_dataset('meta',data=np.string_(json.dumps(attrs)))
 		if verbose: status('[WRITING] '+path+'/'+name)
@@ -515,8 +512,8 @@ class WorkSpace:
 				tasks.append((post.basename(),{'post':post,'job':job}))
 		if confirm and len(tasks)>0:
 			print('[NOTE] there are %d pending jobs'%len(pending))
-			print('[QUESTION] okay to continue?')
-			import ipdb;ipdb.set_trace()
+			print('[QUESTION] okay to continue? (you are debuggign so hit \'c\'')
+			import pdb;pdb.set_trace()
 		#----the collect options is meant to pass tasks back to the factory
 		if checkup: self.tasks = tasks
 		else:
@@ -554,6 +551,7 @@ class WorkSpace:
 		#---THE MOST IMPORTANT LINES IN THE WHOLE CODE (here we call the calculation function)
 		if job.calc.specs['uptype']=='simulation':
 			if job.slice.flat()['slice_type']=='standard':
+				self.postdat.toc[job.slice.name].__dict__['namedat']['dat_type']
 				if not self.postdat.toc[job.slice.name].__dict__['namedat']['dat_type']=='gmx':
 					raise Exception('dat_type is not gmx')
 				struct_file,traj_file = [self.postdat.parser[('standard','gmx')]['d2n']%dict(
@@ -709,8 +707,7 @@ class WorkSpace:
 		#---get the calculations from the plot dictionary in the meta files
 		plot_spec = self.plots.get(plotname,None)
 		if not plot_spec: 
-			raise Exception('no plot spec....')
-			import ipdb;ipdb.set_trace()
+			raise Exception('cannot find plot %s in the metadata'%plotname)
 		if type(plot_spec['calculation']) in str_types:
 			calcs = {plot_spec['calculation']:self.calcs[plot_spec['calculation']]}
 		#---loop over calculations in the plot
@@ -727,8 +724,7 @@ class WorkSpace:
 			for sn in self.sns():
 				job_filter = [j for j in upstream_jobs if j.calc==calc and j.sn==sn]
 				if len(job_filter)!=1:
-					print('job_filter fail... ')
-					import ipdb;ipdb.set_trace()
+					raise Exception('job_filter fail')
 				else: 
 					job = job_filter[0]
 					if job.result not in self.postdat.toc:

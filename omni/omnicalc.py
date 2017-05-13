@@ -46,7 +46,8 @@ class WorkSpace:
 		self.config = read_config(cwd=self.cwd)
 		#---unpack the paths right into the workspace for calculation functions
 		#---add paths here for backwards compatibility at the plotting stage
-		self.paths = dict([(key,self.config[key]) for key in ['post_plot_spot','post_data_spot','spots']])
+		self.paths = dict([(key,self.config[key]) for key in ['post_plot_spot','post_data_spot']])
+		self.paths['spots'] = self.config.get('spots',{})
 		meta_incoming = meta
 		#---check the config.py for this omnicalc to find restrictions on metafiles
 		#---...note that this allows us to avoid using git branches and the meta flag in the CLI for 

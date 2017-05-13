@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 import os,sys,re,inspect,subprocess,time,collections,traceback
-import yaml
+try: import yaml
+except: print('[WARNING] no yaml so environment is not ready')
 
 def flatten(k):
 	while any([type(j)==list for j in k]): k = [i for j in k for i in j] 

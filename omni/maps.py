@@ -617,7 +617,8 @@ class SliceMeta:
 				#---...once will cause slices to be written with those names, so you should not change it
 				#---! is this OKAY?
 				short_name = self.work.namer.short_namer(new_slice['sn'])
-				new_slice['sn_prefixed'] = self.work.raw.prefixer(short_name)
+				#new_slice['sn_prefixed'] = self.work.raw.prefixer(short_name)
+				new_slice['sn_prefixed'] = self.work.raw.prefixer(new_slice['sn'])
 				spotname = self.work.raw.spotname_lookup(new_slice['sn'])
 				new_slice['tpr_keyfinder'] = self.work.raw.keyfinder((spotname,'tpr'))
 				new_slice['traj_keyfinder'] = self.work.raw.keyfinder(
@@ -747,9 +748,11 @@ class ParsedRawData:
 		"""
 		#---alias to the shortname (irreversible) here
 		#---! naming is getting convoluted. the following try-except would be hard to debug
-		try: sn = self.work.namer.short_namer(sn_full)
+		#---! try: sn = self.work.namer.short_namer(sn_full)
 		#---failure to run the shortnamer just passes the full simulation name
-		except: sn = sn_full
+		#---! except: sn = self.work.namer.short_namer(sn_full)
+		#---! reverted below and needs tested
+		sn = sn_full
 		assert type(sn)==str
 		spotnames = [key for key,val in self.toc.items() if sn in val]
 		if not spotnames: 
@@ -774,11 +777,11 @@ class ParsedRawData:
 		#---namer takes the spotname (called spot in the yaml defn of namer) and the simulation name
 		#---we include the partname when accessing self.spots
 		try: this_spot = self.spotname_lookup(sn)
-		except: raise Exception('cannot find the spot for %s'%sn)
-		#try:
+		except: 
+			import ipdb;ipdb.set_trace()
+			raise Exception('cannot find the spot for %s'%sn)
 		spot = spotname,partname = (this_spot,self.trajectory_format)
 		prefix = self.spots[spot]['namer'](spotname,sn)
-		#except: raise Exception('[ERROR] prefixer failure on simulation "%s" (check your namer)'%sn)
 		return prefix
 
 	def treeparser(self,spot,**kwargs):

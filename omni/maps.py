@@ -808,8 +808,9 @@ class ParsedRawData:
 		matches = [self.spots[spot]['divy_keys'](i) for i in matches_raw]
 		self.toc[spot] = collections.OrderedDict()
 		#---at this point we apply the irreversible transformation from long simulation names to short ones
-		#---...by using the short namer
-		matches = [(self.work.namer.short_namer(top),step,part) for top,step,part in matches]
+		#---...by using the short namer.
+		#---! removed short_namer on the top below for expedience, but this needs tested and confirmed
+		matches = [(top,step,part) for top,step,part in matches]
 		#---sort the tops into an ordered dictionary
 		for top in sorted(set(zip(*matches)[0])): 
 			self.toc[spot][top] = collections.OrderedDict()
@@ -830,7 +831,9 @@ class ParsedRawData:
 		"""
 		#---we apply the naming transformation to lookup the shortname in the toc, but below we will send out
 		#---...the full name since the purpose of this function is to get filenames on disk for slicing
-		sn = self.work.namer.short_namer(sn_full)
+		#---! removed for expedience: sn = self.work.namer.short_namer(sn_full)
+		#---! ...note that this function is called twice and you need to test against ptdins ...
+		sn = sn_full
 		#---determine the spot, since the simulation could be in multiple spots
 		spot_matches = [spotname for spotname,spot in self.spots.items() 
 			if spotname[1]=='edr' and sn in self.toc[spotname]]

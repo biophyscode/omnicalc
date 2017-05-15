@@ -125,7 +125,8 @@ class WorkSpace:
 		from datapack import asciitree
 		view = dict([(name,[(
 			'%s%s-%s'%k+' part%s: %s%s'%(
-			i,str(round(j['start'],2)).rjust(12,'.'),str(round(j['stop'],2)).rjust(12,'.'))) 
+			i,str(round(j['start'],2)  if j['stop'] else '???').rjust(12,'.'),
+			str(round(j['stop'],2) if j['stop'] else '???').rjust(12,'.'))) 
 			for k,v in obj.items() for i,j in v.items()]) for name,obj in view_od])
 		asciitree(view)
 		return view

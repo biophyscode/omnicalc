@@ -629,7 +629,9 @@ class SliceMeta:
 				#---! ...the check, somewhere in maps.py or omnicalc.py, which prevents redundant simulation
 				#---! ...names, and all internal naming will be unique. also remove this crazy comment.
 				short_name = self.work.namer.short_namer(new_slice['sn'])
-				new_slice['sn_prefixed'] = self.work.raw.prefixer(short_name)
+				#---! LOOK HERE THIS IS A HACK!!!!
+				try: new_slice['sn_prefixed'] = self.work.raw.prefixer(short_name)
+				except: new_slice['sn_prefixed'] = self.work.raw.prefixer(new_slice['sn'])
 				spotname = self.work.raw.spotname_lookup(new_slice['sn'])
 				new_slice['tpr_keyfinder'] = self.work.raw.keyfinder((spotname,'tpr'))
 				new_slice['traj_keyfinder'] = self.work.raw.keyfinder(
@@ -763,7 +765,9 @@ class ParsedRawData:
 		#---failure to run the shortnamer just passes the full simulation name
 		except: sn = sn_full
 		assert type(sn)==str
-		spotnames = [key for key,val in self.toc.items() if sn in val]
+		#---the following or statement allows this to work for both full and short names
+		#---! this needs further testing
+		spotnames = [key for key,val in self.toc.items() if sn in val or sn_full in val]
 		if not spotnames: 
 			#---in case top diverges from prefixer we check the regexes
 			top_regexes = [v['regexes']['top'] for v in self.work.paths['spots'].values()]
@@ -787,10 +791,10 @@ class ParsedRawData:
 		#---we include the partname when accessing self.spots
 		try: this_spot = self.spotname_lookup(sn)
 		except: raise Exception('cannot find the spot for %s'%sn)
-		#try:
-		spot = spotname,partname = (this_spot,self.trajectory_format)
-		prefix = self.spots[spot]['namer'](spotname,sn)
-		#except: raise Exception('[ERROR] prefixer failure on simulation "%s" (check your namer)'%sn)
+		try:
+			spot = spotname,partname = (this_spot,self.trajectory_format)
+			prefix = self.spots[spot]['namer'](spotname,sn)
+		except: raise Exception('[ERROR] prefixer failure on simulation "%s" (check your namer)'%sn)
 		return prefix
 
 	def treeparser(self,spot,**kwargs):
@@ -820,8 +824,9 @@ class ParsedRawData:
 		matches = [self.spots[spot]['divy_keys'](i) for i in matches_raw]
 		self.toc[spot] = collections.OrderedDict()
 		#---at this point we apply the irreversible transformation from long simulation names to short ones
-		#---...by using the short namer
-		matches = [(self.work.namer.short_namer(top),step,part) for top,step,part in matches]
+		#---...by using the short namer.
+		#---! removed short_namer on the top below for expedience, but this needs tested and confirmed
+		matches = [(top,step,part) for top,step,part in matches]
 		#---sort the tops into an ordered dictionary
 		for top in sorted(set(zip(*matches)[0])): 
 			self.toc[spot][top] = collections.OrderedDict()
@@ -842,7 +847,9 @@ class ParsedRawData:
 		"""
 		#---we apply the naming transformation to lookup the shortname in the toc, but below we will send out
 		#---...the full name since the purpose of this function is to get filenames on disk for slicing
-		sn = self.work.namer.short_namer(sn_full)
+		#---! removed for expedience: sn = self.work.namer.short_namer(sn_full)
+		#---! ...note that this function is called twice and you need to test against ptdins ...
+		sn = sn_full
 		#---determine the spot, since the simulation could be in multiple spots
 		spot_matches = [spotname for spotname,spot in self.spots.items() 
 			if spotname[1]=='edr' and sn in self.toc[spotname]]

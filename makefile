@@ -14,6 +14,8 @@ protected_targets=
 PYTHON_DEBUG = "$(shell echo $$PYTHON_DEBUG)"
 # unbuffered output is best for factory-calculator log
 python_flags = "-uB"
+# we need source
+SHELL := /bin/bash
 
 # filter and evaluate
 MAKEFLAGS += -s

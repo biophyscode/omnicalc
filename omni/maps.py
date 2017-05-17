@@ -269,8 +269,6 @@ class DatSpec(NamingConvention):
 			self.specs['slice'].update(slice_type='standard',dat_type='gmx')
 			#---version 2 has a simple calc dictionary
 			self.specs['calc'] = {'calc_name':self.namedat['body']['calc_name']}
-			#---! for some reason short_name is in the top?
-			#self.specs['short_name'] = self.namedat['body']['short_name']
 		#---we fill in groups and pbc for certain slice types
 		if (self.specs['slice']['slice_type']=='standard' and 
 			self.specs['slice']['dat_type']=='gmx' and 
@@ -615,7 +613,21 @@ class SliceMeta:
 				#---...we also use a "shortnamer" if it is found in the meta to simplify names for later
 				#---...the shortnamer is applied here. note that this is irreversible: using the shortnamer
 				#---...once will cause slices to be written with those names, so you should not change it
-				#---! is this OKAY?
+				#---note also that the shortnamer in the meta dictionary of your metadata should be 
+				#---...compatible with the "namer" in the definition of the spot (usually starts in the 
+				#---...factory connection file and is then passed to omnicalc config.py). to recap: the 
+				#---..."namer" with the spot renames incoming data from multiple spots (and takes the spot
+				#---...name as an argument as well). the meta,short_namer in the metadata should mimic this
+				#---...for cases where you import the post with no spots
+				#---! development note: tested three naming conventions on 2017.5.15: ptdins, actinlink, and
+				#---! ...banana with and without the identity function namer. this means that the data are
+				#---! ...all backwards compatible now, however you must modify the short_namer in the meta
+				#---! ...to accept the spotname as well as the simulation name, and tell users that the 
+				#---! ...shortnamer must be compatible with all "namer" functions (a.k.a. the prefixer)
+				#---! ...associated with each spot. only then will omnicalc be able to merge multiple spots
+				#---! ...with redundant names into a single post-processing data set. then you would remove
+				#---! ...the check, somewhere in maps.py or omnicalc.py, which prevents redundant simulation
+				#---! ...names, and all internal naming will be unique. also remove this crazy comment.
 				short_name = self.work.namer.short_namer(new_slice['sn'])
 				#---! LOOK HERE THIS IS A HACK!!!!
 				try: new_slice['sn_prefixed'] = self.work.raw.prefixer(short_name)
@@ -950,7 +962,7 @@ class ComputeJob:
 		target = {'specs':self.calc.specs['specs'],
 			'calc':{'calc_name':self.calc.name},
 			'slice':self.slice.flat()}
-		#---! hack to fix integers ??! should be done in Slice constructor
+		#---convert strings to integers if possible
 		for key,val in self.work.postdat.posts().items(): json_type_fixer(val.specs)
 		#---we search for a result object by directly comparing the DatSpec.specs object
 		#---! see the note above on the specs garbage.

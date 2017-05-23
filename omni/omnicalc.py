@@ -64,7 +64,7 @@ class WorkSpace:
 		#---read the specs according to incoming meta flags
 		self.specs = self.read_specs(meta=meta_incoming)
 		#---prepare a namer from the global omni_namer
-		self.namer = NamingConvention(
+		self.namer = NamingConvention(work=self,
 			short_namer=self.meta.get('short_namer',None),
 			short_names=self.meta.get('short_names',None))
 		#---CALCULATION LOOP

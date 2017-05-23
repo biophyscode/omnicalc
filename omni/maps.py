@@ -86,10 +86,11 @@ class NamingConvention:
 		"""
 		Turn a set of specs into a namer.
 		"""
+		self.work = kwargs.get('work',None)
 		self.short_namer = kwargs.pop('short_namer',None)
 		self.short_names = kwargs.pop('short_names',None)
 		#---since the short_namer is the default if no explicit names we provide the identity function
-		if not self.short_namer: self.short_namer = lambda x : x
+		if not self.short_namer: self.short_namer = lambda x,y : x
 		elif type(self.short_namer)!=str: 
 			raise Exception('meta short_namer parameter must be a string: %s'%self.short_namer)
 		#---compile the lambda function which comes in as a string
@@ -122,7 +123,8 @@ class NamingConvention:
 			name_data = dict(**kwargs)
 			slice_files = {}
 			for suffix,out in [('gro','struct'),('xtc','traj')]:
-				name_data['short_name'] = self.short_namer(sn)
+				spotname = self.work.raw.spotname_lookup(sn)
+				name_data['short_name'] = self.short_namer(sn,spot=spotname)
 				name_data['suffix'] = suffix
 				slice_files[out] = self.parser[('standard','gmx')]['d2n']%name_data
 		elif kind=='datspec':
@@ -131,8 +133,9 @@ class NamingConvention:
 			name = None
 			for name_style in [('standard','datspec'),('raw','datspec')]:
 				try:
+					spotname = self.work.raw.spotname_lookup(sn)
 					name = self.parser[name_style]['d2n']%dict(
-						short_name=self.short_namer(kwargs['sn']),nnum=0,**kwargs)
+						short_name=self.short_namer(kwargs['sn'],spot=spotname),nnum=0,**kwargs)
 				except: pass
 			if not name: raise Exception('cannot generate datspec name')
 			slice_files = name
@@ -572,6 +575,7 @@ class SliceMeta:
 					name = 'dummy%d'%int(time.time())
 					self.work.postdat.toc[name] = Slice(
 						name=name,namedat={},slice_type='readymade_namd',dat_type='namd',
+						#---! needs spotname_lookup
 						spec=proto_slice['spec'],short_name=self.work.namer.short_namer(sn))
 					psf = proto_slice['spec'].get('psf')
 					if psf in self.work.postdat.toc: del self.work.postdat.toc[psf]
@@ -581,7 +585,9 @@ class SliceMeta:
 				#---! previous idea was to make slices and then create a comparison operator
 				#---search the slices for one with the right specs
 				#---including simulation short_name is enforced here
-				slice_req = dict(short_name=self.work.namer.short_namer(sn),**proto_slice)
+				try: spotname = self.work.raw.spotname_lookup(sn)
+				except: spotname = None
+				slice_req = dict(short_name=self.work.namer.short_namer(sn,spot=spotname),**proto_slice)
 				valid_slices = self.work.postdat.search_slices(**slice_req)
 				if len(valid_slices)>1: raise Exception('multiple valid slices')
 				elif len(valid_slices)==0: 
@@ -628,11 +634,12 @@ class SliceMeta:
 				#---! ...with redundant names into a single post-processing data set. then you would remove
 				#---! ...the check, somewhere in maps.py or omnicalc.py, which prevents redundant simulation
 				#---! ...names, and all internal naming will be unique. also remove this crazy comment.
-				short_name = self.work.namer.short_namer(new_slice['sn'])
-				#---! LOOK HERE THIS IS A HACK!!!!
+				spotname = self.work.raw.spotname_lookup(new_slice['sn'])
+				short_name = self.work.namer.short_namer(new_slice['sn'],spot=spotname)
+				#---the following try-except loop handles both identity versus specific namers
+				#---the following is the only call to prefixer anywhere in omnicalc (prefixer requires spots)
 				try: new_slice['sn_prefixed'] = self.work.raw.prefixer(short_name)
 				except: new_slice['sn_prefixed'] = self.work.raw.prefixer(new_slice['sn'])
-				spotname = self.work.raw.spotname_lookup(new_slice['sn'])
 				new_slice['tpr_keyfinder'] = self.work.raw.keyfinder((spotname,'tpr'))
 				new_slice['traj_keyfinder'] = self.work.raw.keyfinder(
 					(spotname,self.work.raw.trajectory_format))
@@ -758,10 +765,12 @@ class ParsedRawData:
 	def spotname_lookup(self,sn_full):
 		"""
 		Find the spotname for a particular simulation.
+		This is only used in a few places in maps.py: in the prefixer below and the portion of 
+		SliceMeta.__init__ which makes slices.
 		"""
 		#---alias to the shortname (irreversible) here
 		#---! naming is getting convoluted. the following try-except would be hard to debug
-		try: sn = self.work.namer.short_namer(sn_full)
+		try: sn = self.work.namer.short_namer(sn_full,spot=None)
 		#---failure to run the shortnamer just passes the full simulation name
 		except: sn = sn_full
 		assert type(sn)==str
@@ -793,7 +802,10 @@ class ParsedRawData:
 		except: raise Exception('cannot find the spot for %s'%sn)
 		try:
 			spot = spotname,partname = (this_spot,self.trajectory_format)
-			prefix = self.spots[spot]['namer'](spotname,sn)
+			#---new format for the namer requires arguments to be simulation name and then spot name
+			#---note that the prefixer function is only called when we need slices hence there will always
+			#---...be a spotname available. see SliceMeta.__init__ for these calls
+			prefix = self.spots[spot]['namer'](sn,spot=spotname)
 		except: raise Exception('[ERROR] prefixer failure on simulation "%s" (check your namer)'%sn)
 		return prefix
 
@@ -847,8 +859,6 @@ class ParsedRawData:
 		"""
 		#---we apply the naming transformation to lookup the shortname in the toc, but below we will send out
 		#---...the full name since the purpose of this function is to get filenames on disk for slicing
-		#---! removed for expedience: sn = self.work.namer.short_namer(sn_full)
-		#---! ...note that this function is called twice and you need to test against ptdins ...
 		sn = sn_full
 		#---determine the spot, since the simulation could be in multiple spots
 		spot_matches = [spotname for spotname,spot in self.spots.items() 
@@ -927,9 +937,7 @@ class ComputeJob:
 		#---...note that in the mock up, the slice requests list represents subtype "b", above is "c"
 		slices_by_sn = self.work.slice_meta.slices.get(sl.sn,None)
 		if not slices_by_sn: 
-			print(self.work.namer.short_namer(sl.sn))
-			print(self.work.slice_meta.slices.get(self.work.namer.short_namer(sl.sn),None))
-			if not slices_by_sn: raise Exception('cannot find simulation %s in slice requests'%sl.sn)
+			raise Exception('cannot find simulation %s in slice requests'%sl.sn)
 		name_group = None
 		#---some slices cannot have names (e.g. readymade_namd) so we are permissive here
 		for pair in [(sl.slice_name,sl.group),(sl.slice_name,None)]:

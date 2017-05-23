@@ -575,10 +575,11 @@ class SliceMeta:
 				#---...hence this is the earliest point that we could match request with files in limbo
 				if proto_slice['slice_type']=='readymade_namd':
 					name = 'dummy%d'%int(time.time())
+					#---! rare case where we require None if no spot
+					spotname = self.work.raw.spotname_lookup(sn),
 					self.work.postdat.toc[name] = Slice(
 						name=name,namedat={},slice_type='readymade_namd',dat_type='namd',
-						#---! needs spotname_lookup
-						spec=proto_slice['spec'],short_name=self.work.namer.short_namer(sn))
+						spec=proto_slice['spec'],short_name=self.work.namer.short_namer(sn,spot=spotname))
 					psf = proto_slice['spec'].get('psf')
 					if psf in self.work.postdat.toc: del self.work.postdat.toc[psf]
 					for fn in proto_slice['spec'].get('dcds',[]):
@@ -777,6 +778,10 @@ class ParsedRawData:
 		#---! this needs further testing
 		spotnames = [key for key,val in self.toc.items() if sn in val or sn_full in val]
 		if not spotnames: 
+			#---! development. needs tested. may only be used on near proto_slice in
+			#---! ...readymade_namd near line 581. remove this and error message after testing
+			#---! ...and note that the error below refers to refresh which is deprecated
+			return None
 			#---in case top diverges from prefixer we check the regexes
 			top_regexes = [v['regexes']['top'] for v in self.work.paths['spots'].values()]
 			if not any([re.match(top,sn) for top in top_regexes]):

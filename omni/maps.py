@@ -90,7 +90,7 @@ class NamingConvention:
 		self.short_namer = kwargs.pop('short_namer',None)
 		self.short_names = kwargs.pop('short_names',None)
 		#---since the short_namer is the default if no explicit names we provide the identity function
-		if not self.short_namer: self.short_namer = lambda x,y : x
+		if not self.short_namer: self.short_namer = lambda sn,spot=None: sn
 		elif type(self.short_namer)!=str: 
 			raise Exception('meta short_namer parameter must be a string: %s'%self.short_namer)
 		#---compile the lambda function which comes in as a string

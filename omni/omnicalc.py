@@ -182,7 +182,9 @@ class WorkSpace:
 			with open(fn) as fp: 
 				if (merge_method != 'override_factory' or 
 					not re.match('^meta\.factory\.',os.path.basename(fn))):
-					allspecs.append(yaml.load(fp.read()))
+					try: allspecs.append(yaml.load(fp.read()))
+					except Exception as e:
+						raise Exception('failed to parse YAML (are you sure you have no tabs?): %s'%e)
 		if not allspecs: return {}
 		if merge_method=='strict':
 			specs = allspecs.pop(0)

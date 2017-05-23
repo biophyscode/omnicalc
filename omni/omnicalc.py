@@ -383,8 +383,20 @@ class WorkSpace:
 	def infer_pbc(self,calc):
 		"""
 		Figure out PBC condition for a downstream calculation.
+
+		Important note: calculations with uptype `post` will drop the group and pbc flags from their 
+		filenames. To identify a postprocessed data file, we need to infer the original simulation name from 
+		the short (or prefixed) name at the beginning of the data file's name. We do this by making a map 
+		between simulation names in the metadata slices dictionary and their shortened names. This lets us 
+		perform a reverse lookup and figure out which simulations in the slices folder (and elsewhere in 
+		the metadata) are the parents of a postprocessed data file we found on the disk. For that reason, 
+		the back_namer below sweeps over all possible spot names and all possible slices to figure out the 
+		pbc flag for the upstream data. This allows us to drop the pbc flags on downstream calculations with 
+		uptype post.
 		"""
-		back_namer = dict([(self.namer.short_namer(key),key) for key in self.slices.keys()])
+		back_namer = dict([(self.namer.short_namer(key,spot=spot_candidate),key) 
+			for key in self.slices.keys() 
+			for spot_candidate in [None]+self.paths['spots'].keys()])
 		if calc['slice']['short_name'] not in back_namer:
 			raise Exception('check that you have the right short_namer in the meta dictionary. '+
 				'back_namer lacks %s: %s'%(calc['slice']['short_name'],back_namer))

@@ -563,7 +563,9 @@ class SliceMeta:
 									(group,slice_name,sn))
 							self.slices[sn][(slice_name,group)] = dict(
 								slice_type='standard',dat_type='gmx',spec=dict(group=group,**spec))
-		#---now we reproces each slice into a Slice instance for later comparison
+		#---parse the spots so we know them for the namer
+		self.work.raw = ParsedRawData(self.work)
+		#---now we reprocess each slice into a Slice instance for later comparison
 		needs_slices = []
 		for sn in self.slices:
 			for slice_name,group_name in self.slices[sn]:
@@ -608,9 +610,6 @@ class SliceMeta:
 		#---any slices which are not available are sent to the slicer
 		if needs_slices and self.do_slices:
 			print('[NOTE] there are %d slices we must make'%len(needs_slices))
-			#---PARSE THE SPOTS HERE
-			#---! fix this so the parsed spots are saved somewhere?
-			self.work.raw = ParsedRawData(self.work)
 			#---make_slice_gromacs requires a sequence from the ParsedRawData method
 			for ns,(new_slice,extras) in enumerate(needs_slices):
 				new_slice['sequence'] = self.work.raw.get_timeseries(new_slice['sn'])

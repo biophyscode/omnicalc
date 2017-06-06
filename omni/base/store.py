@@ -124,8 +124,10 @@ def datmerge(kwargs,name,key,same=False):
 	This function stitches together the key from many of these pickles.
 	"""
 	#---if there is only one upstream object with no index we simply lookup the key we want
-	if name in kwargs['upstream']: return kwargs['upstream'][name][key]
+	if name in kwargs.get('upstream',[]): return kwargs['upstream'][name][key]
 	else:
+		#---! this function seems to require upstream data so we except here
+		if 'upstream' not in kwargs: raise Exception('datmerge needs upstream pointers')
 		#---get indices for the upstream object added by computer
 		inds = [int(re.findall(name+'(\d+)',i)[0]) for i in kwargs['upstream'] if re.match(name,i)]
 		collected = [kwargs['upstream']['%s%d'%(name,i)][key] for i in sorted(inds)]

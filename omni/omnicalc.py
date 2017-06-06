@@ -662,10 +662,11 @@ class WorkSpace:
 		Plot something.
 		! Get this out of the workspace.
 		"""
-		plots = self.specs['plots']
-		if plotname not in plots: 
-			raise Exception('cannot find plot %s in the plots section of the meta files'%plotname)
-		plotspec = plots[plotname]
+		if plotname not in self.specs.get('plots',{}): 
+			plotspec = self.calcs.get(plotname,None)
+			plotspec['calculation'] = plotname
+		else: plotspec = self.specs.get('plots',{}).get(plotname,None)
+		if not plotspec: raise Exception('cannot find plot specs for plotname %s'%plotname)
 		#---we hard-code the plot script naming convention here
 		script_name = self.find_script('plot-%s'%plotname)
 		header_script = 'omni/base/header.py'
@@ -721,14 +722,16 @@ class WorkSpace:
 		Get data for plotting programs.
 		"""
 		#---get the calculations from the plot dictionary in the meta files
-		plot_spec = self.plots.get(plotname,None)
-		if not plot_spec: 
-			raise Exception('cannot find plot %s in the metadata'%plotname)
-		if type(plot_spec['calculation']) in str_types:
-			calcs = {plot_spec['calculation']:self.calcs[plot_spec['calculation']]}
+		if plotname not in self.specs.get('plots',{}): 
+			plotspec = self.calcs.get(plotname,None)
+			plotspec['calculation'] = plotname
+		else: plotspec = self.specs.get('plots',{}).get(plotname,None)
+		if not plotspec: raise Exception('cannot find plot specs for plotname %s'%plotname)
+		if type(plotspec['calculation']) in str_types:
+			calcs = {plotspec['calculation']:self.calcs[plotspec['calculation']]}
 		#---loop over calculations in the plot
-		elif type(plot_spec['calculation'])!=dict: raise Exception('dev')
-		else: calcs = plot_spec['calculation']
+		elif type(plotspec['calculation'])!=dict: raise Exception('dev')
+		else: calcs = plotspec['calculation']
 		#---cache the upstream jobs for all calculations
 		upstream_jobs = self.prepare_calculations(calcnames=calcs.keys())
 		#---data indexed by calculation name then simulation name

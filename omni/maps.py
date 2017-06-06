@@ -610,6 +610,7 @@ class SliceMeta:
 				self.slices[sn][(slice_name,group_name)].group = group_name
 		#---any slices which are not available are sent to the slicer
 		if needs_slices and self.do_slices:
+			import ipdb;ipdb.set_trace()
 			print('[NOTE] there are %d slices we must make'%len(needs_slices))
 			#---make_slice_gromacs requires a sequence from the ParsedRawData method
 			for ns,(new_slice,extras) in enumerate(needs_slices):
@@ -672,7 +673,7 @@ class SliceMeta:
 		elif (slice_name,None) in self.slices[sn]:
 			return self.slices[sn][(slice_name,None)]
 		else:
-			asciitree(self.slices[sn])
+			asciitree(dict([('%s,%s'%k,v) for k,v in self.slices[sn].items()]))
 			raise Exception('see slices (meta) above. '+
 				'cannot find slice for simulation %s: %s,%s'%(sn,slice_name,group))
 

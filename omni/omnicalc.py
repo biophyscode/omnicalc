@@ -693,8 +693,13 @@ class WorkSpace:
 			#---! correct to loop over this? is this set by the plotname?
 			for sn in self.sns():
 				job_filter = [j for j in upstream_jobs if j.calc==calc and j.sn==sn]
-				if len(job_filter)!=1:
-					raise Exception('job_filter fail')
+				if len(job_filter)>1:
+					raise Exception('found too many matching jobs: %s'%job_filter)
+				elif len(job_filter)==0:
+					raise Exception('you may be asking for calculations that have not yet been run? '
+						'we cannot find matching jobs for calculation '
+						'%s with specs %s and simulation %s'%
+						(calc_name,specs,sn))
 				else: 
 					job = job_filter[0]
 					if job.result not in self.postdat.toc:

@@ -99,7 +99,7 @@ class WorkSpace:
 			try: self.compute(checkup=True)
 			except: self.tasks = {'error':'error in compute'}
 
-	def get_importer(self):
+	def get_importer(self,silent=False):
 		"""
 		Development purposes.
 		"""
@@ -111,25 +111,40 @@ class WorkSpace:
 			for key in self.raw.toc[spotname].keys(): sns.append(key)
 		#---add timeseries to the toc
 		for ss,sn in enumerate(sns): 
-			status('reading EDR to collect times for %s'%sn,i=ss,looplen=len(sns),tag='read',width=65)
+			if not silent:
+				status('reading EDR to collect times for %s'%sn,i=ss,looplen=len(sns),tag='read',width=65)
 			self.raw.get_timeseries(sn)
 
-	def times(self):
+	def times(self,write_json=False):
 		"""
 		Useful via `make look times`. Shows all of the edr times.
 		"""
-		self.get_importer()
+		self.get_importer(silent=write_json)
 		view_od = [(k,v) 
 			for spotname in [k for k in self.raw.spots if k[1]=='edr']
 			for k,v in self.raw.toc[spotname].items()]
 		from datapack import asciitree
-		view = dict([(name,[(
-			'%s%s-%s'%k+' part%s: %s%s'%(
-			i,str(round(j['start'],2)  if j['stop'] else '???').rjust(12,'.'),
-			str(round(j['stop'],2) if j['stop'] else '???').rjust(12,'.'))) 
-			for k,v in obj.items() for i,j in v.items()]) for name,obj in view_od])
-		asciitree(view)
+		if not write_json: 
+			view = dict([(name,[(
+				'%s%s-%s'%k+' part%s: %s%s'%(
+				i,str(round(j['start'],2)  if j['start'] else '???').rjust(12,'.'),
+				str(round(j['stop'],2) if j['stop'] else '???').rjust(12,'.'))) 
+				for k,v in obj.items() for i,j in v.items()]) for name,obj in view_od])
+			asciitree(view)
+		#---systematic view
+		else: 
+			#import ipdb;ipdb.set_trace()
+			#view = dict([(s,[('%s%s-%s'%k,tuple(v)) for k,v in detail.items()]) for s,detail in view_od])
+			view = [(sn,[('%s%s-%s'%stepname,[(i,j) for i,j in step.items()]) for stepname,step in details.items()]) for sn,details in view_od]
+			print('time_table = %s'%json.dumps(view))
 		return view
+
+	def times_json(self):
+		"""
+		Expose `make look times` to the factory.
+		!Need a long-term solution for calling things like this.
+		"""
+		self.times(write_json=True)
 
 	def variable_unpacker(self,specs):
 		"""
@@ -662,7 +677,7 @@ class WorkSpace:
 		Plot something.
 		! Get this out of the workspace.
 		"""
-		plots = self.specs['plots']
+		plots = self.specs.get('plots',{})
 		if plotname not in plots: 
 			raise Exception('cannot find plot %s in the plots section of the meta files'%plotname)
 		plotspec = plots[plotname]
@@ -793,9 +808,10 @@ def pipeline(name,meta=None):
 	#---! avoid unnecessary calculations for the plot we want
 	work = WorkSpace(pipeline=name,plot_call=True,meta=meta)
 
-def look(method=None):
+def look(method=None,**kwargs):
 	"""
 	Inspect the workspace. Send a method name and we will run it for you.
 	"""
 	header_script = 'omni/base/header_look.py'
+	#---! wish we could send more flags through without coding them here
 	bash('python -iB %s %s'%(header_script,'null' if not method else method))

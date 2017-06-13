@@ -57,13 +57,15 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	#---...python2.7/site-packages/matplotlib/backends/backend_pdf.py and raise it to e.g. 3.0)
 	if pdf:
 		alt_name = re.sub('.png$','.pdf',savename)
-		plt.savefig(alt_name,dpi=dpi,bbox_extra_artists=extras,
+		fig = plt.gcf()
+		fig.savefig(alt_name,dpi=dpi,bbox_extra_artists=extras,
 			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None)
 		#---convert pdf to png
 		os.system('convert -density %d %s %s'%(dpi,alt_name,base_fn))
 		os.remove(alt_name)
 	else: 
-		plt.savefig(base_fn,dpi=dpi,bbox_extra_artists=extras,
+		fig = plt.gcf()
+		fig.savefig(base_fn,dpi=dpi,bbox_extra_artists=extras,
 			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None)
 	plt.close()
 	#---add metadata to png

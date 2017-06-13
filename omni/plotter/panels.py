@@ -54,3 +54,17 @@ def panelplot(layout=None,figsize=(8,8),explicit_indexing=False):
 		axpos.append(list(itertools.product(*[np.arange(i) for i in lay_ins[ii]['grid']])))
 		axes.append(inaxs)
 	return (axes[0] if len(axes)==1 and not explicit_indexing else axes,fig)
+
+def square_tiles(ntiles,figsize,favor_rows=False,wspace=None,hspace=None):
+	"""
+	Create a grid of tiles with sequential order.
+	"""
+	nrows = ncols = int(np.ceil(np.sqrt(ntiles)))
+	nrows -= int(1*(ntiles==(nrows-1)*ncols))
+	if not favor_rows: nrows,ncols = ncols,nrows
+	layout = {'out':{'grid':[1,1]},'ins':{'grid':[nrows,ncols]}}
+	if wspace: layout['ins']['wspace'] = wspace
+	if hspace: layout['ins']['wspace'] = hspace
+	axes,fig = 	panelplot(figsize=figsize,layout=layout)
+	for i in range(nrows*ncols-ntiles): fig.delaxes(axes[-1*(i+1)])
+	return axes,fig

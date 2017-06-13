@@ -36,7 +36,7 @@ base.store.work = work
 from base.store import plotload,picturesave
 from base.tools import status
 from plotter import mpl,plt
-from plotter.panels import panelplot
+from plotter.panels import panelplot,square_tiles
 from makeface import tracebacker
 from hypothesis import hypothesis,sweeper
 import numpy as np

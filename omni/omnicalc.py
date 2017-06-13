@@ -447,34 +447,8 @@ class WorkSpace:
 			else: del specs['upstream']
 
 	def store(self,obj,name,path,attrs=None,print_types=False,verbose=True):
-		"""
-		Use h5py to store a dictionary of data.
-		"""
-		import h5py
-		#---! cannot do unicode in python 3. needs fixed
-		if type(obj) != dict: raise Exception('except: only dictionaries can be stored')
-		if os.path.isfile(path+'/'+name): raise Exception('except: file already exists: '+path+'/'+name)
-		path = os.path.abspath(os.path.expanduser(path))
-		if not os.path.isdir(path): os.mkdir(path)
-		fobj = h5py.File(path+'/'+name,'w')
-		for key in obj.keys(): 
-			if print_types: 
-				print('[WRITING] '+key+' type='+str(type(obj[key])))
-				print('[WRITING] '+key+' dtype='+str(obj[key].dtype))
-			#---python3 cannot do unicode so we double check the type
-			#---! the following might be wonky
-			if (type(obj[key])==np.ndarray and re.match('^str',obj[key].dtype.name) 
-				and 'U' in obj[key].dtype.str):
-				obj[key] = obj[key].astype('S')
-			try: dset = fobj.create_dataset(key,data=obj[key])
-			except: 
-				#---multidimensional scipy ndarray must be promoted to a proper numpy list
-				try: dset = fobj.create_dataset(key,data=obj[key].tolist())
-				except: raise Exception("failed to write this object so it's probably not numpy"+
-					"\n"+key+' type='+str(type(obj[key]))+' dtype='+str(obj[key].dtype))
-		if attrs != None: fobj.create_dataset('meta',data=np.string_(json.dumps(attrs)))
-		if verbose: status('[WRITING] '+path+'/'+name)
-		fobj.close()
+		"""Wrap store which must be importable."""
+		store(obj,name,path,attrs=attrs,print_types=print_types,verbose=verbose)
 
 	###---COMPUTE LOOP
 
@@ -505,16 +479,6 @@ class WorkSpace:
 					group = self.infer_group(calc)
 				#---loop over simulations
 				for sn in sns:
-					#---! previously: prepare a slice according to the specification in the calculation
-					if False:
-						request_slice = Slice(sn=sn,slice_name=slice_name,group=group,work=self)
-					if False:
-						#---! get a proper slice?
-						if (slice_name,group) not in self.slice_meta.slices[sn]:
-							asciitree(self.slice_meta.slices)
-							raise Exception('see slices (meta) above. '+
-								'cannot find slice for simulation %s: %s,%s'%(sn,slice_name,group))
-						request_slice = self.slice_meta.slices[sn][(slice_name,group)]
 					request_slice = self.slice_meta.get_slice(sn=sn,slice_name=slice_name,group=group)
 					#---join the slice and calculation in a job
 					jobs.append(ComputeJob(sl=request_slice,calc=calc,work=self))
@@ -678,9 +642,18 @@ class WorkSpace:
 		! Get this out of the workspace.
 		"""
 		plots = self.specs.get('plots',{})
-		if plotname not in plots: 
-			raise Exception('cannot find plot %s in the plots section of the meta files'%plotname)
-		plotspec = plots[plotname]
+		if plotname in plots: plotspec = plots[plotname]
+		else: 
+			#---previously required a plots entry however the following code makes a default plot
+			#---...object for this plotname, assuming it is the same as the calculation
+			try:
+				plotspec = {'calculation':plotname,
+					'collections':self.calcs[plotname]['collections'],
+					'slices':self.calcs[plotname]['slice_name']}
+				print('[NOTE] there is no %s entry in plots so we are using calculations'%plotname)
+			except Exception as e: 
+				raise Exception('you should add %s to plots '%plotname+'since we could not '
+					'formulate a default plot for that calculation')			
 		#---we hard-code the plot script naming convention here
 		script_name = self.find_script('plot-%s'%plotname)
 		header_script = 'omni/base/header.py'
@@ -701,35 +674,8 @@ class WorkSpace:
 		if plot_call: bash('./%s %s %s %s %s'%(header_script,script_name,name,'pipeline',meta_out))
 
 	def load(self,name,cwd=None,verbose=False,exclude_slice_source=False,filename=False):
-		"""
-		Get binary data from a computation.
-		"""
-		if not cwd: cwd,name = os.path.dirname(name),os.path.basename(name)
-		cwd = os.path.abspath(os.path.expanduser(cwd))
-		fn = os.path.join(cwd,name)
-		if not os.path.isfile(fn): raise Exception('[ERROR] failed to load %s'%fn)
-		data = {}
-		import h5py
-		rawdat = h5py.File(fn,'r')
-		for key in [i for i in rawdat if i!='meta']: 
-			if verbose:
-				print('[READ] '+key)
-				print('[READ] object = '+str(rawdat[key]))
-			data[key] = np.array(rawdat[key])
-		if 'meta' in rawdat: 
-			if sys.version_info<(3,0): out_text = rawdat['meta'].value
-			else: out_text = rawdat['meta'].value.decode()
-			attrs = json.loads(out_text)
-		else: 
-			print('[WARNING] no meta in this pickle')
-			attrs = {}
-		if exclude_slice_source:
-			for key in ['grofile','trajfile']:
-				if key in attrs: del attrs[key]
-		for key in attrs: data[key] = attrs[key]
-		if filename: data['filename'] = fn
-		rawdat.close()
-		return data
+		"""Wrap load which must be used by other modules."""
+		return load(name,cwd=cwd,verbose=verbose,exclude_slice_source=exclude_slice_source,filename=filename)
 
 	def plotload(self,plotname):
 		"""
@@ -737,13 +683,21 @@ class WorkSpace:
 		"""
 		#---get the calculations from the plot dictionary in the meta files
 		plot_spec = self.plots.get(plotname,None)
-		if not plot_spec: 
-			raise Exception('cannot find plot %s in the metadata'%plotname)
-		if type(plot_spec['calculation']) in str_types:
-			calcs = {plot_spec['calculation']:self.calcs[plot_spec['calculation']]}
-		#---loop over calculations in the plot
-		elif type(plot_spec['calculation'])!=dict: raise Exception('dev')
-		else: calcs = plot_spec['calculation']
+		if not plot_spec:
+			print('[NOTE] cannot find plot %s in the metadata. using the entry from calculations'%plotname)
+			#---if plotname is absent from plots we assemble a default plot based on the calculation
+			plot_spec = {'calculation':plotname,
+				'collections':self.calcs[plotname]['collections'],
+				'slices':self.calcs[plotname]['slice_name']}
+		#---if the plot spec is a dictionary, it needs no changes
+		if type(plot_spec['calculation'])==dict: calcs = plot_spec['calculation']
+		#---strings and lists of calculations require further explication from other elements of meta
+		else:
+			if type(plot_spec['calculation']) in str_types: plot_spec_list = [plot_spec['calculation']]
+			elif type(plot_spec['calculation'])==list: plot_spec_list = plot_spec['calculation']
+			else: raise Exception('dev')
+			#---fill in each upstream calculation
+			calcs = dict([(c,self.calcs[c]) for c in plot_spec_list]) 
 		#---cache the upstream jobs for all calculations
 		upstream_jobs = self.prepare_calculations(calcnames=calcs.keys())
 		#---data indexed by calculation name then simulation name
@@ -754,8 +708,13 @@ class WorkSpace:
 			#---! correct to loop over this? is this set by the plotname?
 			for sn in self.sns():
 				job_filter = [j for j in upstream_jobs if j.calc==calc and j.sn==sn]
-				if len(job_filter)!=1:
-					raise Exception('job_filter fail')
+				if len(job_filter)>1:
+					raise Exception('found too many matching jobs: %s'%job_filter)
+				elif len(job_filter)==0:
+					raise Exception('you may be asking for calculations that have not yet been run? '
+						'we cannot find matching jobs for calculation '
+						'%s with specs %s and simulation %s'%
+						(calc_name,specs,sn))
 				else: 
 					job = job_filter[0]
 					if job.result not in self.postdat.toc:
@@ -775,14 +734,18 @@ class WorkSpace:
 		For backwards compatibility with plot programs, we serve the list of simulations for a 
 		particular plot using this function with no arguments.
 		"""
-		if not self.plot_status:
+		if not self.plot_status and not self.pipeline_status:
 			raise Exception('you can only call WorkSpace.sns if you are plot')
+		elif self.plot_status: this_status = self.plot_status
+		elif self.pipeline_status: this_status = self.pipeline_status
 		#---consult the calculation if the plot does no specify collections
-		if self.plot_status not in self.plots or 'collections' not in self.plots[self.plot_status]:
-			collections = str_or_list(self.calcs[self.plot_status]['collections'])
-		else: collections = str_or_list(self.plots[self.plot_status]['collections'])
-		sns = sorted(list(set([i for j in [self.vars['collections'][k] 
+		if this_status not in self.plots or 'collections' not in self.plots[this_status]:
+			collections = str_or_list(self.calcs[this_status]['collections'])
+		else: collections = str_or_list(self.plots[this_status]['collections'])
+		try: sns = sorted(list(set([i for j in [self.vars['collections'][k] 
 			for k in collections] for i in j])))
+		except Exception as e: raise Exception(
+			'error compiling the list of simulations from collections: %s'%collections)
 		return sns
 
 ###---INTERFACE
@@ -815,3 +778,64 @@ def look(method=None,**kwargs):
 	header_script = 'omni/base/header_look.py'
 	#---! wish we could send more flags through without coding them here
 	bash('python -iB %s %s'%(header_script,'null' if not method else method))
+
+def store(obj,name,path,attrs=None,print_types=False,verbose=True):
+	"""
+	Use h5py to store a dictionary of data.
+	"""
+	import h5py
+	#---! cannot do unicode in python 3. needs fixed
+	if type(obj) != dict: raise Exception('except: only dictionaries can be stored')
+	if os.path.isfile(path+'/'+name): raise Exception('except: file already exists: '+path+'/'+name)
+	path = os.path.abspath(os.path.expanduser(path))
+	if not os.path.isdir(path): os.mkdir(path)
+	fobj = h5py.File(path+'/'+name,'w')
+	for key in obj.keys(): 
+		if print_types: 
+			print('[WRITING] '+key+' type='+str(type(obj[key])))
+			print('[WRITING] '+key+' dtype='+str(obj[key].dtype))
+		#---python3 cannot do unicode so we double check the type
+		#---! the following might be wonky
+		if (type(obj[key])==np.ndarray and re.match('^str',obj[key].dtype.name) 
+			and 'U' in obj[key].dtype.str):
+			obj[key] = obj[key].astype('S')
+		try: dset = fobj.create_dataset(key,data=obj[key])
+		except: 
+			#---multidimensional scipy ndarray must be promoted to a proper numpy list
+			try: dset = fobj.create_dataset(key,data=obj[key].tolist())
+			except: raise Exception("failed to write this object so it's probably not numpy"+
+				"\n"+key+' type='+str(type(obj[key]))+' dtype='+str(obj[key].dtype))
+	if attrs != None: fobj.create_dataset('meta',data=np.string_(json.dumps(attrs)))
+	if verbose: status('[WRITING] '+path+'/'+name)
+	fobj.close()
+
+def load(name,cwd=None,verbose=False,exclude_slice_source=False,filename=False):
+	"""
+	Get binary data from a computation.
+	"""
+	if not cwd: cwd,name = os.path.dirname(name),os.path.basename(name)
+	cwd = os.path.abspath(os.path.expanduser(cwd))
+	fn = os.path.join(cwd,name)
+	if not os.path.isfile(fn): raise Exception('[ERROR] failed to load %s'%fn)
+	data = {}
+	import h5py
+	rawdat = h5py.File(fn,'r')
+	for key in [i for i in rawdat if i!='meta']: 
+		if verbose:
+			print('[READ] '+key)
+			print('[READ] object = '+str(rawdat[key]))
+		data[key] = np.array(rawdat[key])
+	if 'meta' in rawdat: 
+		if sys.version_info<(3,0): out_text = rawdat['meta'].value
+		else: out_text = rawdat['meta'].value.decode()
+		attrs = json.loads(out_text)
+	else: 
+		print('[WARNING] no meta in this pickle')
+		attrs = {}
+	if exclude_slice_source:
+		for key in ['grofile','trajfile']:
+			if key in attrs: del attrs[key]
+	for key in attrs: data[key] = attrs[key]
+	if filename: data['filename'] = fn
+	rawdat.close()
+	return data

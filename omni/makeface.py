@@ -196,7 +196,9 @@ if __name__ == "__main__":
 	zombie_mode = False
 	try: from logo import logo
 	except: logo = ""
-	if logo: print(logo)
+	#---all arguments are passed directly to python but by convention we use the json flag for interactions
+	#---...with e.g. the factory which also suppresses the unicode logo
+	if logo and 'json' not in sys.argv: print(logo)
 	#---read configuration to retrieve source scripts
 	#---note this happens every time (even on make tab-completion) to collect scripts
 	#---...from all open-ended sources. timing: it only requires about 3 ms

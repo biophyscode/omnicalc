@@ -1,0 +1,188 @@
+
+
+<!doctype html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Run time &#8212; OMNICALC Documentation</title>
+    
+    <link rel="stylesheet" href="_static/bizstyle.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="_static/bizstyle.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <!--[if lt IE 9]>
+    <script type="text/javascript" src="_static/css3-mediaqueries.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">OMNI docs</a> &#187;</li> 
+      </ul>
+    </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="index.html">
+              <img class="logo" src="_static/omnicalc.png" alt="Logo"/>
+            </a></p>
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Run time</a><ul>
+<li><a class="reference internal" href="#the-main-loop">The main loop</a></li>
+<li><a class="reference internal" href="#a-few-strict-rules">A few, strict rules</a></li>
+<li><a class="reference internal" href="#when-things-go-wrong">When things go wrong</a></li>
+<li><a class="reference internal" href="#utility-functions">Utility functions</a></li>
+<li><a class="reference internal" href="#plotting">Plotting</a></li>
+</ul>
+</li>
+</ul>
+
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/runtime.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="run-time">
+<span id="sec-runtime"></span><h1>Run time<a class="headerlink" href="#run-time" title="Permalink to this headline">¶</a></h1>
+<p>In the first two chapters of the documentation, we have described the formulation of an incoming dataset (<a class="reference internal" href="paths.html#sec-paths"><span class="std std-ref">raw data</span></a>) and how to write variables (<a class="reference internal" href="metadata.html#sec-metadata-basic"><span class="std std-ref">metadata</span></a>). Understanding how to prepare the data and construct the metadata are necessary to use omnicalc, particularly since its execution is exceedingly simple. Executing omnicalc only requires one command to perform post-processing (there are other commands for plotting and debugging described at the end of this section).</p>
+<div class="highlight-bash"><div class="highlight"><pre><span></span>make compute
+</pre></div>
+</div>
+<div class="section" id="the-main-loop">
+<h2>The main loop<a class="headerlink" href="#the-main-loop" title="Permalink to this headline">¶</a></h2>
+<p>The <code class="docutils literal"><span class="pre">make</span> <span class="pre">compute</span></code> command triggers omnicalc’s main loop, found in the <code class="xref py py-class docutils literal"><span class="pre">workspace.py</span></code> module, which performs the following functions in order. Note that each of these actions takes its marching orders from the specifications files described in the <span class="xref std std-ref">metadata</span> section.</p>
+<ol class="arabic simple">
+<li>Read and merge all of the specifications files found in <code class="docutils literal"><span class="pre">calcs/meta/*.yaml</span></code>. Some users may prefer to put the protected top-level dictionaries described in the <span class="xref std std-ref">metadata</span> section in separate <code class="docutils literal"><span class="pre">yaml</span></code> files. These files are merged and loaded into the workspace. Internal <a class="reference internal" href="metadata.html#sec-variables"><span class="std std-ref">variable</span></a> substitutions are performed at this step.</li>
+<li>Create slices specified by the top-level <code class="docutils literal"><span class="pre">slices</span></code> dictionary compiled from the metadata. Recall that the creation of <span class="xref std std-ref">slices</span> will generate both groups (corresponding to GROMACS-style index files) and trajectory files.</li>
+<li>Run the calculations set in the <code class="docutils literal"><span class="pre">calculations</span></code> dictionary in an order which is inferred by their internal dependencies. This means that a calculation which depends on another will occur later in the loop. Calculation details are interpreted by the wordspace to identify any special <code class="docutils literal"><span class="pre">loop</span></code> settings, which will cause the calculation to be executed many times, across an arbitrary number of parameter sweeps. Each distinct calculation is sent to the <code class="xref py py-meth docutils literal"><span class="pre">computer</span></code> function, which runs the calculation over all simulations in the collections list.</li>
+</ol>
+<p>The main loop is entirely contained in the <code class="xref py py-meth docutils literal"><span class="pre">action</span></code> function and calls many of the member functions of the <code class="xref py py-class docutils literal"><span class="pre">Workspace</span></code> class. In the third step described above, the <code class="xref py py-meth docutils literal"><span class="pre">computer</span></code> function will be used to repeatedly send a simulation to a calculation function.</p>
+<p>The main loop is designed to be hidden from the user, who is only expected to write the metadata and the most important component of the loop: the calculation functions. Calculation functions should be stored in <code class="docutils literal"><span class="pre">calcs/function_name.py</span></code> and should contain a <strong>single python function with the same name</strong> as the file. This function can call external libraries or local libraries stored in <code class="docutils literal"><span class="pre">calcs</span></code> (typically <code class="docutils literal"><span class="pre">calcs/codes</span></code>), but must be named carefully so that the <code class="xref py py-meth docutils literal"><span class="pre">compute</span></code> function can find it. If the calculation’s <code class="docutils literal"><span class="pre">uptype</span></code> flag is set to <code class="docutils literal"><span class="pre">simulation</span></code> then this function will receive a two arguments, namely the <code class="docutils literal"><span class="pre">grofile</span></code> and <code class="docutils literal"><span class="pre">trajfile</span></code> which will point to the structure and trajectory of the slice created in the second step. If the <code class="docutils literal"><span class="pre">uptype</span></code> is <code class="docutils literal"><span class="pre">post</span></code>, the the function will receive a copy of the upstream data. It will also pass other <code class="docutils literal"><span class="pre">kwargs</span></code> that specify the features of the calculation found in the <code class="docutils literal"><span class="pre">specs</span></code> sub-dictionary. A typical calculation block from <code class="docutils literal"><span class="pre">calcs/specs/meta.yaml</span></code> is pictured below.</p>
+<div class="highlight-yaml"><div class="highlight"><pre><span></span><span class="l l-Scalar l-Scalar-Plain">calculations</span><span class="p p-Indicator">:</span>
+  <span class="l l-Scalar l-Scalar-Plain">lipid_abstractor</span><span class="p p-Indicator">:</span>
+    <span class="l l-Scalar l-Scalar-Plain">uptype</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">simulation</span>
+    <span class="l l-Scalar l-Scalar-Plain">slice_name</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">current</span>
+    <span class="l l-Scalar l-Scalar-Plain">group</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">all</span>
+    <span class="l l-Scalar l-Scalar-Plain">collections</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">all</span>
+    <span class="l l-Scalar l-Scalar-Plain">specs</span><span class="p p-Indicator">:</span>
+      <span class="l l-Scalar l-Scalar-Plain">selector</span><span class="p p-Indicator">:</span>
+        <span class="l l-Scalar l-Scalar-Plain">loop</span><span class="p p-Indicator">:</span>
+          <span class="l l-Scalar l-Scalar-Plain">lipid_com</span><span class="p p-Indicator">:</span>
+            <span class="l l-Scalar l-Scalar-Plain">monolayer_cutoff</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">1.85</span>
+            <span class="l l-Scalar l-Scalar-Plain">resnames</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">+selectors/resnames_lipid</span>
+            <span class="l l-Scalar l-Scalar-Plain">type</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">com</span>
+          <span class="l l-Scalar l-Scalar-Plain">lipid_chol_com</span><span class="p p-Indicator">:</span>
+            <span class="l l-Scalar l-Scalar-Plain">monolayer_cutoff</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">1.4</span>
+            <span class="l l-Scalar l-Scalar-Plain">resnames</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">+selectors/resnames_lipid_chol</span>
+            <span class="l l-Scalar l-Scalar-Plain">type</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">com</span>
+</pre></div>
+</div>
+<p>The calculation is named <code class="docutils literal"><span class="pre">lipid_abstractor</span></code> hence the user must create <code class="docutils literal"><span class="pre">calcs/lipid_abstractor.py</span></code> which contains a function which is also called <code class="docutils literal"><span class="pre">lipid_abstractor</span></code>. The calculation dictionary specifies a few key parameters.</p>
+<ol class="arabic simple">
+<li>Users can request the original simulation trajectory (or “slice”) by setting <code class="docutils literal"><span class="pre">uptype:</span> <span class="pre">simulation</span></code>. This sends the structure and trajectory to the analysis function in <code class="docutils literal"><span class="pre">grofile</span></code> and <code class="docutils literal"><span class="pre">trajfile</span></code>. Simulations which only depend on another “upstream” calculation should set <code class="docutils literal"><span class="pre">uptype:</span> <span class="pre">post</span></code> and also specify an <code class="docutils literal"><span class="pre">upstream</span></code> variable which lists the names of the previous calculations. See the <a class="reference internal" href="index.html#sec-parameter-sweeps"><span class="std std-ref">parameter sweeps</span></a> section for an example of how the parameters are specified in a calculation with upstream dependencies.</li>
+<li>Users must identify a <code class="docutils literal"><span class="pre">slice_name</span></code> and a <code class="docutils literal"><span class="pre">group</span></code>, both of which are necessary to uniquely identify a slice specified in the top-level <a class="reference internal" href="slices.html#sec-slices"><span class="std std-ref">slices</span></a> dictionary.</li>
+<li>Users must also identify a list of <code class="docutils literal"><span class="pre">collections</span></code> of simulations to apply the calculation. Collections are specified in a top-level dictionary called <code class="docutils literal"><span class="pre">collections</span></code> which is found the metadata file. Multiple collections should be compiled into a list. Note that each collection requested by a calculation must have corresponding slices specified by <code class="docutils literal"><span class="pre">slice_name</span></code>. If omnicalc cannot find the corresponding slice or group, it will throw an error. <em>The collections list is necessary to apply the calculations to your simulations</em>. Even if you analyze a single simulation, it needs to be in a collection.</li>
+<li>Specs are optional, but allow the user to set attributes which are passed all the way to the final data output. These attributes make it easy to perform arbitrary parameter sweeps. In the example above, the loop over the <code class="docutils literal"><span class="pre">selector</span></code> parameter sends different distance cutoffs and lipid selections to the calculation function in order to generate a lipid trajectory either with or without cholesterol.</li>
+</ol>
+</div>
+<div class="section" id="a-few-strict-rules">
+<h2>A few, strict rules<a class="headerlink" href="#a-few-strict-rules" title="Permalink to this headline">¶</a></h2>
+<p>The omnicalc design philosophy expects more from the user than a typical software package. The incoming data, metadata, and calculation functions must be written according to the framework specified here and in the other chapters of the documentation. In this way, the authors have selected <a class="reference external" href="https://en.wikipedia.org/wiki/Convention_over_configuration">convention over configuration</a>. This means that omnicalc works with a few, very strict rules. The upshot is that users can prepare metadata that make calculations highly customizable and scalable. New parameter sweeps can be instantiated simply by editing a <code class="docutils literal"><span class="pre">calcs/specs/meta.yaml</span></code> file and running <code class="docutils literal"><span class="pre">make</span> <span class="pre">compute</span></code>. Note that omnicalc will not perform downstream functions (namely, rendering plots) if you update the metadata without running <code class="docutils literal"><span class="pre">make</span> <span class="pre">compute</span></code>. You can always use the <code class="xref py py-meth docutils literal"><span class="pre">respec</span></code> function to update the workspace with your metadata when making adjustments to your plots.</p>
+<p>Calculation functions can be written in a highly modular format so that they can be shared between different data sets. For example, the authors have used the <em>exact</em> same calculation codes on both atomistic and coarse-grained simulations despite their radically different naming conventions. This scheme also ensures that the codes are easily extensible to slightly novel use-cases.</p>
+</div>
+<div class="section" id="when-things-go-wrong">
+<h2>When things go wrong<a class="headerlink" href="#when-things-go-wrong" title="Permalink to this headline">¶</a></h2>
+<p>Given that omnicalc operates as a framework described above, errors should be interpreted in terms of the position inside the main loop. Whenever you encounter an error, you can find more details about what caused the error by checking the source code. Oftentimes the position within the main loop will tell you what went wrong. Users may also use the <code class="docutils literal"><span class="pre">make</span> <span class="pre">look</span></code> utility function to inspect the workspace variable to make sure everything is in order.</p>
+<div class="admonition warning">
+<p class="first admonition-title">Warning</p>
+<p class="last">better description of error handling. perhaps an example would be useful.</p>
+</div>
+</div>
+<div class="section" id="utility-functions">
+<h2>Utility functions<a class="headerlink" href="#utility-functions" title="Permalink to this headline">¶</a></h2>
+<div class="admonition warning">
+<p class="first admonition-title">Warning</p>
+<p class="last">controller functions are coming soon</p>
+</div>
+</div>
+<div class="section" id="plotting">
+<h2>Plotting<a class="headerlink" href="#plotting" title="Permalink to this headline">¶</a></h2>
+<p>Plotting functions can be executed with <code class="docutils literal"><span class="pre">make</span> <span class="pre">plot</span></code> or preferably <code class="docutils literal"><span class="pre">make</span> <span class="pre">plot</span> <span class="pre">&lt;my_plot_script&gt;</span></code>, since this function <em>always</em> re-makes the plots, in contrast to the <code class="docutils literal"><span class="pre">make</span> <span class="pre">compute</span></code> function which will only generate post-processing data once.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">The <code class="docutils literal"><span class="pre">make</span> <span class="pre">compute</span></code> loop is lazy. If it finds the post-processing binaries for a calculation, it won’t re-run that calculation. This design has the advantage that users may add new calculations or extend parameter sweeps in the metadata without recalculating anything. The downside is that changing any hard-coded calculation parameters typically requires that the user manually delete the deprecated binaries. These are usually clearly named, so this isn’t difficult, but in general the authors recommend adding data rather than deleting it and rerunning the calculation. This preserves the calculation history in case something goes wrong. Once you are ready to plot your data, you can single out a particular set of parameters, even if you swept over many. Omnicalc keeps track of the calculation details (typically given in the <code class="docutils literal"><span class="pre">specs</span></code> subdictionary for a particular calculation), which makes it easy to look up the results of a specific calculation. Since plots are both fast and endlessly customizable, the <code class="docutils literal"><span class="pre">make</span> <span class="pre">plot</span></code> command will always regenerate the plot.</p>
+</div>
+<div class="admonition warning">
+<p class="first admonition-title">Warning</p>
+<p class="last">Plots have attributes too, so add a link to the note above when they are documented.</p>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">OMNI docs</a> &#187;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    </div>
+  </body>
+</html>

@@ -1,0 +1,700 @@
+
+
+<!doctype html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Omnicalc Modules &#8212; OMNICALC Documentation</title>
+    
+    <link rel="stylesheet" href="_static/bizstyle.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="_static/bizstyle.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <!--[if lt IE 9]>
+    <script type="text/javascript" src="_static/css3-mediaqueries.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">OMNI docs</a> &#187;</li> 
+      </ul>
+    </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="index.html">
+              <img class="logo" src="_static/omnicalc.png" alt="Logo"/>
+            </a></p>
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Omnicalc Modules</a><ul>
+<li><a class="reference internal" href="#module-cli">Command-line interface</a></li>
+<li><a class="reference internal" href="#module-config">Configuration</a></li>
+<li><a class="reference internal" href="#module-omnicalc">Workspace</a></li>
+<li><a class="reference internal" href="#module-maps">Data structures (maps)</a></li>
+</ul>
+</li>
+</ul>
+
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/modules.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="omnicalc-modules">
+<h1>Omnicalc Modules<a class="headerlink" href="#omnicalc-modules" title="Permalink to this headline">¶</a></h1>
+<p>This documentation provides an overview of the omnicalc internal data structures. This page is not comprehensive, however the authors have selected the most important parts of the underlying codes. The <a class="reference internal" href="index.html#sec-concept"><span class="std std-ref">main documentation</span></a> provides a more user-friendly guide to the code.</p>
+<div class="section" id="module-cli">
+<span id="command-line-interface"></span><h2>Command-line interface<a class="headerlink" href="#module-cli" title="Permalink to this headline">¶</a></h2>
+<p>Omnicalc command-line interface.</p>
+<dl class="function">
+<dt id="cli.locate">
+<code class="descclassname">cli.</code><code class="descname">locate</code><span class="sig-paren">(</span><em>keyword</em><span class="sig-paren">)</span><a class="headerlink" href="#cli.locate" title="Permalink to this definition">¶</a></dt>
+<dd><p>Find a function.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="cli.set_config">
+<code class="descclassname">cli.</code><code class="descname">set_config</code><span class="sig-paren">(</span><em>*args</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#cli.set_config" title="Permalink to this definition">¶</a></dt>
+<dd><p>Command-line interface to update configuration in config_fn (typically config.py). 
+This function routes <code class="docutils literal"><span class="pre">make</span> <span class="pre">set</span> <span class="pre">...`</span> <span class="pre">requests</span> <span class="pre">to</span> <span class="pre">functions</span> <span class="pre">here</span> <span class="pre">in</span> <span class="pre">the</span> <span class="pre">acme.py</span> <span class="pre">module,</span> <span class="pre">which</span> <span class="pre">manages</span> <span class="pre">all</span> 
+<span class="pre">experiments.</span> <span class="pre">Since</span> <span class="pre">``set</span></code> is a python type, we make use of the config.py alias scheme to map this 
+function to <code class="docutils literal"><span class="pre">make</span> <span class="pre">set</span> <span class="pre">...</span></code>.
+This was adapted from the automacs.runner.acme version to be more generic.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="cli.nuke">
+<code class="descclassname">cli.</code><code class="descname">nuke</code><span class="sig-paren">(</span><em>sure=False</em><span class="sig-paren">)</span><a class="headerlink" href="#cli.nuke" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reset this copy of omnicalc. Be careful!</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="cli.setup">
+<code class="descclassname">cli.</code><code class="descname">setup</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#cli.setup" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="cli.compute">
+<code class="descclassname">cli.</code><code class="descname">compute</code><span class="sig-paren">(</span><em>meta=None</em>, <em>confirm=False</em>, <em>kill_switch=None</em><span class="sig-paren">)</span><a class="headerlink" href="#cli.compute" title="Permalink to this definition">¶</a></dt>
+<dd><p>Expose the workspace to the command line.
+Note that the kill_switch is a dummy which is caught by makeface.py.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="cli.plot">
+<code class="descclassname">cli.</code><code class="descname">plot</code><span class="sig-paren">(</span><em>name</em>, <em>meta=None</em><span class="sig-paren">)</span><a class="headerlink" href="#cli.plot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plot something</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="cli.pipeline">
+<code class="descclassname">cli.</code><code class="descname">pipeline</code><span class="sig-paren">(</span><em>name</em>, <em>meta=None</em><span class="sig-paren">)</span><a class="headerlink" href="#cli.pipeline" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plot something</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="cli.clone_calcs">
+<code class="descclassname">cli.</code><code class="descname">clone_calcs</code><span class="sig-paren">(</span><em>source</em><span class="sig-paren">)</span><a class="headerlink" href="#cli.clone_calcs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Clone a calculations repository.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="cli.look">
+<code class="descclassname">cli.</code><code class="descname">look</code><span class="sig-paren">(</span><em>method=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#cli.look" title="Permalink to this definition">¶</a></dt>
+<dd><p>Inspect the workspace. Send a method name and we will run it for you.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="cli.blank_meta">
+<code class="descclassname">cli.</code><code class="descname">blank_meta</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#cli.blank_meta" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</div>
+<div class="section" id="module-config">
+<span id="configuration"></span><h2>Configuration<a class="headerlink" href="#module-config" title="Permalink to this headline">¶</a></h2>
+<dl class="function">
+<dt id="config.set_config">
+<code class="descclassname">config.</code><code class="descname">set_config</code><span class="sig-paren">(</span><em>*args</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#config.set_config" title="Permalink to this definition">¶</a></dt>
+<dd><p>Command-line interface to update configuration in config_fn (typically config.py). 
+This function routes <code class="docutils literal"><span class="pre">make</span> <span class="pre">set</span> <span class="pre">...`</span> <span class="pre">requests</span> <span class="pre">to</span> <span class="pre">functions</span> <span class="pre">here</span> <span class="pre">in</span> <span class="pre">the</span> <span class="pre">acme.py</span> <span class="pre">module,</span> <span class="pre">which</span> <span class="pre">manages</span> <span class="pre">all</span> 
+<span class="pre">experiments.</span> <span class="pre">Since</span> <span class="pre">``set</span></code> is a python type, we make use of the config.py alias scheme to map this 
+function to <code class="docutils literal"><span class="pre">make</span> <span class="pre">set</span> <span class="pre">...</span></code>.
+This was adapted from the automacs.runner.acme version to be more generic.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="config.unset">
+<code class="descclassname">config.</code><code class="descname">unset</code><span class="sig-paren">(</span><em>*args</em><span class="sig-paren">)</span><a class="headerlink" href="#config.unset" title="Permalink to this definition">¶</a></dt>
+<dd><p>Remove items from config.</p>
+</dd></dl>
+
+</div>
+<div class="section" id="module-omnicalc">
+<span id="workspace"></span><h2>Workspace<a class="headerlink" href="#module-omnicalc" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="omnicalc.WorkSpace">
+<em class="property">class </em><code class="descclassname">omnicalc.</code><code class="descname">WorkSpace</code><span class="sig-paren">(</span><em>plot=None</em>, <em>plot_call=False</em>, <em>pipeline=None</em>, <em>meta=None</em>, <em>confirm_compute=False</em>, <em>cwd=None</em>, <em>do_slices=True</em>, <em>checkup=False</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace" title="Permalink to this definition">¶</a></dt>
+<dd><p>User-facing calculation management.
+Style note: the workspace instance is passed around to many classes in maps.py. The author is aware
+that this is highly unusual, but it takes the place of a larger, more hierarchical class.</p>
+<p class="rubric">Methods</p>
+<dl class="method">
+<dt id="omnicalc.WorkSpace.attach_standard_tools">
+<code class="descname">attach_standard_tools</code><span class="sig-paren">(</span><em>mod</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.attach_standard_tools" title="Permalink to this definition">¶</a></dt>
+<dd><p>Send standard tools to the calculation functions.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.chase_upstream">
+<code class="descname">chase_upstream</code><span class="sig-paren">(</span><em>specs</em>, <em>warn=False</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.chase_upstream" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fill in upstream information. Works in-place on specs.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.compute">
+<code class="descname">compute</code><span class="sig-paren">(</span><em>confirm=False</em>, <em>checkup=False</em>, <em>cleanup=None</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.compute" title="Permalink to this definition">¶</a></dt>
+<dd><p>Run through computations.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.compute_single">
+<code class="descname">compute_single</code><span class="sig-paren">(</span><em>incoming</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.compute_single" title="Permalink to this definition">¶</a></dt>
+<dd><p>SINGLE COMPUTATION.
+Note that this replaces (most of) computer from the original omnicalc.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.find_script">
+<code class="descname">find_script</code><span class="sig-paren">(</span><em>name</em>, <em>root=’calcs’</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.find_script" title="Permalink to this definition">¶</a></dt>
+<dd><p>Find a generic script somewhere in the calculations folder.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.get_calculation_function">
+<code class="descname">get_calculation_function</code><span class="sig-paren">(</span><em>calcname</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.get_calculation_function" title="Permalink to this definition">¶</a></dt>
+<dd><p>Search the calcs subdirectory for a calculation function.
+Note that this lookup function enforces the naming rule which is hard-coded: namely, that all 
+calculations must be in a function in a script which each use the calculation name.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.get_importer">
+<code class="descname">get_importer</code><span class="sig-paren">(</span><em>silent=False</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.get_importer" title="Permalink to this definition">¶</a></dt>
+<dd><p>Development purposes.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.get_new_dat_name">
+<code class="descname">get_new_dat_name</code><span class="sig-paren">(</span><em>base_name</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.get_new_dat_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a new filename for the post-processing data.
+Assumes we already checked the data so we aren’t doing a redundant calculation.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.get_simulations_in_collection">
+<code class="descname">get_simulations_in_collection</code><span class="sig-paren">(</span><em>*names</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.get_simulations_in_collection" title="Permalink to this definition">¶</a></dt>
+<dd><p>Read a collections list.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.infer_calculation_order">
+<code class="descname">infer_calculation_order</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.infer_calculation_order" title="Permalink to this definition">¶</a></dt>
+<dd><p>Needs tested and confirmed possibly with a safety check of some kind to avoid infinite recursion.
+Lifted directly from omnicalc workspace action function.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.infer_group">
+<code class="descname">infer_group</code><span class="sig-paren">(</span><em>calc</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.infer_group" title="Permalink to this definition">¶</a></dt>
+<dd><p>Figure out groups for a downstream calculation.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.infer_pbc">
+<code class="descname">infer_pbc</code><span class="sig-paren">(</span><em>calc</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.infer_pbc" title="Permalink to this definition">¶</a></dt>
+<dd><p>Figure out PBC condition for a downstream calculation.</p>
+<p>Important note: calculations with uptype <cite>post</cite> will drop the group and pbc flags from their 
+filenames. To identify a postprocessed data file, we need to infer the original simulation name from 
+the short (or prefixed) name at the beginning of the data file’s name. We do this by making a map 
+between simulation names in the metadata slices dictionary and their shortened names. This lets us 
+perform a reverse lookup and figure out which simulations in the slices folder (and elsewhere in 
+the metadata) are the parents of a postprocessed data file we found on the disk. For that reason, 
+the back_namer below sweeps over all possible spot names and all possible slices to figure out the 
+pbc flag for the upstream data. This allows us to drop the pbc flags on downstream calculations with 
+uptype post.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.job_print">
+<code class="descname">job_print</code><span class="sig-paren">(</span><em>job</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.job_print" title="Permalink to this definition">¶</a></dt>
+<dd><p>Describe the job.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.load">
+<code class="descname">load</code><span class="sig-paren">(</span><em>name</em>, <em>cwd=None</em>, <em>verbose=False</em>, <em>exclude_slice_source=False</em>, <em>filename=False</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.load" title="Permalink to this definition">¶</a></dt>
+<dd><p>Wrap load which must be used by other modules.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="omnicalc.WorkSpace.nprocs">
+<code class="descname">nprocs</code><em class="property"> = 4</em><a class="headerlink" href="#omnicalc.WorkSpace.nprocs" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.pipeline">
+<code class="descname">pipeline</code><span class="sig-paren">(</span><em>name</em>, <em>plot_call=False</em>, <em>meta=None</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.pipeline" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plot something.
+! Get this out of the workspace.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.plot">
+<code class="descname">plot</code><span class="sig-paren">(</span><em>plotname</em>, <em>plot_call=False</em>, <em>meta=None</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.plot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plot something.
+! Get this out of the workspace.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.plotload">
+<code class="descname">plotload</code><span class="sig-paren">(</span><em>plotname</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.plotload" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get data for plotting programs.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.prepare_calculations">
+<code class="descname">prepare_calculations</code><span class="sig-paren">(</span><em>calcnames=None</em>, <em>sns=None</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.prepare_calculations" title="Permalink to this definition">¶</a></dt>
+<dd><p>Match calculations with simulations.
+This function prepares all pending calculations unless you ask for a specific one.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.read_specs">
+<code class="descname">read_specs</code><span class="sig-paren">(</span><em>meta=None</em>, <em>merge_method=’careful’</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.read_specs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Read and interpret calculation specs.
+Lifted directly from old workspace.load_specs.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.show_specs">
+<code class="descname">show_specs</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.show_specs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Print specs.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.sns">
+<code class="descname">sns</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.sns" title="Permalink to this definition">¶</a></dt>
+<dd><p>For backwards compatibility with plot programs, we serve the list of simulations for a 
+particular plot using this function with no arguments.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="omnicalc.WorkSpace.specs_path">
+<code class="descname">specs_path</code><em class="property"> = (‘calcs’, ‘specs’, ‘*.yaml’)</em><a class="headerlink" href="#omnicalc.WorkSpace.specs_path" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.store">
+<code class="descname">store</code><span class="sig-paren">(</span><em>obj</em>, <em>name</em>, <em>path</em>, <em>attrs=None</em>, <em>print_types=False</em>, <em>verbose=True</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.store" title="Permalink to this definition">¶</a></dt>
+<dd><p>Wrap store which must be importable.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.times">
+<code class="descname">times</code><span class="sig-paren">(</span><em>write_json=False</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.times" title="Permalink to this definition">¶</a></dt>
+<dd><p>Useful via <cite>make look times</cite>. Shows all of the edr times.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.times_json">
+<code class="descname">times_json</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.times_json" title="Permalink to this definition">¶</a></dt>
+<dd><p>Expose <cite>make look times</cite> to the factory.
+!Need a long-term solution for calling things like this.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="omnicalc.WorkSpace.variable_unpacker">
+<code class="descname">variable_unpacker</code><span class="sig-paren">(</span><em>specs</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.WorkSpace.variable_unpacker" title="Permalink to this definition">¶</a></dt>
+<dd><p>Internal variable substitutions using the “+” syntax.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="omnicalc.WorkSpace.versioning">
+<code class="descname">versioning</code><em class="property"> = {‘spec_file’: 2}</em><a class="headerlink" href="#omnicalc.WorkSpace.versioning" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="omnicalc.compute">
+<code class="descclassname">omnicalc.</code><code class="descname">compute</code><span class="sig-paren">(</span><em>meta=None</em>, <em>confirm=False</em>, <em>kill_switch=None</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.compute" title="Permalink to this definition">¶</a></dt>
+<dd><p>Expose the workspace to the command line.
+Note that the kill_switch is a dummy which is caught by makeface.py.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="omnicalc.load">
+<code class="descclassname">omnicalc.</code><code class="descname">load</code><span class="sig-paren">(</span><em>name</em>, <em>cwd=None</em>, <em>verbose=False</em>, <em>exclude_slice_source=False</em>, <em>filename=False</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.load" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get binary data from a computation.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="omnicalc.look">
+<code class="descclassname">omnicalc.</code><code class="descname">look</code><span class="sig-paren">(</span><em>method=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.look" title="Permalink to this definition">¶</a></dt>
+<dd><p>Inspect the workspace. Send a method name and we will run it for you.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="omnicalc.pipeline">
+<code class="descclassname">omnicalc.</code><code class="descname">pipeline</code><span class="sig-paren">(</span><em>name</em>, <em>meta=None</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.pipeline" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plot something</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="omnicalc.plot">
+<code class="descclassname">omnicalc.</code><code class="descname">plot</code><span class="sig-paren">(</span><em>name</em>, <em>meta=None</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.plot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plot something</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="omnicalc.store">
+<code class="descclassname">omnicalc.</code><code class="descname">store</code><span class="sig-paren">(</span><em>obj</em>, <em>name</em>, <em>path</em>, <em>attrs=None</em>, <em>print_types=False</em>, <em>verbose=True</em><span class="sig-paren">)</span><a class="headerlink" href="#omnicalc.store" title="Permalink to this definition">¶</a></dt>
+<dd><p>Use h5py to store a dictionary of data.</p>
+</dd></dl>
+
+</div>
+<div class="section" id="module-maps">
+<span id="data-structures-maps"></span><h2>Data structures (maps)<a class="headerlink" href="#module-maps" title="Permalink to this headline">¶</a></h2>
+<p>OMNICALC DATA STRUCTURES
+Note that this file “maps” much of the metadata onto objects in memory
+and hence constitutes the core of the omnicalc functionality (other than omnicalc.py).</p>
+<dl class="class">
+<dt id="maps.CalcMeta">
+<em class="property">class </em><code class="descclassname">maps.</code><code class="descname">CalcMeta</code><span class="sig-paren">(</span><em>meta</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.CalcMeta" title="Permalink to this definition">¶</a></dt>
+<dd><p>Listing of calculations for cross-referencing.
+All calculations are identified by the name and the index of the “unrolled” version i.e. the specific
+calculation after loops are applied.</p>
+<p class="rubric">Methods</p>
+<dl class="method">
+<dt id="maps.CalcMeta.calcjobs">
+<code class="descname">calcjobs</code><span class="sig-paren">(</span><em>name</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.CalcMeta.calcjobs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return calculations by name, including loops.
+Called by prepare_calculations.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="maps.CalcMeta.find_calculation">
+<code class="descname">find_calculation</code><span class="sig-paren">(</span><em>name</em>, <em>specs</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.CalcMeta.find_calculation" title="Permalink to this definition">¶</a></dt>
+<dd><p>Find a calculation in the master CalcMeta list by specs.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="maps.CalcMeta.get_upstream">
+<code class="descname">get_upstream</code><span class="sig-paren">(</span><em>specs</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.CalcMeta.get_upstream" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get upstream calculations.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="maps.CalcMeta.unroll_loops">
+<code class="descname">unroll_loops</code><span class="sig-paren">(</span><em>details</em>, <em>return_stubs=False</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.CalcMeta.unroll_loops" title="Permalink to this definition">¶</a></dt>
+<dd><p>The jobs list may contain loops. We “unroll” them here.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="maps.Calculation">
+<em class="property">class </em><code class="descclassname">maps.</code><code class="descname">Calculation</code><span class="sig-paren">(</span><em>name</em>, <em>specs</em>, <em>stub</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.Calculation" title="Permalink to this definition">¶</a></dt>
+<dd><p>A calculation, including settings.</p>
+</dd></dl>
+
+<dl class="class">
+<dt id="maps.ComputeJob">
+<em class="property">class </em><code class="descclassname">maps.</code><code class="descname">ComputeJob</code><span class="sig-paren">(</span><em>calc</em>, <em>sl</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.ComputeJob" title="Permalink to this definition">¶</a></dt>
+<dd><p>A computation job joins a calculation with a simulation slice.</p>
+<p class="rubric">Methods</p>
+<dl class="method">
+<dt id="maps.ComputeJob.match_result">
+<code class="descname">match_result</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#maps.ComputeJob.match_result" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check if this job is done.
+This function requires a JOIN between postdat items of the datspec variety and this job.
+Currently there are two ways that a job is completed, either if the computation just ran or if we 
+already linked the datspec with the job request. Both should result in the same object, namely, a 
+“result” which might be a good way to name this.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="maps.DatSpec">
+<em class="property">class </em><code class="descclassname">maps.</code><code class="descname">DatSpec</code><span class="sig-paren">(</span><em>fn=None</em>, <em>dn=None</em>, <em>job=None</em>, <em>work=None</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.DatSpec" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#maps.NamingConvention" title="maps.NamingConvention"><code class="xref py py-class docutils literal"><span class="pre">maps.NamingConvention</span></code></a></p>
+<p>Parent class for identifying a piece of post-processed data.
+DatSpec instances can be picked up from a file on disk but also generated before running a job, which 
+will inevitably write the post-processed data anyway.</p>
+<p class="rubric">Methods</p>
+<dl class="method">
+<dt id="maps.DatSpec.basename">
+<code class="descname">basename</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#maps.DatSpec.basename" title="Permalink to this definition">¶</a></dt>
+<dd><p>Name this slice.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="maps.DatSpec.from_file">
+<code class="descname">from_file</code><span class="sig-paren">(</span><em>fn</em>, <em>dn</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.DatSpec.from_file" title="Permalink to this definition">¶</a></dt>
+<dd><p>DatSpec objects can be imported from file (including from previous versions of omnicalc)
+or they can be constructed in anticipation of finishing a calculation job and <em>making</em> the file 
+(see from_job below). This function handles most backwards compatibility.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="maps.DatSpec.from_job">
+<code class="descname">from_job</code><span class="sig-paren">(</span><em>job</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.DatSpec.from_job" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create datspec object from a job in preparation for running the calculation.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="maps.NamingConvention">
+<em class="property">class </em><code class="descclassname">maps.</code><code class="descname">NamingConvention</code><span class="sig-paren">(</span><em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.NamingConvention" title="Permalink to this definition">¶</a></dt>
+<dd><p>Organize the naming conventions for omnicalc.
+omni_namer data structure:</p>
+<blockquote>
+<div><dl class="docutils">
+<dt>naming indexed by pairs: slice-type,data-type</dt>
+<dd>dictionary-to-name
+name-to-dictionary</dd>
+<dt>meta slice reading indexed by: slice-type</dt>
+<dd>keys required in the specs</dd>
+</dl>
+</div></blockquote>
+<p>Several classes below inherit this to have easy access to the namers.</p>
+<p class="rubric">Methods</p>
+<dl class="attribute">
+<dt id="maps.NamingConvention.common_types">
+<code class="descname">common_types</code><em class="property"> = {‘wild’: ‘[A-Za-z0-9\-_]’, ‘float’: ‘\d+(?:(?:\.\d+))?’, ‘gmx_suffixes’: ‘(?:gro|xtc)’}</em><a class="headerlink" href="#maps.NamingConvention.common_types" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="maps.NamingConvention.interpret_name">
+<code class="descname">interpret_name</code><span class="sig-paren">(</span><em>name</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.NamingConvention.interpret_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Given a post-processing data file name, extract data and infer the version.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="maps.NamingConvention.name_slice">
+<code class="descname">name_slice</code><span class="sig-paren">(</span><em>kind</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.NamingConvention.name_slice" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate a slice name from metadata according to the slice type.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="maps.NamingConvention.omni_namer">
+<code class="descname">omni_namer</code><em class="property"> = [((‘standard’, ‘gmx’), {‘n2d’: ‘^(?P&lt;short_name&gt;%(wild)s+)\.(?P&lt;start&gt;%(float)s)-(?P&lt;end&gt;%(float)s)-(?P&lt;skip&gt;%(float)s)\.(?P&lt;group&gt;%(wild)s+)\.pbc(?P&lt;pbc&gt;%(wild)s+)\.%(gmx_suffixes)s$’, ‘d2n’: ‘%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.%(suffix)s’}), ((‘standard’, ‘datspec’), {‘n2d’: ‘^(?P&lt;short_name&gt;%(wild)s+)\.(?P&lt;start&gt;%(float)s)-(?P&lt;end&gt;%(float)s)-(?P&lt;skip&gt;%(float)s)\.(?P&lt;group&gt;%(wild)s+)\.pbc(?P&lt;pbc&gt;%(wild)s+)\.(?P&lt;calc_name&gt;%(wild)s+)\.n(?P&lt;nnum&gt;\d+)\.(dat|spec)$’, ‘d2n’: ‘%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.%(calc_name)s’}), ((‘standard_obvious’, ‘datspec’), {‘n2d’: ‘^(?P&lt;short_name&gt;%(wild)s+)\.(?P&lt;start&gt;%(float)s)-(?P&lt;end&gt;%(float)s)-(?P&lt;skip&gt;%(float)s)\.(?P&lt;calc_name&gt;%(wild)s+)\.n(?P&lt;nnum&gt;\d+)\.(dat|spec)$’, ‘d2n’: ‘%(short_name)s.%(start)s-%(end)s-%(skip)s.%(calc_name)s’}), ((‘raw’, ‘datspec’), {‘n2d’: ‘^(?P&lt;short_name&gt;%(wild)s+)\.(?P&lt;calc_name&gt;%(wild)s+)\.n(?P&lt;nnum&gt;\d+)\.(dat|spec)$’, ‘d2n’: ‘%(short_name)s.%(calc_name)s’})]</em><a class="headerlink" href="#maps.NamingConvention.omni_namer" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="maps.NamingConvention.omni_slicer_namer">
+<code class="descname">omni_slicer_namer</code><em class="property"> = {‘readymade_namd’: {‘slice_keys’: [‘readymade_namd’]}, ‘standard’: {‘slice_keys’: [‘groups’, ‘slices’]}}</em><a class="headerlink" href="#maps.NamingConvention.omni_slicer_namer" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="maps.NamingConvention.parser">
+<code class="descname">parser</code><em class="property"> = {(‘standard’, ‘gmx’): {‘n2d’: ‘^(?P&lt;short_name&gt;%(wild)s+)\.(?P&lt;start&gt;%(float)s)-(?P&lt;end&gt;%(float)s)-(?P&lt;skip&gt;%(float)s)\.(?P&lt;group&gt;%(wild)s+)\.pbc(?P&lt;pbc&gt;%(wild)s+)\.%(gmx_suffixes)s$’, ‘d2n’: ‘%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.%(suffix)s’}, (‘standard_obvious’, ‘datspec’): {‘n2d’: ‘^(?P&lt;short_name&gt;%(wild)s+)\.(?P&lt;start&gt;%(float)s)-(?P&lt;end&gt;%(float)s)-(?P&lt;skip&gt;%(float)s)\.(?P&lt;calc_name&gt;%(wild)s+)\.n(?P&lt;nnum&gt;\d+)\.(dat|spec)$’, ‘d2n’: ‘%(short_name)s.%(start)s-%(end)s-%(skip)s.%(calc_name)s’}, (‘raw’, ‘datspec’): {‘n2d’: ‘^(?P&lt;short_name&gt;%(wild)s+)\.(?P&lt;calc_name&gt;%(wild)s+)\.n(?P&lt;nnum&gt;\d+)\.(dat|spec)$’, ‘d2n’: ‘%(short_name)s.%(calc_name)s’}, (‘standard’, ‘datspec’): {‘n2d’: ‘^(?P&lt;short_name&gt;%(wild)s+)\.(?P&lt;start&gt;%(float)s)-(?P&lt;end&gt;%(float)s)-(?P&lt;skip&gt;%(float)s)\.(?P&lt;group&gt;%(wild)s+)\.pbc(?P&lt;pbc&gt;%(wild)s+)\.(?P&lt;calc_name&gt;%(wild)s+)\.n(?P&lt;nnum&gt;\d+)\.(dat|spec)$’, ‘d2n’: ‘%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.%(calc_name)s’}}</em><a class="headerlink" href="#maps.NamingConvention.parser" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="maps.ParsedRawData">
+<em class="property">class </em><code class="descclassname">maps.</code><code class="descname">ParsedRawData</code><span class="sig-paren">(</span><em>work</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.ParsedRawData" title="Permalink to this definition">¶</a></dt>
+<dd><p>Import raw simulation data.</p>
+<p class="rubric">Methods</p>
+<dl class="method">
+<dt id="maps.ParsedRawData.divy_keys">
+<code class="descname">divy_keys</code><span class="sig-paren">(</span><em>spot</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.ParsedRawData.divy_keys" title="Permalink to this definition">¶</a></dt>
+<dd><p>The treeparser matches trajectory files with a combined regex. 
+This function prepares a lambda that divides the combined regex into parts and reduces them to 
+strings if there is only one part. The resulting regex groups serve as keys in the toc.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="maps.ParsedRawData.get_timeseries">
+<code class="descname">get_timeseries</code><span class="sig-paren">(</span><em>sn_full</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.ParsedRawData.get_timeseries" title="Permalink to this definition">¶</a></dt>
+<dd><p>Typically EDR times are stored in the toc for a particular spot. 
+This function first figures out which spot you want and then returns the edr data.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="maps.ParsedRawData.keyfinder">
+<code class="descname">keyfinder</code><span class="sig-paren">(</span><em>spotname</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.ParsedRawData.keyfinder" title="Permalink to this definition">¶</a></dt>
+<dd><p>Decorate the keys_to_filename lookup function so it can be sent to e.g. slice_trajectory.
+If you are only working with a single spot, then this creates the file-name inference function
+for all data in that spot.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="maps.ParsedRawData.prefixer">
+<code class="descname">prefixer</code><span class="sig-paren">(</span><em>sn</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.ParsedRawData.prefixer" title="Permalink to this definition">¶</a></dt>
+<dd><p>Choose a prefix for naming post-processing files.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="maps.ParsedRawData.spotname_lookup">
+<code class="descname">spotname_lookup</code><span class="sig-paren">(</span><em>sn_full</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.ParsedRawData.spotname_lookup" title="Permalink to this definition">¶</a></dt>
+<dd><p>Find the spotname for a particular simulation.
+This is only used in a few places in maps.py: in the prefixer below and the portion of 
+SliceMeta.__init__ which makes slices.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="maps.ParsedRawData.treeparser">
+<code class="descname">treeparser</code><span class="sig-paren">(</span><em>spot</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.ParsedRawData.treeparser" title="Permalink to this definition">¶</a></dt>
+<dd><p>This function parses simulation data which are organized into a “spot”. 
+It writes the filenames to the table of contents (self.toc).</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="maps.PostDat">
+<em class="property">class </em><code class="descclassname">maps.</code><code class="descname">PostDat</code><span class="sig-paren">(</span><em>where</em>, <em>namer=None</em>, <em>work=None</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.PostDat" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#maps.NamingConvention" title="maps.NamingConvention"><code class="xref py py-class docutils literal"><span class="pre">maps.NamingConvention</span></code></a></p>
+<p>A library of post-processed data.
+This class mirrors the data in the post_spot (aka post_data_spot). It includes both post-processing 
+dat/spec file pairs, as well as sliced trajectories in gro/xtc or psf/dcd formats.</p>
+<p class="rubric">Methods</p>
+<dl class="method">
+<dt id="maps.PostDat.get_twin">
+<code class="descname">get_twin</code><span class="sig-paren">(</span><em>name</em>, <em>pair</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.PostDat.get_twin" title="Permalink to this definition">¶</a></dt>
+<dd><p>Many slices files have natural twins e.g. dat/spec and gro/xtc.
+This function finds them.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="maps.PostDat.limbo">
+<code class="descname">limbo</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#maps.PostDat.limbo" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="maps.PostDat.posts">
+<code class="descname">posts</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#maps.PostDat.posts" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="maps.PostDat.search_slices">
+<code class="descname">search_slices</code><span class="sig-paren">(</span><em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.PostDat.search_slices" title="Permalink to this definition">¶</a></dt>
+<dd><p>Find a specific slice.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="maps.PostDat.slices">
+<code class="descname">slices</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#maps.PostDat.slices" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="maps.Slice">
+<em class="property">class </em><code class="descclassname">maps.</code><code class="descname">Slice</code><span class="sig-paren">(</span><em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.Slice" title="Permalink to this definition">¶</a></dt>
+<dd><p>Parent class which holds several different representations of what we call a “slice”.</p>
+<p class="rubric">Methods</p>
+<dl class="method">
+<dt id="maps.Slice.flat">
+<code class="descname">flat</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#maps.Slice.flat" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reduce a slice into a more natural form.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="maps.SliceMeta">
+<em class="property">class </em><code class="descclassname">maps.</code><code class="descname">SliceMeta</code><span class="sig-paren">(</span><em>meta</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.SliceMeta" title="Permalink to this definition">¶</a></dt>
+<dd><p>This class JOINs a metadata slice dictionary with slices in the postdat so that the actual slice can be 
+retrieved for the calculation. It also calls the slicer.</p>
+<p class="rubric">Methods</p>
+<dl class="method">
+<dt id="maps.SliceMeta.get_slice">
+<code class="descname">get_slice</code><span class="sig-paren">(</span><em>sn</em>, <em>group</em>, <em>slice_name</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.SliceMeta.get_slice" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get slices. Group is permissive so we retrieve slices with this function.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="maps.json_type_fixer">
+<code class="descclassname">maps.</code><code class="descname">json_type_fixer</code><span class="sig-paren">(</span><em>series</em><span class="sig-paren">)</span><a class="headerlink" href="#maps.json_type_fixer" title="Permalink to this definition">¶</a></dt>
+<dd><p>Cast integer strings as integers, recursively. We also fix ‘None’.</p>
+</dd></dl>
+
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">OMNI docs</a> &#187;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    </div>
+  </body>
+</html>

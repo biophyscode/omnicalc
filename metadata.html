@@ -1,0 +1,153 @@
+
+
+<!doctype html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Metadata &#8212; OMNICALC Documentation</title>
+    
+    <link rel="stylesheet" href="_static/bizstyle.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="_static/bizstyle.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <!--[if lt IE 9]>
+    <script type="text/javascript" src="_static/css3-mediaqueries.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">OMNI docs</a> &#187;</li> 
+      </ul>
+    </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="index.html">
+              <img class="logo" src="_static/omnicalc.png" alt="Logo"/>
+            </a></p>
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Metadata</a><ul>
+<li><a class="reference internal" href="#paths">Paths</a></li>
+<li><a class="reference internal" href="#structure">Structure</a></li>
+<li><a class="reference internal" href="#variables">Variables</a></li>
+</ul>
+</li>
+</ul>
+
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/metadata.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="metadata">
+<span id="sec-metadata-basic"></span><h1>Metadata<a class="headerlink" href="#metadata" title="Permalink to this headline">¶</a></h1>
+<p>The design of omnicalc is motivated by a common problem experienced by the authors. In the course of answering a scientific question, you may write an analysis program that answers <em>exactly</em> that question. Once you learn something useful, you might ask follow-up questions that typically require you to add to these scripts, or sweep a particular parameter in some way. After a few iterations, your original calculation code becomes littered with parameter choices that are important to your calculation. The design philosophy behind the omnicalc code is to centralize all of these parameter choices in one place, in a readable format that is easy to expand. We store parameters in one (or many) <a class="reference external" href="http://www.yaml.org">yaml</a> files. These files constitute the “metadata” for our calculations, and we try our best to separate these metadata from the more generic functions which analyze our simulations. This ensures that your calculations are as modular as possible.</p>
+<div class="section" id="paths">
+<h2>Paths<a class="headerlink" href="#paths" title="Permalink to this headline">¶</a></h2>
+<p>As a rule, all metadata files must be stored in <code class="docutils literal"><span class="pre">calcs/specs/*.yaml</span></code>. You can use any naming scheme you wish, as long as the files are suffixed with <code class="docutils literal"><span class="pre">.yaml</span></code>. For the tutorial, we will be using <code class="docutils literal"><span class="pre">meta.yaml</span></code>. The yaml files have a particular top-level structure which allows omnicalc to merge them if it finds more than one. This merging is described later. It’s useful for the factory.</p>
+<div class="admonition warning">
+<p class="first admonition-title">Warning</p>
+<p class="last">link to the merging rules later on</p>
+</div>
+</div>
+<div class="section" id="structure">
+<h2>Structure<a class="headerlink" href="#structure" title="Permalink to this headline">¶</a></h2>
+<p>The yaml files are automatically merged into a single dictionary accessible throughout the omnicalc codes. The final result must contain at least the following list of top-level keys. Users with highly complicated settings may wish to put each top-level key in a separate file. If you use the <a class="reference external" href="http://github.com/bradleyrp/factory">factory</a>, it will generate additional yaml files to reflect user input to the front-end GUI, however users may always add additional metadata manually.</p>
+<ol class="arabic simple">
+<li><strong>slices</strong>: tells omnicalc how to create seamless trajectory slices</li>
+<li><strong>variables</strong>: avoid repeating yourself by defining common terms here</li>
+<li><strong>collections</strong>: organize simulations into groups which can be analyzed <em>en masse</em></li>
+<li><strong>meta</strong>: alias your possibly clunky simulation names to human-readable ones (particularly useful when making plots)</li>
+<li><strong>calculations</strong>: specify a single calculation (or a series) over an arbitrary set of parameters</li>
+<li><strong>plots</strong>: specify formats and parameters for making plots</li>
+</ol>
+<p>Each of these items will be described in detail in the remainder of the documentation. In section below, we will describe our custom syntax for avoiding repetition in these files. Note that the list above contains protected top-level dictionary keys. You can add extra data to the meta files, but omnicalc will typically only use information in the above-named dictionaries. These dictionaries are intelligently merged in case they are found in separate specification files (that is, any file which matches <code class="docutils literal"><span class="pre">calcs/specs/*yaml</span></code>).</p>
+</div>
+<div class="section" id="variables">
+<span id="sec-variables"></span><h2>Variables<a class="headerlink" href="#variables" title="Permalink to this headline">¶</a></h2>
+<p>All of the metadata (or “specification”) files found in <code class="docutils literal"><span class="pre">calcs/specs/*yaml</span></code> should be written in the standard yaml format. We have added a single useful tool for avoiding repetition. The entire set of yaml files is read into a single dictionary. Any “leaf” or “child node” of this dictionary which is (1) a string and (2) begins with a plus sign (e.g. <code class="docutils literal"><span class="pre">+lipids</span></code>) will trigger a variable lookup. If omnicalc fails to map the string to a variable, it will not throw an error.</p>
+<p>Omnicalc will replace the variable name with the value it finds in the top-level <code class="docutils literal"><span class="pre">variables</span></code> dictionary. Since this dictionary can be arbitrarily nested, it will traverse the dictionary using a series of keys separated by a forward slash.</p>
+<div class="highlight-yaml"><div class="highlight"><pre><span></span><span class="l l-Scalar l-Scalar-Plain">variables</span><span class="p p-Indicator">:</span>
+  <span class="l l-Scalar l-Scalar-Plain">selectors</span><span class="p p-Indicator">:</span>
+    <span class="l l-Scalar l-Scalar-Plain">ions</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">(name NA or name CL or name MG or name Cal or name K)</span>
+    <span class="l l-Scalar l-Scalar-Plain">cations</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">(name NA or name MG or name Cal or name K)</span>
+    <span class="l l-Scalar l-Scalar-Plain">resnames_lipid</span><span class="p p-Indicator">:</span> <span class="p p-Indicator">[</span><span class="s">&#39;POPC&#39;</span><span class="p p-Indicator">,</span><span class="s">&#39;DOPC&#39;</span><span class="p p-Indicator">,</span><span class="s">&#39;DOPS&#39;</span><span class="p p-Indicator">,</span><span class="s">&#39;DOPE&#39;</span><span class="p p-Indicator">]</span>
+</pre></div>
+</div>
+<p>In the example above, whenever we set a child node to “+selectors/ions” it will be automaticall replaced with a string: <code class="docutils literal"><span class="pre">(name</span> <span class="pre">NA</span> <span class="pre">or</span> <span class="pre">name</span> <span class="pre">CL</span> <span class="pre">or</span> <span class="pre">name</span> <span class="pre">MG</span> <span class="pre">or</span> <span class="pre">name</span> <span class="pre">Cal</span> <span class="pre">or</span> <span class="pre">name</span> <span class="pre">K)</span></code>. Note that the yaml specification allows pythonic lists, so the <code class="docutils literal"><span class="pre">resnames_lipid</span></code> value would be returned as a proper list. The <code class="docutils literal"><span class="pre">selectors</span></code> in the example above consist of CHARMM-style selection strings which are later sent to the MDAnalysis package for selecting a subset of our simulation. Storing these strings as variables means that you don’t have to repeat them elsewhere, and you can change them at a single location which might affect many downstream calculations.</p>
+<p>The authors have found the <code class="docutils literal"><span class="pre">variables</span></code> dictionary to be useful not only for storing selection commands, but also timing information for trajectory slices, common mathematical definitions, and extraneous settings. This feature keeps the metadata simple and provides an additional layer of abstraction.</p>
+<div class="admonition warning">
+<p class="first admonition-title">Warning</p>
+<p class="last">please confirm no error on variable lookup</p>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">OMNI docs</a> &#187;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    </div>
+  </body>
+</html>

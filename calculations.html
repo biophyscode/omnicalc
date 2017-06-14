@@ -1,0 +1,252 @@
+
+
+<!doctype html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Calculations &#8212; OMNICALC Documentation</title>
+    
+    <link rel="stylesheet" href="_static/bizstyle.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="_static/bizstyle.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <!--[if lt IE 9]>
+    <script type="text/javascript" src="_static/css3-mediaqueries.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">OMNI docs</a> &#187;</li> 
+      </ul>
+    </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="index.html">
+              <img class="logo" src="_static/omnicalc.png" alt="Logo"/>
+            </a></p>
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Calculations</a><ul>
+<li><a class="reference internal" href="#an-example-calculation">An example calculation</a><ul>
+<li><a class="reference internal" href="#using-external-codes">Using external codes</a></li>
+<li><a class="reference internal" href="#requesting-upstream-data">Requesting upstream data</a></li>
+<li><a class="reference internal" href="#packaging-the-data">Packaging the data</a></li>
+<li><a class="reference internal" href="#where-the-data-are-stored">Where the data are stored</a></li>
+<li><a class="reference internal" href="#parameter-sweeps">Parameter sweeps</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/calculations.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="calculations">
+<h1>Calculations<a class="headerlink" href="#calculations" title="Permalink to this headline">¶</a></h1>
+<p>In the previous section (<a class="reference internal" href="runtime.html#sec-runtime"><span class="std std-ref">run time</span></a>) we outlined the main execution loop and the logic by which omnicalc links calculation parameters (i.e. metadata) with simulation trajectories and calculation functions. In this section we will describe the structure of a calculation function. By the end of this section, users should have all of the information they need to perform simple calculations, however, a wide variety of extensions and features are described in the remaining chapters.</p>
+<div class="section" id="an-example-calculation">
+<h2>An example calculation<a class="headerlink" href="#an-example-calculation" title="Permalink to this headline">¶</a></h2>
+<p>The following code describes a simple example function for the “undulations” calculation found in <code class="docutils literal"><span class="pre">calcs/undulations.py</span></code>. This function is designed to read the results of a previous calculation called <code class="docutils literal"><span class="pre">lipid_abstractor</span></code> which reduces a bilayer simulation to a set of lipid centers-of-mass for further calculation. This example covers almost all of the features of the omnicalc workflow, which we will address in sequence.</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="ch">#!/usr/bin/python</span>
+
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">from</span> <span class="nn">numpy</span> <span class="k">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">joblib</span> <span class="k">import</span> <span class="n">Parallel</span><span class="p">,</span><span class="n">delayed</span>
+<span class="kn">from</span> <span class="nn">joblib.pool</span> <span class="k">import</span> <span class="n">has_shareable_memory</span>
+
+<span class="kn">from</span> <span class="nn">codes.mesh</span> <span class="k">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">base.timer</span> <span class="k">import</span> <span class="n">checktime</span>
+<span class="kn">from</span> <span class="nn">base.tools</span> <span class="k">import</span> <span class="n">status</span><span class="p">,</span><span class="n">framelooper</span>
+
+<span class="k">def</span> <span class="nf">undulations</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+
+  <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">  Compute bilayer midplane structures for studying undulations.</span>
+<span class="sd">  &quot;&quot;&quot;</span>
+
+  <span class="c1">#---parameters</span>
+<span class="hll">  <span class="n">sn</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;sn&#39;</span><span class="p">]</span>
+</span><span class="hll">  <span class="n">work</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;workspace&#39;</span><span class="p">]</span>
+</span><span class="hll">  <span class="n">calc</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;calc&#39;</span><span class="p">]</span>
+</span><span class="hll">  <span class="n">grid_spacing</span> <span class="o">=</span> <span class="n">calc</span><span class="p">[</span><span class="s1">&#39;specs&#39;</span><span class="p">][</span><span class="s1">&#39;grid_spacing&#39;</span><span class="p">]</span>
+</span><span class="hll">  <span class="n">dat</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;upstream&#39;</span><span class="p">][</span><span class="s1">&#39;lipid_abstractor&#39;</span><span class="p">]</span>
+</span><span class="hll">  <span class="n">nframes</span> <span class="o">=</span> <span class="n">dat</span><span class="p">[</span><span class="s1">&#39;nframes&#39;</span><span class="p">]</span>
+</span>
+  <span class="c1">#---choose grid dimensions</span>
+  <span class="n">grid</span> <span class="o">=</span> <span class="n">array</span><span class="p">([</span><span class="nb">round</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">mean</span><span class="p">(</span><span class="n">dat</span><span class="p">[</span><span class="s1">&#39;vecs&#39;</span><span class="p">],</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">/</span><span class="n">grid_spacing</span><span class="p">])[:</span><span class="mi">2</span><span class="p">]</span>
+  <span class="n">monolayer_indices</span> <span class="o">=</span> <span class="n">dat</span><span class="p">[</span><span class="s1">&#39;monolayer_indices&#39;</span><span class="p">]</span>
+
+  <span class="c1">#---parallel</span>
+  <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+  <span class="n">mesh</span> <span class="o">=</span> <span class="p">[[],[]]</span>
+  <span class="k">for</span> <span class="n">mn</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">):</span>
+    <span class="n">mesh</span><span class="p">[</span><span class="n">mn</span><span class="p">]</span> <span class="o">=</span> <span class="n">Parallel</span><span class="p">(</span><span class="n">n_jobs</span><span class="o">=</span><span class="n">work</span><span class="o">.</span><span class="n">nprocs</span><span class="p">,</span><span class="n">verbose</span><span class="o">=</span><span class="mi">0</span><span class="p">)(</span>
+      <span class="n">delayed</span><span class="p">(</span><span class="n">makemesh_regular</span><span class="p">)(</span>
+        <span class="n">dat</span><span class="p">[</span><span class="s1">&#39;points&#39;</span><span class="p">][</span><span class="n">fr</span><span class="p">][</span><span class="n">where</span><span class="p">(</span><span class="n">monolayer_indices</span><span class="o">==</span><span class="n">mn</span><span class="p">)],</span><span class="n">dat</span><span class="p">[</span><span class="s1">&#39;vecs&#39;</span><span class="p">][</span><span class="n">fr</span><span class="p">],</span><span class="n">grid</span><span class="p">)</span>
+      <span class="k">for</span> <span class="n">fr</span> <span class="ow">in</span> <span class="n">framelooper</span><span class="p">(</span><span class="n">nframes</span><span class="p">,</span><span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span><span class="n">text</span><span class="o">=</span><span class="s1">&#39;monolayer </span><span class="si">%d</span><span class="s1">, frame&#39;</span><span class="o">%</span><span class="n">mn</span><span class="p">))</span>
+  <span class="n">checktime</span><span class="p">()</span>
+
+  <span class="c1">#---pack</span>
+<span class="hll">  <span class="n">attrs</span><span class="p">,</span><span class="n">result</span> <span class="o">=</span> <span class="p">{},{}</span>
+</span><span class="hll">  <span class="n">result</span><span class="p">[</span><span class="s1">&#39;mesh&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">array</span><span class="p">(</span><span class="n">mesh</span><span class="p">)</span>
+</span><span class="hll">  <span class="n">result</span><span class="p">[</span><span class="s1">&#39;grid&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">array</span><span class="p">(</span><span class="n">grid</span><span class="p">)</span>
+</span><span class="hll">  <span class="n">result</span><span class="p">[</span><span class="s1">&#39;nframes&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">array</span><span class="p">(</span><span class="n">nframes</span><span class="p">)</span>
+</span><span class="hll">  <span class="n">result</span><span class="p">[</span><span class="s1">&#39;vecs&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">dat</span><span class="p">[</span><span class="s1">&#39;vecs&#39;</span><span class="p">]</span>
+</span><span class="hll">  <span class="n">result</span><span class="p">[</span><span class="s1">&#39;timeseries&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">work</span><span class="o">.</span><span class="n">slice</span><span class="p">(</span><span class="n">sn</span><span class="p">)[</span><span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;slice_name&#39;</span><span class="p">]][</span>
+</span><span class="hll">    <span class="s1">&#39;all&#39;</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;group&#39;</span><span class="p">]</span> <span class="k">else</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;group&#39;</span><span class="p">]][</span><span class="s1">&#39;timeseries&#39;</span><span class="p">]</span>
+</span><span class="hll">  <span class="n">attrs</span><span class="p">[</span><span class="s1">&#39;grid_spacing&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">grid_spacing</span>
+</span>  <span class="k">return</span> <span class="n">result</span><span class="p">,</span><span class="n">attrs</span> 
+
+</pre></div>
+</div>
+<div class="section" id="using-external-codes">
+<h3>Using external codes<a class="headerlink" href="#using-external-codes" title="Permalink to this headline">¶</a></h3>
+<p>For starters, you might notice that there is almost no formal computation visible in this function. Almost all of the “work” is performed by the <code class="docutils literal"><span class="pre">makemesh_regular</span></code> function imported from <code class="docutils literal"><span class="pre">codes.mesh</span></code>. Users may wish to embed the computation directly in this function, but they are free to import any modules they wish. Besides allowing local imports from e.g. <code class="docutils literal"><span class="pre">calcs/codes</span></code>, users may also import global packages. In this case, we use the <a class="reference external" href="https://pythonhosted.org/joblib/">joblib</a> package to parrallelize this code using shared memory. We also use omnicalc’s built-in <code class="docutils literal"><span class="pre">framelooper</span></code> generator to iterate over the number of frames in our simulation using a status bar and a timer.</p>
+</div>
+<div class="section" id="requesting-upstream-data">
+<span id="sec-upstream"></span><h3>Requesting upstream data<a class="headerlink" href="#requesting-upstream-data" title="Permalink to this headline">¶</a></h3>
+<p>Since this function depends on an “upstream” <code class="docutils literal"><span class="pre">lipid_abstractor</span></code> computation, omnicalc automatically sends the data in <code class="docutils literal"><span class="pre">kwargs['upstream']['lipid_abstractor']</span></code>. It is possible to draw from multiple upstream calculations. Users specify the upstream dependencies inside of the calculations dictionary in the metadata. To import the <code class="docutils literal"><span class="pre">lipid_abstractor</span></code> data, the user uses the <code class="docutils literal"><span class="pre">upstream</span></code> keyword according to the following example. (Recall that <code class="docutils literal"><span class="pre">group</span></code>, <code class="docutils literal"><span class="pre">slice_name</span></code>, and <code class="docutils literal"><span class="pre">collections</span></code> are required for all calculation dictionaries).</p>
+<div class="highlight-yaml"><div class="highlight"><pre><span></span><span class="l l-Scalar l-Scalar-Plain">undulations</span><span class="p p-Indicator">:</span>
+  <span class="l l-Scalar l-Scalar-Plain">uptype</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">post</span>
+  <span class="l l-Scalar l-Scalar-Plain">group</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">lipids</span>
+  <span class="l l-Scalar l-Scalar-Plain">slice_name</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">+slices/steady16</span>
+  <span class="l l-Scalar l-Scalar-Plain">collections</span><span class="p p-Indicator">:</span>
+    <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">all</span>
+  <span class="l l-Scalar l-Scalar-Plain">specs</span><span class="p p-Indicator">:</span>
+    <span class="l l-Scalar l-Scalar-Plain">grid_spacing</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">0.5</span>
+    <span class="l l-Scalar l-Scalar-Plain">upstream</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">lipid_abstractor</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal"><span class="pre">upstream</span></code> key above can point to either an item or a list (see <a class="reference internal" href="index.html#sec-parameter-sweeps"><span class="std std-ref">parameter sweeps</span></a>), but these items must be the names of <em>other</em> calculations. Omnicalc will figure out the correct execution order for you. The <code class="docutils literal"><span class="pre">uptype:</span> <span class="pre">post</span></code> flag tells omnicalc not to load the simulation trajectory directly. If you use <code class="docutils literal"><span class="pre">uptype:</span> <span class="pre">simulation</span></code>, then omnicalc will send along the structure and trajectory files as arguments named <code class="docutils literal"><span class="pre">grofile</span></code> and <code class="docutils literal"><span class="pre">trajfile</span></code>. These arguments can be passsed directly to the excellent <a class="reference external" href="http://www.mdanalysis.org/">MDAnalysis package</a>, which is equipped to read the GROMACS binary trajectory files. Note that you can request <code class="docutils literal"><span class="pre">upstream</span></code> calculations even when you set <code class="docutils literal"><span class="pre">uptype:</span> <span class="pre">simulation</span></code>, in the event that you want to refer back to the original simulation trajectory on a downstream step.</p>
+<p>All of the upstream data, file names, and specs are passed via <code class="docutils literal"><span class="pre">kwargs</span></code>. It is the users’s job to unpack them for the calculation.</p>
+</div>
+<div class="section" id="packaging-the-data">
+<h3>Packaging the data<a class="headerlink" href="#packaging-the-data" title="Permalink to this headline">¶</a></h3>
+<p>After the body of the calculation function, users will be ready to “save” the data. All calculation functions must return data in a specific format so that omnicalc can save it for downstream calculations or plotting functions. Data should be stored in either a results dictionary or an attributes dictionary.</p>
+<p>The results dictionary can <strong>only</strong> contain <code class="docutils literal"><span class="pre">numpy</span></code> array data. Most data — even multidimensional lists with different lengths, dictionaries, etc, can be saved as a numpy array. This restriction allows omnicalc to use the excellent <a class="reference external" href="http://www.h5py.org/">h5py</a> package to save the data in a hardware agnostic, efficient, binary format.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">You can save highly heterogeneous data (e.g. nested dictionaries) in the numpy format by using packages like <a class="reference external" href="http://www.json.org/">JSON</a>, or <a class="reference external" href="http://yaml.org/">YAML</a>, to turn them into a string, which can be saved. This can be done with numpy as follows: <code class="docutils literal"><span class="pre">numpy.string_(json.dumps(ugly_data))</span></code>.</p>
+</div>
+<p>The attributes dictionary is called <code class="docutils literal"><span class="pre">attrs</span></code> and has a few strict requirements which are designed to make it easy for omnicalc to retrieve data. In short, the <code class="docutils literal"><span class="pre">attrs</span></code> dictionary should contain any parameters which describe the calculation and distinguish it from others, particularly those in a parameter sweep. Specifications are stored in the calculations dictionary (in the metadata) under the <code class="docutils literal"><span class="pre">specs</span></code> key. Since these parameters are essential to identify the calculation after it is complete, omnicalc will throw an error of the user fails to pass the <code class="docutils literal"><span class="pre">specs</span></code> on to the <code class="docutils literal"><span class="pre">attrs</span></code> dictionary. In the example above, you can see  that we have passed along the <code class="docutils literal"><span class="pre">grid_spacing</span></code> parameter. You can also add other parameters to <code class="docutils literal"><span class="pre">attrs</span></code> to further label the data.</p>
+<p>One of the most distinctive features of omnicalc is that the software is designed to collect parameters in the metadata files (in <code class="docutils literal"><span class="pre">calcs/specs/*.yaml</span></code>) so that you don’t need to “hard code” them in your analysis functions. Inevitably, you will hard code some of these parameters, and later realize that they <em>are</em> in fact, paramters which you want to vary. If you export the hard-coded parameters in <code class="docutils literal"><span class="pre">attrs</span></code>, then you can later add them to the metadata files (and sweep over them, for example), without causing a naming conflict or deleting the original calculation.</p>
+</div>
+<div class="section" id="where-the-data-are-stored">
+<h3>Where the data are stored<a class="headerlink" href="#where-the-data-are-stored" title="Permalink to this headline">¶</a></h3>
+<p>Each calculation produces two files: a <code class="docutils literal"><span class="pre">dat</span></code> file written in <code class="docutils literal"><span class="pre">hdf5</span></code> as described above, and a specs file containing a text-formatted python dictionary given by <code class="docutils literal"><span class="pre">attrs</span></code>. These files are stored in the path given by the <code class="docutils literal"><span class="pre">work.paths['post_data_spot']</span></code> variable and specified in the configuration. The file names are nearly identical to the slice names (see: <a class="reference internal" href="paths.html#sec-slice-names"><span class="std std-ref">naming slices</span></a>) with two small changes. As with the slice names, they begin with the prefixed simulation name defined by <code class="docutils literal"><span class="pre">prefixer</span></code> in the configuration. This is followed by the calculation name defined in the metadata. The only other difference between a slice file name and a calculation file name is that the calculations have a suffix which contains an index number. This index distinguishes distinct calculations from each other. These differences are encoded in the corresponding <code class="docutils literal"><span class="pre">spec</span></code> file, which contains the <code class="docutils literal"><span class="pre">attrs</span></code> defined by the user.</p>
+<p>This naming scheme allows the user to produce an <em>arbitrary</em> number of calculations with different parameters without using bloated file names. The parameters are stored in the <code class="docutils literal"><span class="pre">spec</span></code> file, which is studied by omnicalc to figure out which <code class="docutils literal"><span class="pre">dat</span></code> file to open, when you make plots or access the data later on. The index on the spec file is equivalent to a foreign key in a database. The example in the upcoming section uses the following names, where the index is <code class="docutils literal"><span class="pre">n0</span></code>.</p>
+<div class="highlight-bash"><div class="highlight"><pre><span></span>v532.50000-100000-100.lipid_mesh.n0.dat
+v532.50000-100000-100.lipid_mesh.n0.spec
+</pre></div>
+</div>
+</div>
+<div class="section" id="parameter-sweeps">
+<span id="sec-parameter-sweeps"></span><h3>Parameter sweeps<a class="headerlink" href="#parameter-sweeps" title="Permalink to this headline">¶</a></h3>
+<p>The example <code class="docutils literal"><span class="pre">undulations</span></code> function above refers to the <code class="docutils literal"><span class="pre">lipid_abstractor</span></code> data without further specification. In the event that your upstream data contains a parameter sweep, you can also perform the sweep over the downstream data. The following example describes a calculation called <code class="docutils literal"><span class="pre">lipid_mesh</span></code> which uses two different lipid selectors (one which contains cholesterol, and one which doesn’t). Using the <code class="docutils literal"><span class="pre">loop</span></code> keyword in the <code class="docutils literal"><span class="pre">specs</span></code> will trigger a parameter sweep.</p>
+<div class="highlight-yaml"><div class="highlight"><pre><span></span><span class="l l-Scalar l-Scalar-Plain">lipid_mesh</span><span class="p p-Indicator">:</span>
+  <span class="l l-Scalar l-Scalar-Plain">uptype</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">post</span>
+  <span class="l l-Scalar l-Scalar-Plain">slice_name</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">current</span>
+  <span class="l l-Scalar l-Scalar-Plain">collections</span><span class="p p-Indicator">:</span>
+    <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">all</span>
+  <span class="l l-Scalar l-Scalar-Plain">specs</span><span class="p p-Indicator">:</span>
+    <span class="l l-Scalar l-Scalar-Plain">upstream</span><span class="p p-Indicator">:</span>
+      <span class="l l-Scalar l-Scalar-Plain">lipid_abstractor</span><span class="p p-Indicator">:</span>
+        <span class="l l-Scalar l-Scalar-Plain">selector</span><span class="p p-Indicator">:</span>
+          <span class="l l-Scalar l-Scalar-Plain">loop</span><span class="p p-Indicator">:</span>
+            <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">lipid_com</span>
+            <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">lipid_chol_com</span>
+</pre></div>
+</div>
+<p>Any downstream steps must either perform the same parameter sweep, or <strong>select uniquely-identifying parameters</strong> for the upstream step in order to import that data. In both cases, the selection is made inside the <code class="docutils literal"><span class="pre">upstream</span></code> dictionary in <code class="docutils literal"><span class="pre">specs</span></code>. If there are no parameters, then the <code class="docutils literal"><span class="pre">upstream</span></code> item can be a list (or a single) item. If you need to select parameters, or perform the sweep above, then <code class="docutils literal"><span class="pre">upstream</span></code> should be a list of dictionaries, each of which contains the <code class="docutils literal"><span class="pre">specs</span></code> section from the upstream calculation.</p>
+<p>The example above mimics a parameter sweep that must have also happened in the <code class="docutils literal"><span class="pre">lipid_abstractor</span></code> calculation. If users only wish to use one parameter for the <code class="docutils literal"><span class="pre">lipid_mesh</span></code> calculation, they would still have to select it, using the following notation. In the following example, we choose to include the cholesterol molecules via the <code class="docutils literal"><span class="pre">selector</span></code> spec.</p>
+<div class="highlight-yaml"><div class="highlight"><pre><span></span><span class="l l-Scalar l-Scalar-Plain">lipid_mesh</span><span class="p p-Indicator">:</span>
+  <span class="l l-Scalar l-Scalar-Plain">uptype</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">post</span>
+  <span class="l l-Scalar l-Scalar-Plain">slice_name</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">current</span>
+  <span class="l l-Scalar l-Scalar-Plain">collections</span><span class="p p-Indicator">:</span>
+    <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">all</span>
+  <span class="l l-Scalar l-Scalar-Plain">specs</span><span class="p p-Indicator">:</span>
+    <span class="l l-Scalar l-Scalar-Plain">upstream</span><span class="p p-Indicator">:</span>
+      <span class="l l-Scalar l-Scalar-Plain">lipid_abstractor</span><span class="p p-Indicator">:</span>
+        <span class="l l-Scalar l-Scalar-Plain">selector</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">lipid_chol_com</span>
+</pre></div>
+</div>
+<p>By using <code class="docutils literal"><span class="pre">loop</span></code>, <code class="docutils literal"><span class="pre">upstream</span></code>, and <code class="docutils literal"><span class="pre">specs</span></code>, users can develop highly efficient calculation pipelines.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">If you trigger a parameter sweep by using the keyword <code class="docutils literal"><span class="pre">loop</span></code> as per the example above, then the calculation will loop over all of the subsequent lists. You can specify the same parameter sweep in the plots section, or you can omit the specs entirely. In both cases, the <code class="xref py py-meth docutils literal"><span class="pre">plotloader</span></code> function will load all of the data you require. You can whittle this down by using a <code class="docutils literal"><span class="pre">specs</span></code> sub-dictionary to select exactly which data goes to the plot functions.</p>
+</div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">OMNI docs</a> &#187;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    </div>
+  </body>
+</html>

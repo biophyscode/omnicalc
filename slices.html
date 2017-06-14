@@ -1,0 +1,118 @@
+
+
+<!doctype html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Slices &#8212; OMNICALC Documentation</title>
+    
+    <link rel="stylesheet" href="_static/bizstyle.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="_static/bizstyle.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <!--[if lt IE 9]>
+    <script type="text/javascript" src="_static/css3-mediaqueries.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">OMNI docs</a> &#187;</li> 
+      </ul>
+    </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="index.html">
+              <img class="logo" src="_static/omnicalc.png" alt="Logo"/>
+            </a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/slices.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="slices">
+<span id="sec-slices"></span><h1>Slices<a class="headerlink" href="#slices" title="Permalink to this headline">¶</a></h1>
+<p>The top-level <code class="docutils literal"><span class="pre">slices</span></code> dictionary in your <a class="reference internal" href="metadata.html#sec-metadata-basic"><span class="std std-ref">metadata</span></a> contain instructions for “slicing” a long trajectory into a single file. This has a number of advantages for users who have completed a production run which spans many different parts. The slicing procedure also (crucically) can be used to reassemble molecules which are broken across periodic boundaries, which always happens when you restart your GROMACS simulation.</p>
+<p>Each entry in the <code class="docutils literal"><span class="pre">slices</span></code> dictionary should be a formal simulation name. That is, it must be the folder name for a simulation that can be identified via <a class="reference internal" href="paths.html#sec-paths"><span class="std std-ref">paths.yaml</span></a>. Recall that you are free to map these simulation names to more convenient, human readable names later on, using the <code class="docutils literal"><span class="pre">meta</span></code> dictionary or the internal <a class="reference internal" href="metadata.html#sec-variables"><span class="std std-ref">variables</span></a> feature.</p>
+<p>Each entry in the <code class="docutils literal"><span class="pre">slices</span></code> dictionary must contain two children. The <code class="docutils literal"><span class="pre">slices</span></code> entry is a dictionary of slice definitions. The keys correspond to slice names which are only used internally to keep track of the slices (note that the calculations retrieve slices by using these names, which do not have to be unique across simulation entries). The slice dictionary must contain a few keys. The <code class="docutils literal"><span class="pre">groups</span></code> key must provide a list of group names which we will describe in a moment. You must also include <code class="docutils literal"><span class="pre">start</span></code>, <code class="docutils literal"><span class="pre">end</span></code>, and <code class="docutils literal"><span class="pre">skip</span></code> which correspond to simulation times sent to the GROMACS trjconv utility. These should all be floats or integers specified in picoseconds.</p>
+<p>The parallel <code class="docutils literal"><span class="pre">groups</span></code> entry should be a dictionary of selection commands which are fed first to the GROMACS <code class="docutils literal"><span class="pre">make_ndx</span></code> command to specify the contents of a particular trajectory slice. In the simplest case, you should include <code class="docutils literal"><span class="pre">all:all</span></code> if you want to retain all molecules in your slice. You may find it economical to make some slices which only contain a part of your system. These names should be added to the <code class="docutils literal"><span class="pre">groups</span></code> key in the slice definition. The following example should make this clear.</p>
+<div class="highlight-yaml"><div class="highlight"><pre><span></span><span class="l l-Scalar l-Scalar-Plain">slices</span><span class="p p-Indicator">:</span>
+  <span class="l l-Scalar l-Scalar-Plain">membrane-v123</span><span class="p p-Indicator">:</span>
+    <span class="l l-Scalar l-Scalar-Plain">groups</span><span class="p p-Indicator">:</span>
+      <span class="l l-Scalar l-Scalar-Plain">all</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">all</span>
+      <span class="l l-Scalar l-Scalar-Plain">ions</span><span class="p p-Indicator">:</span> <span class="l l-Scalar l-Scalar-Plain">+selectors/ions</span>
+    <span class="l l-Scalar l-Scalar-Plain">slices</span><span class="p p-Indicator">:</span>
+      <span class="l l-Scalar l-Scalar-Plain">current</span><span class="p p-Indicator">:</span> <span class="p p-Indicator">{</span><span class="s">&#39;pbc&#39;</span><span class="p p-Indicator">:</span><span class="s">&#39;mol&#39;</span><span class="p p-Indicator">,</span><span class="s">&#39;groups&#39;</span><span class="p p-Indicator">:[</span><span class="s">&#39;all&#39;</span><span class="p p-Indicator">],</span><span class="s">&#39;start&#39;</span><span class="p p-Indicator">:</span><span class="nv">10000</span><span class="p p-Indicator">,</span><span class="s">&#39;end&#39;</span><span class="p p-Indicator">:</span><span class="nv">110000</span><span class="p p-Indicator">,</span><span class="s">&#39;skip&#39;</span><span class="p p-Indicator">:</span><span class="nv">100</span><span class="p p-Indicator">}</span>
+      <span class="l l-Scalar l-Scalar-Plain">current_ions</span><span class="p p-Indicator">:</span> <span class="p p-Indicator">{</span><span class="s">&#39;pbc&#39;</span><span class="p p-Indicator">:</span><span class="s">&#39;mol&#39;</span><span class="p p-Indicator">,</span><span class="s">&#39;groups&#39;</span><span class="p p-Indicator">:[</span><span class="s">&#39;ions&#39;</span><span class="p p-Indicator">],</span><span class="s">&#39;start&#39;</span><span class="p p-Indicator">:</span><span class="nv">10000</span><span class="p p-Indicator">,</span><span class="s">&#39;end&#39;</span><span class="p p-Indicator">:</span><span class="nv">110000</span><span class="p p-Indicator">,</span><span class="s">&#39;skip&#39;</span><span class="p p-Indicator">:</span><span class="nv">1</span><span class="p p-Indicator">}</span>
+</pre></div>
+</div>
+<p>The name of each slice is only used by omnicalc to keep track of that slice later on. For example, when you design calculations, you can run a single calculation over all slices of a particular name. Remember that the names do not have to be unique for each simulation. In the example above, we create two kinds of slices (<code class="docutils literal"><span class="pre">current</span></code> and <code class="docutils literal"><span class="pre">current_ions</span></code>) which can be accessed by different calculations. The <code class="docutils literal"><span class="pre">current_ions</span></code> slice is sampled at a much higher rate (in this case <code class="docutils literal"><span class="pre">skip=1</span></code> so the frames are written every picosecond) and could be sent to a calculation which only requires the positions of the ions.</p>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">OMNI docs</a> &#187;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    </div>
+  </body>
+</html>

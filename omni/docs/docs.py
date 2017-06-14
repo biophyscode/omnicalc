@@ -29,7 +29,7 @@ from makeface import strip_builtins
 from datapack import asciitree
 from sphinx_auto import makefile,conf_py,conf_master_py
 
-__all__ = ['docs','publish_docs']
+__all__ = ['docs']
 
 def write_rst_toctree(items,name,spacer='-',infotext=''):
 	"""..."""

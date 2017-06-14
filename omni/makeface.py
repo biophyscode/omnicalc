@@ -21,7 +21,7 @@ This makefile was forked from factory and updated with prechecker and zombie mod
 """
 
 default_config = {
-	'commands': ['omni/config.py','omni/cli.py'],
+	'commands': ['omni/config.py','omni/cli.py','omni/docs/docs.py'],
 	'commands_aliases': [('set','set_config')],}
 
 #---settings for globbing for functions

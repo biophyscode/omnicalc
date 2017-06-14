@@ -3,6 +3,25 @@
 """
 Compile documentation. 
 Forked from the automacs version with live documentation removed.
+The automacs documentation pushes to a separate github because it represents the most complex use-case in 
+which the main documentation contains "live" snapshots of documentation for other optional modules.
+Since the omnicalc documentation does not document the calculation modules, we use a simpler procedure, in 
+which the documentation can be generated from the master branch, and a gh-pages branch in the same
+repository pushes the rendered docs up to github. This means that the documentation can be found on the
+BioPhysCode github at http://biophyscode.github.io/omnicalc. Administrators can refresh these docs using 
+instructions provided below.
+
+To initially set up documentation for github-pages (gh-pages) from a subdirectory of the repository you must 
+first create the branch via ``git checkout -b gh-pages``. Then, add and commit the folder that contains 
+``index.html``. Push the branch up to gh-pages using the following command.
+
+``git subtree push --prefix omni/docs/build_all/DOCS origin gh-pages``
+
+When you are done, you can ``git checkout master``. This method allows you to serve the documentation from 
+the same repository as the code, but users do not automatically get their own copy of the compiled docs.
+
+Currently you must repeat the procedure to update the docs. It would be useful to know how to track the 
+remote in the subdirectory in order to properly refresh the docs.
 """
 
 import os,sys,re,glob,subprocess,shutil,datetime
@@ -83,54 +102,3 @@ def docs_refresh():
 		'make the docs from scratch instead, with `make docs`.')
 	subprocess.check_call('rsync -ariv ../walkthrough/* ./',cwd=build_dn,shell=True)
 	subprocess.check_call('sphinx-build . %s'%master_dn,shell=True,cwd=build_dn)
-
-def publish_docs(to=''):
-	"""
-	Prepare documentation for push to github pages. Administrator usage only.
-	WARNING! Make sure you compile the docs manually before you run this!
-
-	NOTES:
-	-----
-	This function will set up the repo to track the github repo.
-	We used a similar procedure to update the docs, and eventually replaced it with the current
-	set of commands to handle the newer versions of git.	
-	The first commit to the repo was created as follows (saved here for posterity):
-		git init .
-		git commit -m 'initial commit' --allow-empty
-		git branch gh-pages
-		git checkout gh-pages
-		touch .nojekyll
-		git add .
-		git commit -am 'added files'
-		git remote add origin <destination>
-		git push -u origin gh-pages
-	"""
-	html_source_path = 'build_all/DOCS'
-	if not to: raise Exception('send destination for documentation via the "to" argument to make')
-	dropspot = os.path.join(os.path.dirname(__file__),html_source_path,'')
-	print('[WARNING] you must make sure the docs are up-to-date before running this!')
-	timestamp = '{:%Y.%m.%d.%H%M}'.format(datetime.datetime.now())
-	cmds = [
-		'git init .',
-		'git checkout -b new_changes',
-		'git add .',
-		'git commit -m "refreshing docs"',
-		'git remote add origin "%s"'%to,
-		'git fetch origin gh-pages',
-		'git checkout gh-pages',
-		('git merge -X theirs -m "refreshing docs" new_changes',
-			'git merge -X theirs --allow-unrelated-histories -m "refreshing docs" new_changes'),
-		'git commit -m "refreshing docs"',
-		'git push --set-upstream origin gh-pages',
-		][:-1]
-	for cmd in cmds: 
-		if type(cmd)==tuple: run_cmds = cmd
-		else: run_cmds = [cmd]
-		for try_num,this_cmd in enumerate(run_cmds):
-			try: subprocess.call(this_cmd,cwd=dropspot,shell=True)		
-			except: 
-				if try_num==0: continue 
-				else: raise Exception('[ERROR] both command options failed!')
-	print('[NOTE] tracking github pages from "%s"'%dropspot)
-	print('[NOTE] admins can push from there to publish documentation changes')
-	print('[NOTE] run "git push --set-upstream origin gh-pages" from there')

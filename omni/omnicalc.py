@@ -135,7 +135,8 @@ class WorkSpace:
 		else: 
 			#import ipdb;ipdb.set_trace()
 			#view = dict([(s,[('%s%s-%s'%k,tuple(v)) for k,v in detail.items()]) for s,detail in view_od])
-			view = [(sn,[('%s%s-%s'%stepname,[(i,j) for i,j in step.items()]) for stepname,step in details.items()]) for sn,details in view_od]
+			view = [(sn,[('%s%s-%s'%stepname,[(i,j) for i,j in step.items()]) 
+				for stepname,step in details.items()]) for sn,details in view_od]
 			print('time_table = %s'%json.dumps(view))
 		return view
 
@@ -188,8 +189,8 @@ class WorkSpace:
 					missing = [i for i in meta if not os.path.isfile(i)]
 					raise Exception('received invalid meta files in a list (cwd="%s"): %s'%(self.cwd,missing))
 				specs_files = meta
-		if not specs_files: 
-			raise Exception('cannot find meta files')
+		#if not specs_files: 
+		#	raise Exception('cannot find meta files')
 		#---save the specs files
 		self.specs_files = specs_files
 		allspecs = []
@@ -200,7 +201,9 @@ class WorkSpace:
 					try: allspecs.append(yaml.load(fp.read()))
 					except Exception as e:
 						raise Exception('failed to parse YAML (are you sure you have no tabs?): %s'%e)
-		if not allspecs: return {}
+		if not allspecs: 
+			self.meta,self.plots = {},{}
+			return {}
 		if merge_method=='strict':
 			specs = allspecs.pop(0)
 			for spec in allspecs:
@@ -224,7 +227,11 @@ class WorkSpace:
 									'to use one. try the "meta" keyword argument to specify the path '+
 									'to the meta file you want. note meta is "%s"')%(topkey,key,meta))
 		else: raise Exception('\n[ERROR] unclear meta specs merge method %s'%merge_method)
-		if not specs: raise Exception('no metadata have been read. need "collections: {}" at a minimum')
+		#---allow empty meta files
+		if not specs: 
+			specs = {}
+			print('[WARNING] no metadata found. '+
+				'the meta_filter in config.py specifies the following meta files: %s'%specs_files)
 		self.vars = specs.get('variables',{})
 		specs_unpacked = self.variable_unpacker(specs)
 		self.meta = specs.get('meta',{})

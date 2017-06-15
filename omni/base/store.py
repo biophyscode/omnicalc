@@ -12,7 +12,7 @@ from PIL import Image
 from PIL import PngImagePlugin
 
 def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
-	dpi=300,form='png',version=False,pdf=False,tight=True,pad_inches=0):
+	dpi=300,form='png',version=False,pdf=False,tight=True,pad_inches=0,figure_held=None):
 	"""
 	Function which saves the global matplotlib figure without overwriting.
 	"""
@@ -57,15 +57,14 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	#---...python2.7/site-packages/matplotlib/backends/backend_pdf.py and raise it to e.g. 3.0)
 	if pdf:
 		alt_name = re.sub('.png$','.pdf',savename)
-		fig = plt.gcf()
-		fig.savefig(alt_name,dpi=dpi,bbox_extra_artists=extras,
+		#---holding the figure allows other programs e.g. ipython notebooks to show and save the figure
+		(figure_held if figure_held else plt).savefig(alt_name,dpi=dpi,bbox_extra_artists=extras,
 			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None)
 		#---convert pdf to png
 		os.system('convert -density %d %s %s'%(dpi,alt_name,base_fn))
 		os.remove(alt_name)
 	else: 
-		fig = plt.gcf()
-		fig.savefig(base_fn,dpi=dpi,bbox_extra_artists=extras,
+		(figure_held if figure_held else plt).savefig(base_fn,dpi=dpi,bbox_extra_artists=extras,
 			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None)
 	plt.close()
 	#---add metadata to png

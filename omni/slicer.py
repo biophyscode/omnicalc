@@ -74,6 +74,28 @@ def get_machine_config(hostname=None):
 	#---! previously did some ppn calculations here
 	return machine_config
 
+def modules_load(machine_config):
+	"""
+	Interact with environment modules to load software.
+	"""
+	#---modules in LOCAL configuration must be loaded before checking version
+	import importlib
+	if 'module_path' in machine_config: module_path = machine_config['module_path']
+	else:
+		module_parent = os.environ.get('MODULESHOME','/usr/share/Modules/default')
+		module_path = os.path.join(module_parent,'init','python.py')
+	incoming = {}
+	if sys.version_info<(3,0): execfile(module_path,incoming)
+	else: exec(open(module_path).read(),incoming)
+	#---note that modules that rely on dynamically-linked C-code must use EnvironmentModules
+	modlist = machine_config['modules']
+	if type(modlist)==str: modlist = modlist.split(',')
+	for mod in modlist:
+		#---always unload gromacs to ensure correct version
+		incoming['module']('unload','gromacs')
+		print('[STATUS] module load %s'%mod)
+		incoming['module']('load',mod)
+
 def get_gmx_paths(override=False,gmx_series=False,hostname=None):
 	"""
 	Copied from amx/calls.py.
@@ -82,7 +104,7 @@ def get_gmx_paths(override=False,gmx_series=False,hostname=None):
 	gmx4paths = {'grompp':'grompp','mdrun':'mdrun','pdb2gmx':'pdb2gmx','editconf':'editconf',
 		'genbox':'genbox','make_ndx':'make_ndx','genion':'genion','genconf':'genconf',
 		'trjconv':'trjconv','tpbconv':'tpbconv','vmd':'vmd','gmxcheck':'gmxcheck','gmx':'gmxcheck',
-		'trjcat':'gmx trjcat'}
+		'trjcat':'trjcat'}
 	gmx5paths = {'grompp':'gmx grompp','mdrun':'gmx mdrun','pdb2gmx':'gmx pdb2gmx',
 		'editconf':'gmx editconf','genbox':'gmx solvate','make_ndx':'gmx make_ndx',
 		'genion':'gmx genion','trjconv':'gmx trjconv','genconf':'gmx genconf',

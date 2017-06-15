@@ -63,9 +63,12 @@ collections: {}
 plots: {}
 """.strip()
 
-def blank_meta():
+def blank_meta(make_template=True):
 	"""
+	Set up an empty specs container. You can opt to only make the specs folder in the event that
+	you do not want a blank meta file (the factory does this because the GUI tells the user how to make one).
 	"""
 	if not os.path.isdir('calcs/specs'): os.mkdir('calcs/specs')
-	if not os.path.isfile('calcs/specs/meta.yaml'):
-		with open('calcs/specs/meta.yaml','w') as fp: fp.write(calcs_template)
+	if make_template:
+		if not os.path.isfile('calcs/specs/meta.yaml'):
+			with open('calcs/specs/meta.yaml','w') as fp: fp.write(calcs_template)

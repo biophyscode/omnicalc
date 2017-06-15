@@ -63,7 +63,9 @@ for key in ['mod_name','art_vars','art_director']:
 #---decorate picturesave so plots are visible in the notebook
 picturesave_omni = picturesave
 def picturesave(*args,**kwargs):
+	"""Custom procedure for showing *and* saving the figure."""
+	fig = plt.gcf()
 	plt.show()
+	kwargs['figure_held'] = fig
 	picturesave_omni(*args,**kwargs)
 	plt.close()
-

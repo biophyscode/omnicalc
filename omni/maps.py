@@ -170,7 +170,7 @@ class PostDat(NamingConvention):
 		#---master classification loop
 		while self.stable: 
 			name = self.stable.pop()
-			status(name,tag='import',i=nfiles-len(self.stable),looplen=nfiles,bar_width=10,width=65)
+			status(name,tag='import',i=nfiles-len(self.stable)-1,looplen=nfiles,bar_width=10,width=65)
 			#---interpret the name
 			namedat = self.interpret_name(name)
 			if not namedat: 

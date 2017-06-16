@@ -746,9 +746,12 @@ class WorkSpace:
 		elif self.plot_status: this_status = self.plot_status
 		elif self.pipeline_status: this_status = self.pipeline_status
 		#---consult the calculation if the plot does no specify collections
-		if this_status not in self.plots or 'collections' not in self.plots[this_status]:
+		if this_status not in self.plots:
 			collections = str_or_list(self.calcs[this_status]['collections'])
-		else: collections = str_or_list(self.plots[this_status]['collections'])
+		else:
+			if 'collections' not in self.plots[this_status]:
+				collections = str_or_list(self.calcs[self.plots[this_status]['calculation']]['collections'])
+			else: collections = str_or_list(self.plots[this_status]['collections'])
 		try: sns = sorted(list(set([i for j in [self.vars['collections'][k] 
 			for k in collections] for i in j])))
 		except Exception as e: raise Exception(

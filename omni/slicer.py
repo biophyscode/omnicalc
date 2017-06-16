@@ -36,6 +36,16 @@ def make_slice_gromacs(**kwargs):
 	spec['postdir'] = kwargs['postdir']
 	spec['tpr_keyfinder'] = kwargs['tpr_keyfinder']
 	spec['traj_keyfinder'] = kwargs['traj_keyfinder']
+	#---create the group
+	if spec_in['group']:
+		if spec_in['group']!=kwargs['group_name']:
+			raise Exception('group_name %s does not match the slice group %s'%(spec_in['group'],kwargs['group_name']))
+		spec_group = dict(sn=kwargs['sn'],group=spec_in['group'],select=kwargs['group_selection'],simkey=spec['outkey'])
+		#import ipdb;ipdb.set_trace()
+		#---get the latest starting structure
+		#spec['tpr_keyfinder']('EGFR_active_L747P_MD_2', ('s', '01', 'protein'), '0001')
+		group_fn = create_group(postdir=kwargs['postdir'],structure=kwargs['last_structure'],**spec_group)
+		spec['group_fn'] = group_fn
 	#---call the slice maker
 	slice_trajectory(**spec)
 	#---return the name for storage in the postdat
@@ -223,6 +233,39 @@ def infer_parts_to_slice(start,end,skip,sequence):
 			t0 = int(span[0]/float(skip)+0)*float(skip)
 			sources.append((key,t0))
 	return sources
+
+def create_group(**kwargs):
+	"""
+	Create a group.
+	"""
+	sn = kwargs['sn']
+	name = kwargs['group']
+	select = kwargs['select']
+	simkey = kwargs['simkey']
+	postdir = kwargs['postdir']
+	structure = kwargs['structure']
+	cols = 100 if 'cols' not in kwargs else kwargs['cols']
+	#---naming convention holds that the group names follow the prefix and we suffix with ndx
+	fn = '%s.ndx'%simkey
+	fn_abs = os.path.join(postdir,fn)
+	#---see if we need to make this group
+	if os.path.isfile(fn_abs): return fn_abs
+	#---! removed a self.confirm_file function from legacy omnicalc
+	print('[STATUS] creating group %s'%simkey)
+	#---read the structure
+	import MDAnalysis
+	uni = MDAnalysis.Universe(structure)
+	sel = uni.select_atoms(select)
+	#---write NDX 
+	import numpy as np
+	iii = sel.indices+1	
+	rows = [iii[np.arange(cols*i,cols*(i+1) if cols*(i+1)<len(iii) else len(iii))] 
+		for i in range(0,len(iii)/cols+1)]
+	with open(fn_abs,'w') as fp:
+		fp.write('[ %s ]\n'%name)
+		for line in rows:
+			fp.write(' '.join(line.astype(str))+'\n')
+	return fn_abs
 
 def slice_trajectory(**kwargs):
 	"""

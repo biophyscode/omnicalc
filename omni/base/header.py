@@ -58,8 +58,9 @@ art_director = work.vars.get('art_director',None)
 if art_director: 
 	#---reload the art settings if they are already loaded
 	mod_name = re.match('^(.+)\.py$',os.path.basename(art_director)).group(1)
-	############## PROBLEM!!!!!!!
-	if mod_name in sys.modules: reload(sys.modules[mod_name])
+	#---! switced from reload to a python3-compatible. would prefer to avoid pyc files.
+	import importlib
+	if mod_name in sys.modules: importlib.reload(sys.modules[mod_name])
 	art_vars = import_art_director(art_director,cwd='calcs')
 	#---unpack these into global
 	for key,val in art_vars.items(): globals()[key] = val

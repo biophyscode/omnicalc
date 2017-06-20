@@ -59,9 +59,11 @@ def get_machine_config(hostname=None):
 	"""
 	machine_config = {}
 	#---!
-	config_fn = '~/.automacs.py'
+	config_fn = 'gromacs_config.py'
+	print('[STATUS] reading %s'%config_fn)
 	if not os.path.isfile(os.path.expanduser(config_fn)):
-		config_fn = 'gromacs_config.py'
+		config_fn = os.path.expanduser('~/.automacs.py')
+		print('[STATUS] reading %s'%config_fn)
 		if not os.path.isfile(config_fn):
 			raise Exception('cannot find either a local (gromacs_config.py) or a global (~/.automacs.py) '
 				'gromacs configuration. make one with `make gromacs_config (local|home)`')

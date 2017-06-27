@@ -35,7 +35,8 @@ import base.store
 base.store.work = work
 from base.store import plotload,picturesave
 from base.tools import status
-from plotter import mpl,plt
+#---the plotter __init__.py sets the imports (importantly, including mpl,plt with modifications)
+from plotter import *
 from plotter.panels import panelplot,square_tiles
 from makeface import tracebacker
 from hypothesis import hypothesis,sweeper

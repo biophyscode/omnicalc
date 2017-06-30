@@ -778,6 +778,15 @@ class WorkSpace:
 			'error compiling the list of simulations from collections: %s'%collections)
 		return sns
 
+	def get_gmx_sources(self,calc,sn):
+		"""Repeatable procedure for extracting source files from the calculation spect."""
+		#---get gro and xtc file
+		gro,xtc = [os.path.join(self.postdir,'%s.%s'%(calc['extras'][sn]['slice_path'],suf))
+			for suf in ['gro','xtc']]
+		#---get the tpr from the raw data
+		tpr = self.raw.get_last(sn,subtype='tpr')
+		return dict(gro=gro,tpr=tpr,xtc=xtc)
+
 ###---INTERFACE
 
 def compute(meta=None,confirm=False,kill_switch=None):

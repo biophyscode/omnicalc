@@ -17,5 +17,5 @@ mpl.rcParams['text.latex.preamble'] = [
 	][:]
 
 mpl.rc('font',**{'family':'sans-serif','sans-serif':
-	['Helvetica','Avant Garde','Computer Modern Sans serif'][2]
-	})
+	['Helvetica','Avant Garde','Computer Modern Sans serif'][2]})
+

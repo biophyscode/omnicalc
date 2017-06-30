@@ -761,8 +761,8 @@ class ParsedRawData:
 			#---follow the top,step,part naming convention
 			try:
 				backwards = [''.join(['%s' if i[0]=='subpattern' else chr(i[1]) 
-					for i in re.sre_parse.parse(regex)]) 
-					for regex in [self.spots[spotname][key] for key in ['top','step','part']]]
+					for i in re.sre_parse.parse(regex)]) for regex in [self.spots[spotname][key] 
+					for key in ['top','step','part']]]
 				fn = os.path.join(
 					self.spots[spotname]['rootdir'],
 					'/'.join([backwards[ii]%i for ii,i in enumerate(args)]))
@@ -822,24 +822,26 @@ class ParsedRawData:
 			#---note that the prefixer function is only called when we need slices hence there will always
 			#---...be a spotname available. see SliceMeta.__init__ for these calls
 			prefix = self.spots[spot]['namer'](sn,spot=spotname)
-		except: raise Exception('[ERROR] prefixer failure on simulation "%s" (check your namer)'%sn)
+		except Exception as e: 
+			print(e)
+			raise Exception('[ERROR] prefixer failure on simulation "%s" (check your namer)'%sn)
 		return prefix
 
-	def get_last_structure(self,sn):
+	def get_last_structure(self,sn,subtype='structure'):
 		"""Get the most recent structure file."""
 		#---! currently set for one-spot operation. need to apply namers for multiple spots
 		spotname = self.spotname_lookup(sn)
-		self.toc[(spotname,'structure')][sn]
 		#---the toc is ordered but instead of getting the last one, we just
 		#---...get all structures and use the mtimes
-		steps = self.toc[(spotname,'structure')][sn]
+		steps = self.toc[(spotname,subtype)][sn]
 		candidates = []
 		for step_name,step in steps.items():
 			for part_name,part in step.items():
-				#---! only use GRO files right now
-				fn = self.keyfinder((spotname,'structure'))(
+				fn = self.keyfinder((spotname,subtype))(
 					sn,step_name,part_name)
-				if re.match('^.+\.gro$',fn): candidates.append(fn)
+				#---hold the file if gro and we want structure (since this is the commonest use-case)
+				#---...or always save it if we are looking for any other subtype e.g. tpr
+				if re.match('^.+\.gro$',fn) or subtype!='structure': candidates.append(fn)
 		#---return the newest
 		return sorted(candidates,key=lambda x:os.path.getmtime(x))[-1]
 
@@ -920,6 +922,19 @@ class ParsedRawData:
 			for part in edrtree[step]]
 		#---return a list of keys,times pairs
 		return sequence
+
+	def get_last(self,sn,subtype):
+		"""
+		Parse the toc to find the most recent file for a particular regex specified in the spots.
+		"""
+		#---this function is already mostly implemented above
+		return self.get_last_structure(sn,subtype=subtype)
+		#---! alternate method prototyped but not used
+		spotname = self.spotname_lookup(sn)
+		#---looking up the TPR with the standard method, which preassumes a top/step/part structure
+		stepname = self.toc[(work.raw.spotname_lookup(sn),'tpr')][sn].keys()[-1]
+		partname = self.toc[(work.raw.spotname_lookup(sn),'tpr')][sn][stepname].keys()[-1]
+		fn = self.keyfinder((spotname,'tpr'))(sn,stepname,partname)
 
 class Slice:
 

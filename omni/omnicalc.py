@@ -705,6 +705,11 @@ class WorkSpace:
 			else: raise Exception('dev')
 			#---fill in each upstream calculation
 			calcs = dict([(c,self.calcs[c]) for c in plot_spec_list]) 
+
+		#---previous codes expect specs to hold the specs in the calcs from plotload
+		#---we store the specs for the outgoing calcs variable and then later accumulate some extra
+		#---...information for each simulation
+		calcs_reform = dict(calcs=dict([(c,{'specs':v}) for c,v in calcs.items()]),extras={})
 		#---cache the upstream jobs for all calculations
 		upstream_jobs = self.prepare_calculations(calcnames=calcs.keys())
 		#---data indexed by calculation name then simulation name
@@ -731,9 +736,15 @@ class WorkSpace:
 					data[calc_name][job.sn] = {'data':self.load(
 						name=self.postdat.toc[job.result].files['dat'],
 						cwd=self.paths['post_data_spot'])}
-		#---previous codes expect specs to hold the specs in the calcs from plotload
-		calcs_reform = dict([(c,{'specs':v}) for c,v in calcs.items()])
-		if len(calcs.keys())==1: return data[calcs.keys()[0]],calcs_reform[calcs.keys()[0]]
+					#---save important filenames
+					#---! note that this is currently only useful for gro/xtc files
+					#---pass along the slice name in case the plot or post-processing functions need it
+					calcs_reform['extras'][sn] = dict(slice_path=job.slice.name)
+		#---if we only have one calculation we elevate everything for convenience
+		if len(data.keys())==1: 
+			only_calc_name = data.keys()[0]
+			return (data[only_calc_name],
+				dict(calcs=calcs_reform.pop('calcs')[only_calc_name],**calcs_reform))
 		else: return data,calcs_reform
 
 	def sns(self):
@@ -750,7 +761,16 @@ class WorkSpace:
 			collections = str_or_list(self.calcs[this_status]['collections'])
 		else:
 			if 'collections' not in self.plots[this_status]:
-				collections = str_or_list(self.calcs[self.plots[this_status]['calculation']]['collections'])
+				calc_specifier = self.plots[this_status]['calculation']
+				if type(calc_specifier)==dict:
+					collection_names = [tuple(sorted(str_or_list(self.calcs[c]['collections']))) 
+						for c in calc_specifier]
+					collection_sets = list(set([tuple(sorted(str_or_list(self.calcs[c]['collections']))) 
+						for c in calc_specifier]))
+					if len(collection_sets)>1: 
+						raise Exception('conflicting collections for calculations %s'%calc_specifier.keys())
+					else: collections = list(collection_sets[0])
+				else: collections = str_or_list(self.calcs[calc_specifier]['collections'])
 			else: collections = str_or_list(self.plots[this_status]['collections'])
 		try: sns = sorted(list(set([i for j in [self.vars['collections'][k] 
 			for k in collections] for i in j])))

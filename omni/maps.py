@@ -684,7 +684,7 @@ class SliceMeta:
 		elif (slice_name,None) in self.slices[sn]:
 			return self.slices[sn][(slice_name,None)]
 		else:
-			asciitree(dict([('%s,%s'%k,v) for k,v in self.slices[sn].items()]))
+			asciitree(dict([('%s,%s'%k,v.__dict__) for k,v in self.slices[sn].items()]))
 			raise Exception('see slices (meta) above. '+
 				'cannot find slice for simulation %s: %s,%s'%(sn,slice_name,group))
 

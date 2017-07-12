@@ -170,7 +170,7 @@ class PostDat(NamingConvention):
 		#---master classification loop
 		while self.stable: 
 			name = self.stable.pop()
-			status(name,tag='import',i=nfiles-len(self.stable),looplen=nfiles,bar_width=10,width=65)
+			status(name,tag='import',i=nfiles-len(self.stable)-1,looplen=nfiles,bar_width=10,width=65)
 			#---interpret the name
 			namedat = self.interpret_name(name)
 			if not namedat: 
@@ -536,6 +536,7 @@ class SliceMeta:
 		#---first we parse the meta (the slices dictionary from the metadata) into a dictionary
 		#---the slices requests are keyed by sn, then slice,group couples
 		self.slices = dict([(sn,{}) for sn in meta])
+		self.groups = dict([(sn,{}) for sn in meta])
 		for sn,sl in meta.items():
 			for slice_type in [i for i in sl if i in ['readymade_namd','slices']]:
 				slice_group = sl[slice_type]
@@ -563,6 +564,8 @@ class SliceMeta:
 									(group,slice_name,sn))
 							self.slices[sn][(slice_name,group)] = dict(
 								slice_type='standard',dat_type='gmx',spec=dict(group=group,**spec))
+					#---collect the groups
+					self.groups[sn] = dict([(k,v) for k,v in sl.get('groups',{}).items()])
 		#---parse the spots so we know them for the namer
 		self.work.raw = ParsedRawData(self.work)
 		#---now we reprocess each slice into a Slice instance for later comparison
@@ -643,13 +646,22 @@ class SliceMeta:
 				new_slice['tpr_keyfinder'] = self.work.raw.keyfinder((spotname,'tpr'))
 				new_slice['traj_keyfinder'] = self.work.raw.keyfinder(
 					(spotname,self.work.raw.trajectory_format))
+				new_slice['gro_keyfinder'] = self.work.raw.keyfinder((spotname,'structure'))
 			#---make slices
 			#---! note that we make slices if they appear in the slices dictionary, regardless of whether we
 			#---! need them or not. this is somewhat different than the current ethos here in maps.py
 			for ns,(new_slice,extras) in enumerate(needs_slices):
 				print('[SLICE] making slice %d/%d'%(ns+1,len(needs_slices)))
 				asciitree({'slice':dict([(k,v) for k,v in new_slice.items() 
-					if k not in ['sequence','traj_keyfinder','tpr_keyfinder']])})
+					if k not in ['sequence','traj_keyfinder','tpr_keyfinder','gro_keyfinder']])})
+				#---collect group name and selection
+				#---! should this always happen? or is there a no-group-means-all option?
+				group_name = new_slice['spec']['group']
+				group_selection = self.groups[new_slice['sn']][group_name]
+				new_slice.update(group_name=group_name,group_selection=group_selection)
+				#---retrieve the last starting structure for making groups REMOVE THIS COMMENT
+				#---! note that this function was called get_last_start_structure in legacy omnicalc REMOVE THIS COMMENT
+				new_slice['last_structure'] = self.work.raw.get_last_structure(new_slice['sn'])
 				fn = make_slice_gromacs(postdir=self.work.postdir,**new_slice)
 				namedat = self.work.postdat.interpret_name(fn+'.gro')
 				mature_slice = Slice(name=fn,namedat=namedat,**extras)
@@ -749,13 +761,13 @@ class ParsedRawData:
 			#---follow the top,step,part naming convention
 			try:
 				backwards = [''.join(['%s' if i[0]=='subpattern' else chr(i[1]) 
-					for i in re.sre_parse.parse(regex)]) 
-					for regex in [self.spots[spotname][key] for key in ['top','step','part']]]
+					for i in re.sre_parse.parse(regex)]) for regex in [self.spots[spotname][key] 
+					for key in ['top','step','part']]]
 				fn = os.path.join(
 					self.spots[spotname]['rootdir'],
 					'/'.join([backwards[ii]%i for ii,i in enumerate(args)]))
 			except Exception as e: 
-				tracer(e)
+				print(e)
 				raise Exception('error making keys: %s,%s'%(str(spotname),str(args)))
 			if strict: 
 				if not os.path.isfile(fn): raise Exception('cannot find %s'%fn)
@@ -810,8 +822,28 @@ class ParsedRawData:
 			#---note that the prefixer function is only called when we need slices hence there will always
 			#---...be a spotname available. see SliceMeta.__init__ for these calls
 			prefix = self.spots[spot]['namer'](sn,spot=spotname)
-		except: raise Exception('[ERROR] prefixer failure on simulation "%s" (check your namer)'%sn)
+		except Exception as e: 
+			print(e)
+			raise Exception('[ERROR] prefixer failure on simulation "%s" (check your namer)'%sn)
 		return prefix
+
+	def get_last_structure(self,sn,subtype='structure'):
+		"""Get the most recent structure file."""
+		#---! currently set for one-spot operation. need to apply namers for multiple spots
+		spotname = self.spotname_lookup(sn)
+		#---the toc is ordered but instead of getting the last one, we just
+		#---...get all structures and use the mtimes
+		steps = self.toc[(spotname,subtype)][sn]
+		candidates = []
+		for step_name,step in steps.items():
+			for part_name,part in step.items():
+				fn = self.keyfinder((spotname,subtype))(
+					sn,step_name,part_name)
+				#---hold the file if gro and we want structure (since this is the commonest use-case)
+				#---...or always save it if we are looking for any other subtype e.g. tpr
+				if re.match('^.+\.gro$',fn) or subtype!='structure': candidates.append(fn)
+		#---return the newest
+		return sorted(candidates,key=lambda x:os.path.getmtime(x))[-1]
 
 	def treeparser(self,spot,**kwargs):
 		"""
@@ -890,6 +922,19 @@ class ParsedRawData:
 			for part in edrtree[step]]
 		#---return a list of keys,times pairs
 		return sequence
+
+	def get_last(self,sn,subtype):
+		"""
+		Parse the toc to find the most recent file for a particular regex specified in the spots.
+		"""
+		#---this function is already mostly implemented above
+		return self.get_last_structure(sn,subtype=subtype)
+		#---! alternate method prototyped but not used
+		spotname = self.spotname_lookup(sn)
+		#---looking up the TPR with the standard method, which preassumes a top/step/part structure
+		stepname = self.toc[(work.raw.spotname_lookup(sn),'tpr')][sn].keys()[-1]
+		partname = self.toc[(work.raw.spotname_lookup(sn),'tpr')][sn][stepname].keys()[-1]
+		fn = self.keyfinder((spotname,'tpr'))(sn,stepname,partname)
 
 class Slice:
 

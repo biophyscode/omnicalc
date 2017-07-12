@@ -36,6 +36,16 @@ def make_slice_gromacs(**kwargs):
 	spec['postdir'] = kwargs['postdir']
 	spec['tpr_keyfinder'] = kwargs['tpr_keyfinder']
 	spec['traj_keyfinder'] = kwargs['traj_keyfinder']
+	#---create the group
+	if spec_in['group']:
+		if spec_in['group']!=kwargs['group_name']:
+			raise Exception('group_name %s does not match the slice group %s'%(spec_in['group'],kwargs['group_name']))
+		spec_group = dict(sn=kwargs['sn'],group=spec_in['group'],select=kwargs['group_selection'],simkey=spec['outkey'])
+		#import ipdb;ipdb.set_trace()
+		#---get the latest starting structure
+		#spec['tpr_keyfinder']('EGFR_active_L747P_MD_2', ('s', '01', 'protein'), '0001')
+		group_fn = create_group(postdir=kwargs['postdir'],structure=kwargs['last_structure'],**spec_group)
+		spec['group_fn'] = group_fn
 	#---call the slice maker
 	slice_trajectory(**spec)
 	#---return the name for storage in the postdat
@@ -49,9 +59,11 @@ def get_machine_config(hostname=None):
 	"""
 	machine_config = {}
 	#---!
-	config_fn = '~/.automacs.py'
+	config_fn = 'gromacs_config.py'
+	print('[STATUS] reading %s'%config_fn)
 	if not os.path.isfile(os.path.expanduser(config_fn)):
-		config_fn = 'gromacs_config.py'
+		config_fn = os.path.expanduser('~/.automacs.py')
+		print('[STATUS] reading %s'%config_fn)
 		if not os.path.isfile(config_fn):
 			raise Exception('cannot find either a local (gromacs_config.py) or a global (~/.automacs.py) '
 				'gromacs configuration. make one with `make gromacs_config (local|home)`')
@@ -74,6 +86,28 @@ def get_machine_config(hostname=None):
 	#---! previously did some ppn calculations here
 	return machine_config
 
+def modules_load(machine_config):
+	"""
+	Interact with environment modules to load software.
+	"""
+	#---modules in LOCAL configuration must be loaded before checking version
+	import importlib
+	if 'module_path' in machine_config: module_path = machine_config['module_path']
+	else:
+		module_parent = os.environ.get('MODULESHOME','/usr/share/Modules/default')
+		module_path = os.path.join(module_parent,'init','python.py')
+	incoming = {}
+	if sys.version_info<(3,0): execfile(module_path,incoming)
+	else: exec(open(module_path).read(),incoming)
+	#---note that modules that rely on dynamically-linked C-code must use EnvironmentModules
+	modlist = machine_config['modules']
+	if type(modlist)==str: modlist = modlist.split(',')
+	for mod in modlist:
+		#---always unload gromacs to ensure correct version
+		incoming['module']('unload','gromacs')
+		print('[STATUS] module load %s'%mod)
+		incoming['module']('load',mod)
+
 def get_gmx_paths(override=False,gmx_series=False,hostname=None):
 	"""
 	Copied from amx/calls.py.
@@ -82,7 +116,7 @@ def get_gmx_paths(override=False,gmx_series=False,hostname=None):
 	gmx4paths = {'grompp':'grompp','mdrun':'mdrun','pdb2gmx':'pdb2gmx','editconf':'editconf',
 		'genbox':'genbox','make_ndx':'make_ndx','genion':'genion','genconf':'genconf',
 		'trjconv':'trjconv','tpbconv':'tpbconv','vmd':'vmd','gmxcheck':'gmxcheck','gmx':'gmxcheck',
-		'trjcat':'gmx trjcat'}
+		'trjcat':'trjcat'}
 	gmx5paths = {'grompp':'gmx grompp','mdrun':'gmx mdrun','pdb2gmx':'gmx pdb2gmx',
 		'editconf':'gmx editconf','genbox':'gmx solvate','make_ndx':'gmx make_ndx',
 		'genion':'gmx genion','trjconv':'gmx trjconv','genconf':'gmx genconf',
@@ -201,6 +235,39 @@ def infer_parts_to_slice(start,end,skip,sequence):
 			t0 = int(span[0]/float(skip)+0)*float(skip)
 			sources.append((key,t0))
 	return sources
+
+def create_group(**kwargs):
+	"""
+	Create a group.
+	"""
+	sn = kwargs['sn']
+	name = kwargs['group']
+	select = kwargs['select']
+	simkey = kwargs['simkey']
+	postdir = kwargs['postdir']
+	structure = kwargs['structure']
+	cols = 100 if 'cols' not in kwargs else kwargs['cols']
+	#---naming convention holds that the group names follow the prefix and we suffix with ndx
+	fn = '%s.ndx'%simkey
+	fn_abs = os.path.join(postdir,fn)
+	#---see if we need to make this group
+	if os.path.isfile(fn_abs): return fn_abs
+	#---! removed a self.confirm_file function from legacy omnicalc
+	print('[STATUS] creating group %s'%simkey)
+	#---read the structure
+	import MDAnalysis
+	uni = MDAnalysis.Universe(structure)
+	sel = uni.select_atoms(select)
+	#---write NDX 
+	import numpy as np
+	iii = sel.indices+1	
+	rows = [iii[np.arange(cols*i,cols*(i+1) if cols*(i+1)<len(iii) else len(iii))] 
+		for i in range(0,len(iii)/cols+1)]
+	with open(fn_abs,'w') as fp:
+		fp.write('[ %s ]\n'%name)
+		for line in rows:
+			fp.write(' '.join(line.astype(str))+'\n')
+	return fn_abs
 
 def slice_trajectory(**kwargs):
 	"""

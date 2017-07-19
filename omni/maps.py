@@ -515,7 +515,8 @@ class CalcMeta:
 				raise Exception('failed to find calculation %s with specs %s in the CalcMeta'%(name,specs)+
 					'. it is likely that you need to *be more specific* (found %d then %d matches). '%
 					(match_len_first,len(matches))+
-					'remember that you can specify calculation specs as a dictionary in the plot request')
+					'remember that you can specify calculation specs as a dictionary in the plot request. '+
+					'see the warning above for more details.')
 
 class SliceMeta:
 

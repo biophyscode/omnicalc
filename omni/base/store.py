@@ -33,7 +33,7 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 		search = picturefind(savename,directory=directory,meta=meta)
 		if not search:
 			if meta == None: raise Exception('[ERROR] versioned image saving requires meta')
-			fns = glob.glob(os.path.join(directory,savename,'.v*'))
+			fns = glob.glob(os.path.join(directory,savename+'.v*'))
 			nums = [int(re.findall('^.+\.v([0-9]+)\.png',fn)[0]) for fn in fns 
 				if re.match('^.+\.v[0-9]+\.png',fn)]
 			ind = max(nums)+1 if nums != [] else 1

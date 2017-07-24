@@ -515,7 +515,8 @@ class CalcMeta:
 				raise Exception('failed to find calculation %s with specs %s in the CalcMeta'%(name,specs)+
 					'. it is likely that you need to *be more specific* (found %d then %d matches). '%
 					(match_len_first,len(matches))+
-					'remember that you can specify calculation specs as a dictionary in the plot request')
+					'remember that you can specify calculation specs as a dictionary in the plot request. '+
+					'see the warning above for more details.')
 
 class SliceMeta:
 
@@ -684,7 +685,7 @@ class SliceMeta:
 		elif (slice_name,None) in self.slices[sn]:
 			return self.slices[sn][(slice_name,None)]
 		else:
-			asciitree(dict([('%s,%s'%k,v) for k,v in self.slices[sn].items()]))
+			asciitree(dict([('%s,%s'%k,v.__dict__) for k,v in self.slices[sn].items()]))
 			raise Exception('see slices (meta) above. '+
 				'cannot find slice for simulation %s: %s,%s'%(sn,slice_name,group))
 
@@ -823,8 +824,7 @@ class ParsedRawData:
 			#---...be a spotname available. see SliceMeta.__init__ for these calls
 			prefix = self.spots[spot]['namer'](sn,spot=spotname)
 		except Exception as e: 
-			print(e)
-			raise Exception('[ERROR] prefixer failure on simulation "%s" (check your namer)'%sn)
+			raise Exception('[ERROR] prefixer failure on simulation "%s" (check your namer) %s'%(sn,e))
 		return prefix
 
 	def get_last_structure(self,sn,subtype='structure'):

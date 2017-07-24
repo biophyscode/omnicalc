@@ -708,7 +708,6 @@ class WorkSpace:
 			else: raise Exception('dev')
 			#---fill in each upstream calculation
 			calcs = dict([(c,self.calcs[c]) for c in plot_spec_list]) 
-
 		#---previous codes expect specs to hold the specs in the calcs from plotload
 		#---we store the specs for the outgoing calcs variable and then later accumulate some extra
 		#---...information for each simulation
@@ -742,8 +741,12 @@ class WorkSpace:
 					#---save important filenames
 					#---! note that this is currently only useful for gro/xtc files
 					#---pass along the slice name in case the plot or post-processing functions need it
-					calcs_reform['extras'][sn] = dict(slice_path=job.slice.name)
-		#---if we only have one calculation we elevate everything for convenience
+					calcs_reform['extras'][sn] = dict(
+						slice_path=job.slice.name)
+					#---! added slice name here for curvature coupling
+					try: calcs_reform['calcs'][calc_name]['specs']['slice_name'] = job.slice.slice_name
+					except: pass
+					#---if we only have one calculation we elevate everything for convenience
 		if len(data.keys())==1: 
 			only_calc_name = data.keys()[0]
 			return (data[only_calc_name],

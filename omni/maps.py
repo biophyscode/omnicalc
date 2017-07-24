@@ -823,8 +823,7 @@ class ParsedRawData:
 			#---...be a spotname available. see SliceMeta.__init__ for these calls
 			prefix = self.spots[spot]['namer'](sn,spot=spotname)
 		except Exception as e: 
-			print(e)
-			raise Exception('[ERROR] prefixer failure on simulation "%s" (check your namer)'%sn)
+			raise Exception('[ERROR] prefixer failure on simulation "%s" (check your namer) %s'%(sn,e))
 		return prefix
 
 	def get_last_structure(self,sn,subtype='structure'):

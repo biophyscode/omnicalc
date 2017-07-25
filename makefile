@@ -4,6 +4,9 @@
 ### this file requires makeface.py (see the documentation there)
 ### current with makeface.py as of 2017.3.28
 
+#set the shell
+SHELL := /bin/bash
+
 # connect to runner
 makeface = omni/makeface.py
 

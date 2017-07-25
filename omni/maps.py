@@ -1,9 +1,16 @@
 #!/usr/bin/env python
 
-import os,sys,glob,re,json,copy,time
+"""
+OMNICALC DATA STRUCTURES
+Note that this file "maps" much of the metadata onto objects in memory
+and hence constitutes the core of the omnicalc functionality (other than omnicalc.py).
+"""
+
+import os,sys,glob,re,json,copy,time,collections
 from datapack import asciitree,delve,delveset,catalog
 from base.hypothesis import hypothesis
 from base.tools import status
+from slicer import make_slice_gromacs,edrcheck
 
 ###---SUPPORT
 
@@ -37,6 +44,7 @@ class NamingConvention:
 			name-to-dictionary
 		meta slice reading indexed by: slice-type
 			keys required in the specs
+	Several classes below inherit this to have easy access to the namers.
 	"""
 
 	#---all n2d types in omni_namer get standard types
@@ -78,10 +86,11 @@ class NamingConvention:
 		"""
 		Turn a set of specs into a namer.
 		"""
+		self.work = kwargs.get('work',None)
 		self.short_namer = kwargs.pop('short_namer',None)
 		self.short_names = kwargs.pop('short_names',None)
 		#---since the short_namer is the default if no explicit names we provide the identity function
-		if not self.short_namer: self.short_namer = lambda x : x
+		if not self.short_namer: self.short_namer = lambda sn,spot=None: sn
 		elif type(self.short_namer)!=str: 
 			raise Exception('meta short_namer parameter must be a string: %s'%self.short_namer)
 		#---compile the lambda function which comes in as a string
@@ -114,7 +123,8 @@ class NamingConvention:
 			name_data = dict(**kwargs)
 			slice_files = {}
 			for suffix,out in [('gro','struct'),('xtc','traj')]:
-				name_data['short_name'] = self.short_namer(sn)
+				spotname = self.work.raw.spotname_lookup(sn)
+				name_data['short_name'] = self.short_namer(sn,spot=spotname)
 				name_data['suffix'] = suffix
 				slice_files[out] = self.parser[('standard','gmx')]['d2n']%name_data
 		elif kind=='datspec':
@@ -123,8 +133,9 @@ class NamingConvention:
 			name = None
 			for name_style in [('standard','datspec'),('raw','datspec')]:
 				try:
+					spotname = self.work.raw.spotname_lookup(sn)
 					name = self.parser[name_style]['d2n']%dict(
-						short_name=self.short_namer(kwargs['sn']),nnum=0,**kwargs)
+						short_name=self.short_namer(kwargs['sn'],spot=spotname),nnum=0,**kwargs)
 				except: pass
 			if not name: raise Exception('cannot generate datspec name')
 			slice_files = name
@@ -135,6 +146,8 @@ class PostDat(NamingConvention):
 
 	"""
 	A library of post-processed data.
+	This class mirrors the data in the post_spot (aka post_data_spot). It includes both post-processing 
+	dat/spec file pairs, as well as sliced trajectories in gro/xtc or psf/dcd formats.
 	"""
 
 	def limbo(self): return dict([(key,val) for key,val in self.toc.items() if val=={}])
@@ -152,31 +165,33 @@ class PostDat(NamingConvention):
 		#---! weird reference to the workspace namer?
 		if namer: self.namer = namer
 		self.toc = {}
-		nfiles,nchars = len(self.stable),max([len(j) for j in self.stable])
+		if not self.stable: nfiles,nchars = 0,0
+		else: nfiles,nchars = len(self.stable),max([len(j) for j in self.stable])
 		#---master classification loop
 		while self.stable: 
 			name = self.stable.pop()
-			status(name,tag='import',i=nfiles-len(self.stable),looplen=nfiles+1,pad=nchars+2,width=4)
+			status(name,tag='import',i=nfiles-len(self.stable)-1,looplen=nfiles,bar_width=10,width=65)
 			#---interpret the name
 			namedat = self.interpret_name(name)
 			if not namedat: 
-				#---this puts the slice in limbo
-				#---! it would be useful to match these up later...
+				#---this puts the slice in limbo. we ignore stray files in post spot
 				self.toc[name] = {}
 			else:
 				#---if this is a datspec file we find its pair and read the spec file
 				if namedat['dat_type']=='datspec':
 					basename = self.get_twin(name,('dat','spec'))
-					self.toc[basename] = DatSpec(fn=basename,dn=work.paths['post_data_spot'],work=self.work)
+					this_datspec = DatSpec(fn=basename,dn=work.paths['post_data_spot'],work=self.work)
+					if this_datspec.valid: self.toc[basename] = this_datspec
 				#---everything else must be a slice
-				#---! alternate check for different slice types?
+				#---! alternate slice types (e.g. gro/trr) would go here
 				else: 
-					#---ironically: "note that we could pair e.g. gro/xtc files but this has little benefit"
+					#---decided to pair gro/xtc because they are always made/used together
 					basename = self.get_twin(name,('xtc','gro'))
 					self.toc[basename] = Slice(name=basename,namedat=namedat)
 
 	def search_slices(self,**kwargs):
 		"""
+		Find a specific slice.
 		"""
 		slices,results = self.slices(),[]
 		#---flatten kwargs
@@ -184,10 +199,8 @@ class PostDat(NamingConvention):
 		target.update(**target.pop('spec',{}))
 		flats = dict([(slice_key,val.flat()) for slice_key,val in slices.items()])
 		results = [key for key in flats if flats[key]==target]
-		if not results:
-			import ipdb;ipdb.set_trace()
-			raise Exception('DEVELOPMENT ERROR. at this point we would normally make the slice for you. '+
-				'failed to find slice: %s'%kwargs)
+		#---return none for slices that still need to be made
+		if not results: return []
 		return results
 
 	def get_twin(self,name,pair):
@@ -198,25 +211,19 @@ class PostDat(NamingConvention):
 		this_suffix = re.match('^.+\.(%s)$'%'|'.join(pair),name).group(1)
 		basename = re.sub('\.(%s)$'%'|'.join(pair),'',name)
 		twin = basename+'.%s'%dict([pair,pair[::-1]])[this_suffix]
-		if twin not in self.stable: raise Exception('cannot find dat-spec twin of %s. '%name+
-			'this is typically due to a past failure to write the dat after writing the spec. '+
-			'we recommend deleting the existing dat/spec file after you fix the error.')
+		#---omnicalc *never* deletes files so we ask the user to clean up on errors
+		if twin not in self.stable: raise Exception('cannot find the twin %s of %s ... '%(pair,name)+
+			'this is typically due to a past failure to write these files together. '+
+			'we recommend deleting the existing file (and fix the upstream error) to continue.')
 		else: self.stable.remove(twin)
 		return basename
-
-	def get_slice(self,sn,slice_name,group):
-		"""
-		Find a slice.
-		"""
-		#---! require modifications to prepare the slice?
-		#---! should we group gro/xtc at the level of the slice? probably.
-		keys = [key for key in self.toc if self.toc[key].__class__.__name__=='Slice']
-		import ipdb;ipdb.set_trace()
 
 class DatSpec(NamingConvention):
 
 	"""
 	Parent class for identifying a piece of post-processed data.
+	DatSpec instances can be picked up from a file on disk but also generated before running a job, which 
+	will inevitably write the post-processed data anyway.
 	"""
 
 	def __init__(self,fn=None,dn=None,job=None,work=None):
@@ -224,15 +231,21 @@ class DatSpec(NamingConvention):
 		We construct the DatSpec to mirror a completed result on disk OR a job we would like to run.
 		"""
 		self.work = work
+		self.valid = True
 		if fn and job: raise Exception('cannot send specs if you send a file')
 		elif fn and not dn: raise Exception('send the post directory')
-		elif fn and dn: self.from_file(fn,dn)
+		elif fn and dn: 
+			try: self.from_file(fn,dn)
+			except: self.valid = False
 		elif job and fn: raise Exception('cannot send a file if you send specs')
 		elif job: self.from_job(job)
 		else: raise Exception('this class needs a file or a job')
 
 	def from_file(self,fn,dn):
 		"""
+		DatSpec objects can be imported from file (including from previous versions of omnicalc)
+		or they can be constructed in anticipation of finishing a calculation job and *making* the file 
+		(see from_job below). This function handles most backwards compatibility.
 		"""
 		path = os.path.join(dn,fn)
 		self.files = {'dat':fn+'.dat','spec':fn+'.spec'}
@@ -242,12 +255,12 @@ class DatSpec(NamingConvention):
 		json_type_fixer(self.specs_raw)
 		json_type_fixer(self.specs)
 		self.namedat = self.interpret_name(fn+'.spec')
-		#---! why is this exception not in interpret_name?
+		#---the namer is permissive so we catch errors here
 		if not self.namedat: raise Exception('name interpreter failure')
 		#---intervene here to handle backwards compatibility for VERSION 1 jobs
 		spec_version_2 = all(['slice' in self.specs,'specs' in self.specs,
 			'calc' in self.specs and 'calc_name' in self.specs['calc']])
-		#---! note that version 2 also has short_name in the top level but this MIGHT BE REMOVED?
+		#---! note that version 2 also has short_name in the top level but this might be removed?
 		#---any old spec files that do not satisfy VERSION 2 must be version 1. we fix them here.
 		if not spec_version_2:
 			#---version 1 spec files had calculation specs directly at the top level
@@ -259,8 +272,6 @@ class DatSpec(NamingConvention):
 			self.specs['slice'].update(slice_type='standard',dat_type='gmx')
 			#---version 2 has a simple calc dictionary
 			self.specs['calc'] = {'calc_name':self.namedat['body']['calc_name']}
-			#---! for some reason short_name is in the top?
-			#self.specs['short_name'] = self.namedat['body']['short_name']
 		#---we fill in groups and pbc for certain slice types
 		if (self.specs['slice']['slice_type']=='standard' and 
 			self.specs['slice']['dat_type']=='gmx' and 
@@ -281,23 +292,10 @@ class DatSpec(NamingConvention):
 			#---! ...calculation which had been removed from the meta
 			#---we supply a name because find_match will be looking for one
 			self.specs['calc'] = Calculation(name=None,specs={},stub=[])
-			#---! NOTE THAT CALCSPEC IS NO MOR! REMOVE ITTTTTTTTT
-		if False:
-			#---first time in the execution that we encounter calculation specs
-			import ipdb;ipdb.set_trace()
-			self.specs['calc'] = CalcSpec(self.specs['calc'])
-			if False:
-				#---legacy spec files have "upstream" entries with pointers and not data
-				#---...note that this was highly stupid. we replace the upstream information here, but 
-				#---...obviously cannot guarantee that the data are consistent without checking the `dat` files
-				#---...which get the final word on what's in the data
-				if 'upstream' in self.specs['specs']:
-					#print('FUUUUUUUUU')
-					self.work.chase_upstream(self.specs['specs'])
-					#import ipdb;ipdb.set_trace()
 
 	def from_job(self,job):
 		"""
+		Create datspec object from a job in preparation for running the calculation.
 		"""
 		self.namedat = {}
 		#---retain the pointer to the job
@@ -310,18 +308,6 @@ class DatSpec(NamingConvention):
 		#---...calculation collection and uptype because it's either obvious or has no bearing
 		self.specs = {'specs':self.job.calc.specs['specs'],
 			'calc':{'calc_name':self.job.calc.name},'slice':job.slice.flat()}
-
-	def flat_DEPRECATED(self):
-		"""
-		The "flat" view of this object is suitable for comparison.
-		It folds data from the name into the body.
-		"""
-		me = dict(**self.specs)
-		#---we fold in the namedat body and the slice_type and we drop nnum
-		me.update(**self.namedat.get('body',{}))
-		me.pop('nnum',None)
-		fix_integers(me)
-		return me
 
 	def basename(self):
 		"""
@@ -337,58 +323,6 @@ class DatSpec(NamingConvention):
 			calc_name=self.job.calc.name,**self.job.slice.flat())
 		#---note that the basename does not have the nN number yet (nnum)
 		return basename
-
-class Calculation_Deprecated:
-
-	"""
-	A calculation, including settings.
-	"""
-
-	def __init__(self,work=None,**kwargs):
-		"""
-		"""
-		for key in ['name','uptype','group','slice_name','collections']:
-			if key not in kwargs: 
-				raise Exception('calculation requires %s'%key)
-			self.__dict__[key] = kwargs.pop(key)
-		self.specs = kwargs.pop('specs',{})
-		if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
-		#---recursively fill in the specs when we generate the calculation
-		json_type_fixer(self.specs)
-		#---for posterity
-		self.specs_raw = copy.deepcopy(self.specs)
-		work.chase_upstream(self.specs)
-		if False:
-			specs_cursors = [copy.deepcopy(self.specs)]
-			while specs_cursors:
-				sc = specs_cursors.pop()
-				if 'upstream' in sc:
-					for calcname in sc['upstream']:
-						for key,val in sc['upstream'][calcname].items():
-							if type(val) in str_types:
-								#---! this is pretty crazy. wrote it real fast pattern-matching
-								expanded = work.calcs[calcname]['specs'][key]['loop'][
-									sc['upstream'][calcname][key]]
-								#---replace with the expansion
-								self.specs[key] = copy.deepcopy(expanded)
-								del self.specs['upstream'][calcname][key]
-							#---! assert empty?
-						del self.specs['upstream'][calcname]
-					#import ipdb;ipdb.set_trace()		
-				#if 'upstream' in self.specs:self.specs.get('upstream',None): raise Exception('failed to clear upstream')
-			if 'upstream' in self.specs:
-				if self.specs['upstream']: raise Exception('failed to clear upstream')
-				else: del self.specs['upstream']
-		#---! somehow the above works on one level. need check if it does the nesting. probably doesn't...
-
-class CalcSpec:
-
-	"""
-	Calculation specs may have loops and/or upstream values in them. These are handled here.
-	"""
-
-	def __init__(self,incoming):
-		self.body = incoming
 
 class Calculation:
 
@@ -419,6 +353,7 @@ class CalcMeta:
 
 	def __init__(self,meta,**kwargs):
 		"""
+		Represent the calculations from the metadata.
 		"""
 		if 'work' not in kwargs: raise Exception('sorry! send work manually in kwargs please')
 		self.work = kwargs.pop('work')
@@ -448,6 +383,7 @@ class CalcMeta:
 
 	def get_upstream(self,specs):
 		"""
+		Get upstream calculations.
 		"""
 		upstream_calcs = []
 		if not specs: return specs
@@ -470,10 +406,10 @@ class CalcMeta:
 			else:
 				#---previously we required that `i.stub['specs']==val` but this is too strict
 				#---! val cannot be None below??
-				try: matches = [i for ii,i in enumerate(self.toc[key]) 
+				if key not in self.toc: 
+					raise Exception('searching upstream data and cannot find calculation %s'%key)
+				matches = [i for ii,i in enumerate(self.toc[key]) 
 					if val!=None and val.viewitems()<=i.stub['specs'].viewitems()]
-				except: 
-					import ipdb;ipdb.set_trace()
 				#---try to match the stubs. this will work if you point to an upstream calculation with the 
 				#---...name of a subdictionary that represents a single calculation under a loop
 				if len(matches)!=1:
@@ -491,35 +427,9 @@ class CalcMeta:
 							if i.specs['specs'].viewitems()>=val.viewitems()]
 						if len(explicit_matches)==1: upstream_calcs.append(explicit_matches[0])
 						else: 
-							import ipdb;ipdb.set_trace()
 							raise Exception('failed to locate upstream data')
 				else: upstream_calcs.append(matches[0])
 		return upstream_calcs
-
-	def get_upstream1(self,key,val):
-		"""
-		"""
-		upstream_calcs = []
-		if val.keys()==['upstream']: 
-			for subkey,subval in val['upstream'].items():
-				print('subkey %s'%subkey)
-				upstream_calcs.extend(self.get_upstream(subkey,subval))
-		else:
-			#---pick the right one
-			print('getting key %s'%key)
-			matches = [i for ii,i in enumerate(self.toc[key]) if i.stub['specs']==val]
-			if len(matches)!=1:
-				raise Exception('othershit happened')
-			else: upstream_calcs.append(matches[0])
-		return upstream_calcs
-
-	def get_calcref(self,specs,cumulant):
-		"""
-		Receive specs starting with "upstream" and recurse the references.
-		"""
-		upstream = specs.pop('upstream',None)
-		for key,val in upstream.items():
-			raise Exception('???')
 
 	def calcjobs(self,name):
 		"""
@@ -605,34 +515,8 @@ class CalcMeta:
 				raise Exception('failed to find calculation %s with specs %s in the CalcMeta'%(name,specs)+
 					'. it is likely that you need to *be more specific* (found %d then %d matches). '%
 					(match_len_first,len(matches))+
-					'remember that you can specify calculation specs as a dictionary in the plot request')
-
-	def find_calculation_internallywise_DEPRECATED_I_THINK(self,calcname,**kwargs):
-		"""
-		ONLY HANDLES INTERNAL POINTERS NOW.
-		"""
-		pointers = kwargs.pop('pointers',None)
-		if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
-		if not pointers: raise Exception('dev')
-		#---! pointers has to specify the whole specs but this seems unreasonable?
-		matches = [ii for ii in range(len(self.toc[calcname]['stubs'])) 
-			if self.toc[calcname]['stubs'][ii]['specs']==pointers]
-		if len(matches)==1: return self.toc[calcname]['specs'][ii]
-		else:
-			raise Exception('too strict')
-
-	def internal_referencer(self):
-		"""
-		SET ASIDE FOR NOW
-		"""
-		#---! internal reference example starts here
-		spec = self.toc['lipid_areas2d']['specs'][1]
-		cat = list(catalog(spec['specs']))
-		self.find_calculation_internallywise('lipid_abstractor',pointers={'selector':'lipid_chol_com'})
-		raise Exception('???')
-		import ipdb;ipdb.set_trace()
-		#[ii for ii,i in enumerate(self.toc_raw[calcname]['specs']) 
-		# ... if all([key in i and 'loop' in i[key] for key,val in pointers.items()])]
+					'remember that you can specify calculation specs as a dictionary in the plot request. '+
+					'see the warning above for more details.')
 
 class SliceMeta:
 
@@ -647,11 +531,13 @@ class SliceMeta:
 		This function mostly inverts the structure of the metadata, where the slices dictionary is indexed
 		first by simulation name, then by type.
 		"""
+		self.do_slices = kwargs.pop('do_slices',True)
 		self.work = kwargs.pop('work',None)
 		if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
 		#---first we parse the meta (the slices dictionary from the metadata) into a dictionary
 		#---the slices requests are keyed by sn, then slice,group couples
 		self.slices = dict([(sn,{}) for sn in meta])
+		self.groups = dict([(sn,{}) for sn in meta])
 		for sn,sl in meta.items():
 			for slice_type in [i for i in sl if i in ['readymade_namd','slices']]:
 				slice_group = sl[slice_type]
@@ -679,7 +565,12 @@ class SliceMeta:
 									(group,slice_name,sn))
 							self.slices[sn][(slice_name,group)] = dict(
 								slice_type='standard',dat_type='gmx',spec=dict(group=group,**spec))
-		#---now we reproces each slice into a Slice instance for later comparison
+					#---collect the groups
+					self.groups[sn] = dict([(k,v) for k,v in sl.get('groups',{}).items()])
+		#---parse the spots so we know them for the namer
+		self.work.raw = ParsedRawData(self.work)
+		#---now we reprocess each slice into a Slice instance for later comparison
+		needs_slices = []
 		for sn in self.slices:
 			for slice_name,group_name in self.slices[sn]:
 				proto_slice = self.slices[sn][(slice_name,group_name)]
@@ -688,9 +579,11 @@ class SliceMeta:
 				#---...hence this is the earliest point that we could match request with files in limbo
 				if proto_slice['slice_type']=='readymade_namd':
 					name = 'dummy%d'%int(time.time())
+					#---! rare case where we require None if no spot
+					spotname = self.work.raw.spotname_lookup(sn),
 					self.work.postdat.toc[name] = Slice(
 						name=name,namedat={},slice_type='readymade_namd',dat_type='namd',
-						spec=proto_slice['spec'],short_name=self.work.namer.short_namer(sn))
+						spec=proto_slice['spec'],short_name=self.work.namer.short_namer(sn,spot=spotname))
 					psf = proto_slice['spec'].get('psf')
 					if psf in self.work.postdat.toc: del self.work.postdat.toc[psf]
 					for fn in proto_slice['spec'].get('dcds',[]):
@@ -699,32 +592,349 @@ class SliceMeta:
 				#---! previous idea was to make slices and then create a comparison operator
 				#---search the slices for one with the right specs
 				#---including simulation short_name is enforced here
-				valid_slices = self.work.postdat.search_slices(
-					short_name=self.work.namer.short_namer(sn),**proto_slice)
+				try: spotname = self.work.raw.spotname_lookup(sn)
+				except: spotname = None
+				slice_req = dict(short_name=self.work.namer.short_namer(sn,spot=spotname),**proto_slice)
+				valid_slices = self.work.postdat.search_slices(**slice_req)
 				if len(valid_slices)>1: raise Exception('multiple valid slices')
-				elif len(valid_slices)==0: raise Exception('DEVELOPMENT. cannot find slice')
+				elif len(valid_slices)==0: 
+					#---save what we need to make the slice, and the mature slice, in pairs
+					extras = dict(slice_type='standard',dat_type='gmx',
+						group=group_name,slice_name=slice_name,sn=sn,spec=proto_slice['spec'])
+					needs_slices.append((dict(sn=sn,**slice_req),extras))
 				else: self.slices[sn][(slice_name,group_name)] = self.work.postdat.toc[valid_slices[0]]
 		#---we tag all slices with useful metadata
 		for sn in self.slices:
+			#---only decorate proper slices, not dictionaries
 			for slice_name,group_name in self.slices[sn]:
+				if type(self.slices[sn][(slice_name,group_name)])==dict: 
+					continue
 				self.slices[sn][(slice_name,group_name)].sn = sn
 				self.slices[sn][(slice_name,group_name)].slice_name = slice_name
 				self.slices[sn][(slice_name,group_name)].group = group_name
+		#---any slices which are not available are sent to the slicer
+		if needs_slices and self.do_slices:
+			print('[NOTE] there are %d slices we must make'%len(needs_slices))
+			#---make_slice_gromacs requires a sequence from the ParsedRawData method
+			for ns,(new_slice,extras) in enumerate(needs_slices):
+				new_slice['sequence'] = self.work.raw.get_timeseries(new_slice['sn'])
+				#---the prefixed sn goes to the make_slice_gromacs function to be used at the beginning of 
+				#---...the name. the prefixer helps to distinguish simulations from different spots.
+				#---...we also use a "shortnamer" if it is found in the meta to simplify names for later
+				#---...the shortnamer is applied here. note that this is irreversible: using the shortnamer
+				#---...once will cause slices to be written with those names, so you should not change it
+				#---note also that the shortnamer in the meta dictionary of your metadata should be 
+				#---...compatible with the "namer" in the definition of the spot (usually starts in the 
+				#---...factory connection file and is then passed to omnicalc config.py). to recap: the 
+				#---..."namer" with the spot renames incoming data from multiple spots (and takes the spot
+				#---...name as an argument as well). the meta,short_namer in the metadata should mimic this
+				#---...for cases where you import the post with no spots
+				#---! development note: tested three naming conventions on 2017.5.15: ptdins, actinlink, and
+				#---! ...banana with and without the identity function namer. this means that the data are
+				#---! ...all backwards compatible now, however you must modify the short_namer in the meta
+				#---! ...to accept the spotname as well as the simulation name, and tell users that the 
+				#---! ...shortnamer must be compatible with all "namer" functions (a.k.a. the prefixer)
+				#---! ...associated with each spot. only then will omnicalc be able to merge multiple spots
+				#---! ...with redundant names into a single post-processing data set. then you would remove
+				#---! ...the check, somewhere in maps.py or omnicalc.py, which prevents redundant simulation
+				#---! ...names, and all internal naming will be unique. also remove this crazy comment.
+				spotname = self.work.raw.spotname_lookup(new_slice['sn'])
+				short_name = self.work.namer.short_namer(new_slice['sn'],spot=spotname)
+				#---the following try-except loop handles both identity versus specific namers
+				#---the following is the only call to prefixer anywhere in omnicalc (prefixer requires spots)
+				try: new_slice['sn_prefixed'] = self.work.raw.prefixer(short_name)
+				except: new_slice['sn_prefixed'] = self.work.raw.prefixer(new_slice['sn'])
+				new_slice['tpr_keyfinder'] = self.work.raw.keyfinder((spotname,'tpr'))
+				new_slice['traj_keyfinder'] = self.work.raw.keyfinder(
+					(spotname,self.work.raw.trajectory_format))
+				new_slice['gro_keyfinder'] = self.work.raw.keyfinder((spotname,'structure'))
+			#---make slices
+			#---! note that we make slices if they appear in the slices dictionary, regardless of whether we
+			#---! need them or not. this is somewhat different than the current ethos here in maps.py
+			for ns,(new_slice,extras) in enumerate(needs_slices):
+				print('[SLICE] making slice %d/%d'%(ns+1,len(needs_slices)))
+				asciitree({'slice':dict([(k,v) for k,v in new_slice.items() 
+					if k not in ['sequence','traj_keyfinder','tpr_keyfinder','gro_keyfinder']])})
+				#---collect group name and selection
+				#---! should this always happen? or is there a no-group-means-all option?
+				group_name = new_slice['spec']['group']
+				group_selection = self.groups[new_slice['sn']][group_name]
+				new_slice.update(group_name=group_name,group_selection=group_selection)
+				#---retrieve the last starting structure for making groups REMOVE THIS COMMENT
+				#---! note that this function was called get_last_start_structure in legacy omnicalc REMOVE THIS COMMENT
+				new_slice['last_structure'] = self.work.raw.get_last_structure(new_slice['sn'])
+				fn = make_slice_gromacs(postdir=self.work.postdir,**new_slice)
+				namedat = self.work.postdat.interpret_name(fn+'.gro')
+				mature_slice = Slice(name=fn,namedat=namedat,**extras)
+				#---once we make the slice we update the postdat
+				self.slices[new_slice['sn']][(extras['slice_name'],extras['group'])] = mature_slice
+			#---we must refresh the post-processing data in order to find the slices we just made
+			self.work.postdat = PostDat(where=self.work.config.get('post_data_spot',None),
+				namer=self.work.namer,work=self.work)
 
 	def get_slice(self,sn,group,slice_name):
 		"""
 		Get slices. Group is permissive so we retrieve slices with this function.
 		"""
-		if sn not in self.slices: raise Excpetion('the slice (meta) object has no simulation %s'%sn)
+		if sn not in self.slices: raise Exception('the slice object from the metadata lacks a simulation '+
+			'named %s.'%sn+' this probably means that you have not included this simulation '+
+			'in the slices dictionary in your metadata.')
 		if (slice_name,group) in self.slices[sn]: 
 			return self.slices[sn][(slice_name,group)]
 		#---revert to group None if we cannot find it. this happens for no-group slices from e.g. NAMD
 		elif (slice_name,None) in self.slices[sn]:
 			return self.slices[sn][(slice_name,None)]
 		else:
-			asciitree(self.slices[sn])
+			asciitree(dict([('%s,%s'%k,v.__dict__) for k,v in self.slices[sn].items()]))
 			raise Exception('see slices (meta) above. '+
 				'cannot find slice for simulation %s: %s,%s'%(sn,slice_name,group))
+
+class ParsedRawData:
+
+	"""
+	Import raw simulation data.
+	"""
+
+	def __init__(self,work):
+		"""
+		This code was very quickly ported from workspace.py in the legacy omnicalc. 
+		It is kept separate from the workspace for now.
+		"""
+		#---default
+		self.trajectory_format = 'xtc'
+		#---! note that at some point you should resolve the clumsy interconnectivity problems (work)
+		self.work = work
+		#---the "table of contents" holds all the data about our simulations
+		#---get spots
+		spots = self.work.config.get('spots',{})
+		#---process the spots
+		#---for each "spot" in the yaml file, we construct a template for the data therein
+		#---the table of contents ("toc") holds one parsing for every part regex in every spot
+		self.spots,self.toc = {},collections.OrderedDict()
+		for name,details in spots.items():
+			rootdir = os.path.join(details['route_to_data'],details['spot_directory'])
+			if not os.path.isdir(rootdir):
+				raise Exception('\n[ERROR] cannot find root directory %s'%rootdir)
+			for part_name,part_regex in details['regexes']['part'].items():
+				status('[STATUS] parsing %s'%part_name)
+				spot = (name,part_name)
+				self.toc[spot] = {}
+				self.spots[spot] = {
+					'rootdir':os.path.join(rootdir,''),
+					'top':details['regexes']['top'],
+					'step':details['regexes']['step'],
+					'part':part_regex,
+					'namer':eval(details['namer']),
+					'namer_text':details['namer'],}
+				self.spots[spot]['divy_keys'] = self.divy_keys(spot)
+		#---run the treeparser on each spot
+		for spotname,spot in self.spots.items(): self.treeparser(spotname,**spot)
+
+	def divy_keys(self,spot):
+		"""
+		The treeparser matches trajectory files with a combined regex. 
+		This function prepares a lambda that divides the combined regex into parts and reduces them to 
+		strings if there is only one part. The resulting regex groups serve as keys in the toc.
+		"""
+		group_counts = [sum([i[0]=='subpattern' 
+			for i in re.sre_parse.parse(self.spots[spot][key])]) 
+			#---apply naming convention
+			for key in ['top','step','part']]
+		cursor = ([0]+[sum(group_counts[:i+1]) for i in range(len(group_counts))])
+		slices = [slice(cursor[i],cursor[i+1]) for i in range(len(cursor)-1)]
+		divy = lambda x: [y[0] if len(y)==1 else y for y in [x[s] for s in slices]]
+		return divy
+
+	def keyfinder(self,spotname):
+		"""
+		Decorate the keys_to_filename lookup function so it can be sent to e.g. slice_trajectory.
+		If you are only working with a single spot, then this creates the file-name inference function
+		for all data in that spot.
+		"""
+		def keys_to_filename(*args,**kwargs):
+			"""
+			After decomposing a list of files into keys that match the regexes in paths.yaml we often 
+			need to reconstitute the original filename.
+			"""
+			strict = kwargs.get('strict',True)
+			if not spotname in self.toc: raise Exception('need a spotname to look up keys')
+			#---! it may be worth storing this as a function a la divy_keys
+			#---follow the top,step,part naming convention
+			try:
+				backwards = [''.join(['%s' if i[0]=='subpattern' else chr(i[1]) 
+					for i in re.sre_parse.parse(regex)]) for regex in [self.spots[spotname][key] 
+					for key in ['top','step','part']]]
+				fn = os.path.join(
+					self.spots[spotname]['rootdir'],
+					'/'.join([backwards[ii]%i for ii,i in enumerate(args)]))
+			except Exception as e: 
+				print(e)
+				raise Exception('error making keys: %s,%s'%(str(spotname),str(args)))
+			if strict: 
+				if not os.path.isfile(fn): raise Exception('cannot find %s'%fn)
+			return fn
+		return keys_to_filename
+
+	def spotname_lookup(self,sn_full):
+		"""
+		Find the spotname for a particular simulation.
+		This is only used in a few places in maps.py: in the prefixer below and the portion of 
+		SliceMeta.__init__ which makes slices.
+		"""
+		#---alias to the shortname (irreversible) here
+		#---! naming is getting convoluted. the following try-except would be hard to debug
+		try: sn = self.work.namer.short_namer(sn_full,spot=None)
+		#---failure to run the shortnamer just passes the full simulation name
+		except: sn = sn_full
+		assert type(sn)==str
+		#---the following or statement allows this to work for both full and short names
+		#---! this needs further testing
+		spotnames = [key for key,val in self.toc.items() if sn in val or sn_full in val]
+		if not spotnames: 
+			#---! development. needs tested. may only be used on near proto_slice in
+			#---! ...readymade_namd near line 581. remove this and error message after testing
+			#---! ...and note that the error below refers to refresh which is deprecated
+			return None
+			#---in case top diverges from prefixer we check the regexes
+			top_regexes = [v['regexes']['top'] for v in self.work.paths['spots'].values()]
+			if not any([re.match(top,sn) for top in top_regexes]):
+				raise Exception('[ERROR] could not find "%s" in the toc *and* it fails to match '%sn+
+					"any 'top' regexes in your paths. fix 'top' and make sure to run "+
+					"'make refresh' to search for simulations again")
+			raise Exception('[ERROR] could not find simulation "%s" in the toc'%sn)
+		spotnames_unique = list(set(zip(*spotnames)[0]))
+		if len(spotnames_unique) != 1: 
+			raise Exception('[ERROR] you cannot have the same simulation in multiple spots.\n'+
+				'simulation = "%s" and "%s"'%(sn,str(spotnames)))
+		return spotnames_unique[0]
+
+	def prefixer(self,sn):
+		"""
+		Choose a prefix for naming post-processing files.
+		"""
+		#---"spot" is a tuple of spotname and the part name
+		#---namer takes the spotname (called spot in the yaml defn of namer) and the simulation name
+		#---we include the partname when accessing self.spots
+		try: this_spot = self.spotname_lookup(sn)
+		except: raise Exception('cannot find the spot for %s'%sn)
+		try:
+			spot = spotname,partname = (this_spot,self.trajectory_format)
+			#---new format for the namer requires arguments to be simulation name and then spot name
+			#---note that the prefixer function is only called when we need slices hence there will always
+			#---...be a spotname available. see SliceMeta.__init__ for these calls
+			prefix = self.spots[spot]['namer'](sn,spot=spotname)
+		except Exception as e: 
+			raise Exception('[ERROR] prefixer failure on simulation "%s" (check your namer) %s'%(sn,e))
+		return prefix
+
+	def get_last_structure(self,sn,subtype='structure'):
+		"""Get the most recent structure file."""
+		#---! currently set for one-spot operation. need to apply namers for multiple spots
+		spotname = self.spotname_lookup(sn)
+		#---the toc is ordered but instead of getting the last one, we just
+		#---...get all structures and use the mtimes
+		steps = self.toc[(spotname,subtype)][sn]
+		candidates = []
+		for step_name,step in steps.items():
+			for part_name,part in step.items():
+				fn = self.keyfinder((spotname,subtype))(
+					sn,step_name,part_name)
+				#---hold the file if gro and we want structure (since this is the commonest use-case)
+				#---...or always save it if we are looking for any other subtype e.g. tpr
+				if re.match('^.+\.gro$',fn) or subtype!='structure': candidates.append(fn)
+		#---return the newest
+		return sorted(candidates,key=lambda x:os.path.getmtime(x))[-1]
+
+	def treeparser(self,spot,**kwargs):
+		"""
+		This function parses simulation data which are organized into a "spot". 
+		It writes the filenames to the table of contents (self.toc).
+		"""
+		spot_sub = kwargs
+		rootdir = spot_sub['rootdir']
+		#---start with all files under rootdir
+		fns = [os.path.join(dirpath,fn) 
+			for (dirpath, dirnames, filenames) 
+			in os.walk(rootdir,followlinks=True) for fn in filenames]
+		#---regex combinator is the only place where we enforce a naming convention via top,step,part
+		#---note that we may wish to generalize this depending upon whether it is wise to have three parts
+		regex = ('^%s\/'%re.escape(rootdir.rstrip('/'))+
+			'\/'.join([spot_sub['top'],spot_sub['step'],spot_sub['part']])
+			+'$')
+		matches_raw = [i.groups() for fn in fns for i in [re.search(regex,fn)] if i]
+		if not matches_raw: 
+			status('no matches found for spot: "%s,%s"'%spot,tag='warning')
+			return
+		#---first we organize the top,step,part into tuples which serve as keys
+		#---we organize the toc as a doubly-nested dictionary of trajectory parts
+		#---the top two levels of the toc correspond to the top and step signifiers
+		#---note that this procedure projects the top,step,part naming convention into the toc
+		matches = [self.spots[spot]['divy_keys'](i) for i in matches_raw]
+		self.toc[spot] = collections.OrderedDict()
+		#---at this point we apply the irreversible transformation from long simulation names to short ones
+		#---...by using the short namer.
+		#---! removed short_namer on the top below for expedience, but this needs tested and confirmed
+		matches = [(top,step,part) for top,step,part in matches]
+		#---sort the tops into an ordered dictionary
+		for top in sorted(set(zip(*matches)[0])): 
+			self.toc[spot][top] = collections.OrderedDict()
+		#---collect unique steps for each top and load them with the parts
+		for top in self.toc[spot]:
+			#---sort the steps into an ordered dictionary
+			for step in sorted(set([i[1] for i in matches if i[0]==top])):
+				#---we sort the parts into an ordered dictionary
+				#---this is the leaf of the toc tree and we use dictionaries
+				parts = sorted([i[2] for i in matches if i[0]==top and i[1]==step])
+				self.toc[spot][top][step] = collections.OrderedDict([(part,{}) for part in parts])
+		#---now the toc is prepared with filenames but subsequent parsings will identify EDR files
+
+	def get_timeseries(self,sn_full):
+		"""
+		Typically EDR times are stored in the toc for a particular spot. 
+		This function first figures out which spot you want and then returns the edr data.
+		"""
+		#---we apply the naming transformation to lookup the shortname in the toc, but below we will send out
+		#---...the full name since the purpose of this function is to get filenames on disk for slicing
+		sn = sn_full
+		#---determine the spot, since the simulation could be in multiple spots
+		spot_matches = [spotname for spotname,spot in self.spots.items() 
+			if spotname[1]=='edr' and sn in self.toc[spotname]]
+		if len(spot_matches)>1: 
+			raise Exception('development. need a way to adjucate spots that have redundant simulations')
+		elif len(spot_matches)==0:
+			raise Exception('cannot find simulation %s in any of the spots: %s'%(sn,self.spots.keys()))
+		else: spotname = spot_matches[0]
+		edrtree = self.toc[spotname][sn]
+		#---! current development only checks EDR files when they are needed instead of pre-populating
+		for step in edrtree:
+			for part in edrtree[step]:
+				#---we have to send the full simulation name to the keyfinder
+				fn = self.keyfinder(spotname)(sn_full,step,part)
+				times = edrcheck(fn)
+				keys = (spotname,sn,step,part)
+				leaf = delve(self.toc,*keys)
+				leaf['start'],leaf['stop'] = times
+		#---naming convention
+		#---according to the note above we pass the full simulation name back out for looking up files
+		sequence = [((sn_full,step,part),tuple([edrtree[step][part][key] 
+			for key in ['start','stop']]))
+			for step in edrtree 
+			for part in edrtree[step]]
+		#---return a list of keys,times pairs
+		return sequence
+
+	def get_last(self,sn,subtype):
+		"""
+		Parse the toc to find the most recent file for a particular regex specified in the spots.
+		"""
+		#---this function is already mostly implemented above
+		return self.get_last_structure(sn,subtype=subtype)
+		#---! alternate method prototyped but not used
+		spotname = self.spotname_lookup(sn)
+		#---looking up the TPR with the standard method, which preassumes a top/step/part structure
+		stepname = self.toc[(work.raw.spotname_lookup(sn),'tpr')][sn].keys()[-1]
+		partname = self.toc[(work.raw.spotname_lookup(sn),'tpr')][sn][stepname].keys()[-1]
+		fn = self.keyfinder((spotname,'tpr'))(sn,stepname,partname)
 
 class Slice:
 
@@ -734,13 +944,7 @@ class Slice:
 
 	def __init__(self,**kwargs):
 		"""
-		slice data structure:
-			namedat
-			slice_type
-			dn
-			files (by extension)
-		...also
-			figure out dat_type
+		This class basically just holds the data and returns it in a "flat" form for some use cases.
 		"""
 		self.__dict__.update(**kwargs)
 		json_type_fixer(self.__dict__)
@@ -763,12 +967,6 @@ class Slice:
 			me['short_name'] = self.short_name
 		#---trick to fix integers
 		json_type_fixer(me)
-
-		#---check for group/pbc for gmx
-		#if 'slice_type' in me and me['slice_type']=='standard' and me['dat_type']=='gmx' and any(
-		#	[i not in me for i in ['group','pbc']]):
-
-			#import ipdb;ipdb.set_trace()
 		return me
 
 class ComputeJob:
@@ -779,6 +977,7 @@ class ComputeJob:
 
 	def __init__(self,calc,sl,**kwargs):
 		"""
+		Search for slices and match to a result.
 		"""
 		self.calc = calc
 		self.work = kwargs.pop('work',None)
@@ -787,10 +986,7 @@ class ComputeJob:
 		#---...note that in the mock up, the slice requests list represents subtype "b", above is "c"
 		slices_by_sn = self.work.slice_meta.slices.get(sl.sn,None)
 		if not slices_by_sn: 
-			print(self.work.namer.short_namer(sl.sn))
-			#import ipdb;ipdb.set_trace()
-			print(self.work.slice_meta.slices.get(self.work.namer.short_namer(sl.sn),None))
-			if not slices_by_sn: raise Exception('cannot find simulation %s in slice requests'%sl.sn)
+			raise Exception('cannot find simulation %s in slice requests'%sl.sn)
 		name_group = None
 		#---some slices cannot have names (e.g. readymade_namd) so we are permissive here
 		for pair in [(sl.slice_name,sl.group),(sl.slice_name,None)]:
@@ -823,23 +1019,17 @@ class ComputeJob:
 		target = {'specs':self.calc.specs['specs'],
 			'calc':{'calc_name':self.calc.name},
 			'slice':self.slice.flat()}
-		#---! hack to fix integers ??! should be done in Slice constructor
+		#---convert strings to integers if possible
 		for key,val in self.work.postdat.posts().items(): json_type_fixer(val.specs)
 		#---we search for a result object by directly comparing the DatSpec.specs object
 		#---! see the note above on the specs garbage.
-		### matches = [key for key,val in self.work.postdat.posts().items() if val.specs==target]
 		#---! switching to itemwise comparison
-		#---! this is weird because it was working for ptdins ?!!?
-		try: matches = [key for key,val in self.work.postdat.posts().items() if all([
+		#---! this is weird because it was working for ptdins
+		matches = [key for key,val in self.work.postdat.posts().items() if all([
 			val.specs['slice']==target['slice'],
 			val.specs.get('specs',None)==target['specs'],
 			#---! calc spec objects sometimes have Calculation type or dictionary ... but why?
-			val.specs['calc'].name==target['calc']['calc_name'],
-			#---! ... 2017.4.19
-			#val.specs['calc']['calc_name']==target['calc']['calc_name'],
-			])]
-		except:
-			import pdb;pdb.set_trace()
+			val.specs['calc'].name==target['calc']['calc_name'],])]
 		if len(matches)>1: 
 			#---fallback to direct comparison of the raw specs
 			#---! note that this is not sustainable! FIX IT!
@@ -847,33 +1037,11 @@ class ComputeJob:
 			if len(rematch)==1: 
 				print('[WARNING] ULTRAWARNING we had a rematch!')
 				return rematch[0]
-			import ipdb;ipdb.set_trace()
 			raise Exception('multiple unique matches in the spec files. major error upstream?')
 		elif len(matches)==1: return matches[0]
-
 		#---! note that in order to port omnicalc back to ptdins, rpb added dat_type to Slice.flat()
 		#---here we allow more stuff in the spec than you have in the meta file since the legacy
-		#---...simulations added data to the specs
-		#---!...I THINK !??!
-		#matches2 = [dict(copy.deepcopy(target),**val.specs)==val in self.work.postdat.posts().items()]
-		#---tried
-		#[key for key,val in self.work.postdat.posts().items() if dict(val.specs,**target)==val.specs]
-		"""
-		ipdb> target
-		{'slice': {'end': 108000, 'short_name': 'v509', 'skip': 100, 'start': 28000, 'pbc': 'mol', 'group': 'all', 'dat_type': 'gmx', 'slice_type': 'standard'}, 'calc': {'calc_name': 'hydrogen_bonding'}, 'specs': {'distance_cutoff': 3.4, 'angle_cutoff': 160.0}}
-		ipdb> self.work.postdat.toc['v509.28000-108000-100.all.pbcmol.hydrogen_bonding.n0'].specs==target
-		True
-		ipdb> matches
-		[]
-		self.work.postdat.toc['v509.28000-108000-100.all.pbcmol.lipid_abstractor.n0'].specs
-		"""
-		#key = 'v509.28000-108000-100.all.pbcmol.electron_density_profile.n0'
-		#asciitree({'have':self.work.postdat.toc[key].specs,'target':target})
-		
-		this_key = 'v003.0-400000-200.proteins.pbcmol.protein_abstractor.n0'
-		this_key = 'v003.0-400000-200.all.pbcmol.lipid_abstractor.n2'
-		#import ipdb;ipdb.set_trace()
-		
+		#---! removed lots of debugging notes here		
 		#---! upgrades to the data structures are such that calculations can be directly matched
 		#---! ...however the slices need to be matched
 		matches = [name for name,post in self.work.postdat.posts().items() 
@@ -881,31 +1049,3 @@ class ComputeJob:
 		if len(matches)==1: return matches[0]
 		#---match failure returns nothing
 		return
-
-		#---! before making calculations into an explicit object
-		if False:
-			matches_sub = [key for key,val in self.work.postdat.posts().items() if 
-				all([val.specs[subkey].viewitems()>=target[subkey].viewitems() for subkey in target.keys()])]
-			if len(matches_sub)>1: 
-				raise Exception('multiple unique SUB-matches in the spec files. major error upstream?')
-			elif len(matches_sub)==1: 
-				print('[WARNING] using subset match. you had more attributes than specs!')
-				#import ipdb;ipdb.set_trace()
-				return matches_sub[0]
-
-	def make_name(self):
-		"""
-		"""
-		#---each post-processing name has name data and spec data
-		#---this function decides what kinds of information goes into each
-		#---there are two cases: standard slice naming with gromacs slices gets name data
-		#---...while everything else relies on the spec file
-		slice_type = self.slice.flat()['slice_type']
-		if slice_type=='standard':
-			print('gmx')
-		elif slice_type=='readymade_namd':
-			print('namd')
-		else: raise Exception('invalid slice type %s'%slice_type)
-		namesss = self.work.namer.name_slice(kind='standard',sn=self.slice.flat()['short_name'],
-			**dict([(key,self.slice.flat()[key]) for key in ['start','end','group','skip','pbc']]))
-		import ipdb;ipdb.set_trace()

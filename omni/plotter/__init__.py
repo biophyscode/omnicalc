@@ -5,6 +5,9 @@
 import matplotlib as mpl 
 import matplotlib.pyplot as plt
 
+#---common imports
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
 mpl.rcParams['text.usetex'] = True
 mpl.rcParams['text.latex.preamble'] = [
 	r'\usepackage{sfmath}',
@@ -17,5 +20,5 @@ mpl.rcParams['text.latex.preamble'] = [
 	][:]
 
 mpl.rc('font',**{'family':'sans-serif','sans-serif':
-	['Helvetica','Avant Garde','Computer Modern Sans serif'][2]
-	})
+	['Helvetica','Avant Garde','Computer Modern Sans serif'][2]})
+

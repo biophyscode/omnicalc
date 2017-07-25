@@ -21,7 +21,7 @@ This makefile was forked from factory and updated with prechecker and zombie mod
 """
 
 default_config = {
-	'commands': ['omni/config.py','omni/cli.py'],
+	'commands': ['omni/config.py','omni/cli.py','omni/docs/docs.py'],
 	'commands_aliases': [('set','set_config')],}
 
 #---settings for globbing for functions
@@ -34,7 +34,7 @@ drop_flags = ['w','--','s','ws','sw']
 
 verbose = False
 
-import os,sys,re,glob
+import os,sys,re,glob,time
 import inspect,traceback
 
 #---utility functions
@@ -175,18 +175,30 @@ def makeface(*arglist):
 	else:
 		#---if no (auto)debugging then we simply report exceptions as a makeface error
 		try: makeface_funcs[funcname](*args,**kwargs)
-		except Exception as e: 
+		except Exception as e:
+			#---for omnicalc we catch a special kill switch on failure to clean up if 
+			#---...this call was instantiated by the factory
+			kill_switch = kwargs.get('kill_switch',None)
+			if kill_switch: 
+				#---! wait for the log to accrue?
+				#time.sleep(3)
+				#os.system('bash %s'%kill_switch)
+				#---! removing instead of running
+				os.remove(kill_switch)
 			tracebacker(e)
 			sys.exit(1)
 		except KeyboardInterrupt:
 			print('okay okay ... exiting ...')
 			sys.exit(1)
+		#---! run the kill switch here?
 
 if __name__ == "__main__": 
 	zombie_mode = False
 	try: from logo import logo
 	except: logo = ""
-	if logo: print(logo)
+	#---all arguments are passed directly to python but by convention we use the json flag for interactions
+	#---...with e.g. the factory which also suppresses the unicode logo
+	if logo and 'json' not in sys.argv: print(logo)
 	#---read configuration to retrieve source scripts
 	#---note this happens every time (even on make tab-completion) to collect scripts
 	#---...from all open-ended sources. timing: it only requires about 3 ms

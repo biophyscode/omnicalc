@@ -59,10 +59,11 @@ def bash(command,log=None,cwd=None,inpipe=None):
 	"""
 	if not cwd: cwd = './'
 	if log == None: 
-		if inpipe: raise Exception('under development')
 		kwargs = dict(cwd=cwd,shell=True,executable='/bin/bash')
+		if inpipe: kwargs['stdin'] = subprocess.PIPE
 		proc = subprocess.Popen(command,**kwargs)
-		stdout,stderr = proc.communicate()
+		if not inpipe: stdout,stderr = proc.communicate()
+		else: stdout,stderr = proc.communicate(input=inpipe)
 	else:
 		#---if the log is not in cwd we see if it is accessible from the calling directory
 		if not os.path.isdir(os.path.dirname(os.path.join(cwd,log))): 

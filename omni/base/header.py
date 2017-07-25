@@ -35,29 +35,41 @@ import base.store
 base.store.work = work
 from base.store import plotload,picturesave
 from base.tools import status
-from plotter import mpl,plt
-from plotter.panels import panelplot
+#---the plotter __init__.py sets the imports (importantly, including mpl,plt with modifications)
+from plotter import *
+from plotter.panels import panelplot,square_tiles
 from makeface import tracebacker
+from hypothesis import hypothesis,sweeper
 import numpy as np
 
 #---plot scripts with special names
 #---! deprecated!
-if run_type=='plot':
-	for fn in ['figures','colors']:
-		if os.path.isfile(os.path.join('calcs','specs',fn+'.py')):
-			with open(os.path.join('calcs','specs',fn+'.py')) as fp: exec(fp.read())
+if False:
+	if run_type=='plot':
+		for fn in ['figures','colors']:
+			if os.path.isfile(os.path.join('calcs','specs',fn+'.py')):
+				with open(os.path.join('calcs','specs',fn+'.py')) as fp: exec(fp.read())
 
 #---flag for IPython notebook use
 is_live = False
 
 #---custom art director
-from plotter.art_director_importer import import_art_director
+from plotter.art_director_importer import import_art_director,protected_art_words
 art_director = work.vars.get('art_director',None)
 if art_director: 
+	#---reload the art settings if they are already loaded
+	mod_name = re.match('^(.+)\.py$',os.path.basename(art_director)).group(1)
+	#---! switced from reload to a python3-compatible. would prefer to avoid pyc files.
+	import importlib
+	if mod_name in sys.modules: importlib.reload(sys.modules[mod_name])
 	art_vars = import_art_director(art_director,cwd='calcs')
 	#---unpack these into global
 	for key,val in art_vars.items(): globals()[key] = val
-del art_director,art_vars
+#---if not art director then we set all protected variables to null
+else: 
+	for key in protected_art_words: globals()[key] = None
+for key in ['mod_name','art_vars','art_director']:
+	if key in globals(): del globals()[key]
 
 def replot():
 	"""

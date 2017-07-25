@@ -12,7 +12,7 @@ from PIL import Image
 from PIL import PngImagePlugin
 
 def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
-	dpi=300,form='png',version=False,pdf=False,tight=True,pad_inches=0):
+	dpi=300,form='png',version=False,pdf=False,tight=True,pad_inches=0,figure_held=None):
 	"""
 	Function which saves the global matplotlib figure without overwriting.
 	"""
@@ -33,7 +33,7 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 		search = picturefind(savename,directory=directory,meta=meta)
 		if not search:
 			if meta == None: raise Exception('[ERROR] versioned image saving requires meta')
-			fns = glob.glob(os.path.join(directory,savename,'.v*'))
+			fns = glob.glob(os.path.join(directory,savename+'.v*'))
 			nums = [int(re.findall('^.+\.v([0-9]+)\.png',fn)[0]) for fn in fns 
 				if re.match('^.+\.v[0-9]+\.png',fn)]
 			ind = max(nums)+1 if nums != [] else 1
@@ -57,13 +57,14 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	#---...python2.7/site-packages/matplotlib/backends/backend_pdf.py and raise it to e.g. 3.0)
 	if pdf:
 		alt_name = re.sub('.png$','.pdf',savename)
-		plt.savefig(alt_name,dpi=dpi,bbox_extra_artists=extras,
+		#---holding the figure allows other programs e.g. ipython notebooks to show and save the figure
+		(figure_held if figure_held else plt).savefig(alt_name,dpi=dpi,bbox_extra_artists=extras,
 			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None)
 		#---convert pdf to png
 		os.system('convert -density %d %s %s'%(dpi,alt_name,base_fn))
 		os.remove(alt_name)
 	else: 
-		plt.savefig(base_fn,dpi=dpi,bbox_extra_artists=extras,
+		(figure_held if figure_held else plt).savefig(base_fn,dpi=dpi,bbox_extra_artists=extras,
 			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None)
 	plt.close()
 	#---add metadata to png
@@ -115,7 +116,7 @@ def plotload(plotname,specfile=None,choice_override=None,use_group=False):
 	Wrapper around WorkSpace.plotload method for backwards compatibility with plot scripts, which 
 	expect to find this function in globals to get data.
 	"""
-	data,calc = work.plotload3(plotname)
+	data,calc = work.plotload(plotname)
 	return data,calc
 
 def datmerge(kwargs,name,key,same=False):
@@ -124,8 +125,10 @@ def datmerge(kwargs,name,key,same=False):
 	This function stitches together the key from many of these pickles.
 	"""
 	#---if there is only one upstream object with no index we simply lookup the key we want
-	if name in kwargs['upstream']: return kwargs['upstream'][name][key]
+	if name in kwargs.get('upstream',[]): return kwargs['upstream'][name][key]
 	else:
+		#---! this function seems to require upstream data so we except here
+		if 'upstream' not in kwargs: raise Exception('datmerge needs upstream pointers')
 		#---get indices for the upstream object added by computer
 		inds = [int(re.findall(name+'(\d+)',i)[0]) for i in kwargs['upstream'] if re.match(name,i)]
 		collected = [kwargs['upstream']['%s%d'%(name,i)][key] for i in sorted(inds)]

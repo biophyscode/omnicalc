@@ -31,7 +31,7 @@ base.store.work = work
 from base.store import plotload,picturesave
 from base.tools import status
 from plotter import mpl,plt
-from plotter.panels import panelplot
+from plotter.panels import panelplot,square_tiles
 from makeface import tracebacker
 import numpy as np
 
@@ -44,21 +44,28 @@ for fn in ['figures','colors']:
 #---! figure out how to reload the art file after user makes changes *without* having to shutdown the notebook
 
 #---custom art director
-from plotter.art_director_importer import import_art_director
+from plotter.art_director_importer import import_art_director,protected_art_words
 art_director = work.vars.get('art_director',None)
 if art_director: 
 	#---reload the art settings if they are already loaded
 	mod_name = re.match('^(.+)\.py$',os.path.basename(art_director)).group(1)
+	############## PROBLEM!!!!!!!
 	if mod_name in sys.modules: reload(sys.modules[mod_name])
 	art_vars = import_art_director(art_director,cwd='../calcs')
 	#---unpack these into global
 	for key,val in art_vars.items(): globals()[key] = val
-del art_director,art_vars
+#---if not art director then we set all protected variables to null
+else: 
+	for key in protected_art_words: globals()[key] = None
+for key in ['mod_name','art_vars','art_director']:
+	if key in globals(): del globals()[key]
 
 #---decorate picturesave so plots are visible in the notebook
 picturesave_omni = picturesave
 def picturesave(*args,**kwargs):
+	"""Custom procedure for showing *and* saving the figure."""
+	fig = plt.gcf()
 	plt.show()
+	kwargs['figure_held'] = fig
 	picturesave_omni(*args,**kwargs)
 	plt.close()
-

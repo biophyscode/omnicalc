@@ -696,6 +696,9 @@ class WorkSpace:
 		plot_spec = self.plots.get(plotname,None)
 		if not plot_spec:
 			print('[NOTE] cannot find plot %s in the metadata. using the entry from calculations'%plotname)
+			if plotname not in self.calcs:
+				raise Exception(
+					'plot "%s" is missing from both plots and calculations in the metadata'%plotname)
 			#---if plotname is absent from plots we assemble a default plot based on the calculation
 			plot_spec = {'calculation':plotname,
 				'collections':self.calcs[plotname]['collections'],
@@ -777,6 +780,11 @@ class WorkSpace:
 					if len(collection_sets)>1: 
 						raise Exception('conflicting collections for calculations %s'%calc_specifier.keys())
 					else: collections = list(collection_sets[0])
+				elif type(calc_specifier)==list:
+					collections_list = [str_or_list(self.calcs[c]['collections']) for c in calc_specifier]
+					if len(list(set([tuple(i) for i in collections_list])))!=1:
+						raise Exception('non-equal collections for upstream calculations: %s'%calc_specifier)
+					else: collections = collections_list[0]
 				else: collections = str_or_list(self.calcs[calc_specifier]['collections'])
 			else: collections = str_or_list(self.plots[this_status]['collections'])
 		try: sns = sorted(list(set([i for j in [self.vars['collections'][k] 

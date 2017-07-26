@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from base.tools import str_or_list,status
 from PIL import Image
 from PIL import PngImagePlugin
+import numpy as np
 
 def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	dpi=300,form='png',version=False,pdf=False,tight=True,pad_inches=0,figure_held=None):
@@ -164,4 +165,12 @@ def alternate_module(**kwargs):
 			module_name,variable_name,e))
 	return result
 
-
+def uniquify(array):
+    """Get unique rows in an array."""
+    #---contiguous array trick
+    alt = np.ascontiguousarray(array).view(
+        np.dtype((np.void,array.dtype.itemsize*array.shape[1])))
+    unique,idx,counts = np.unique(alt,return_index=True,return_counts=True)
+    #---sort by count, descending
+    idx_sorted = np.argsort(counts)[::-1]
+    return idx[idx_sorted],counts[idx_sorted]

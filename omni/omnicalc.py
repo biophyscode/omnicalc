@@ -313,8 +313,9 @@ class WorkSpace:
 		mod.MDAnalysis = MDAnalysis
 		#---looping tools
 		from base.tools import status,framelooper
-		from base.store import alternate_module
+		from base.store import alternate_module,uniquify
 		mod.alternate_module = alternate_module
+		mod.uniquify = uniquify
 		mod.status = status
 		mod.framelooper = framelooper
 		#---parallel processing

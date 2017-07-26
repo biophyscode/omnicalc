@@ -4,7 +4,7 @@
 Storage functions. Require a workspace in globals so do an import/export.
 """
 
-import os,sys,re,glob,json
+import os,sys,re,glob,json,importlib
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from base.tools import str_or_list,status
@@ -145,3 +145,23 @@ def datmerge(kwargs,name,key,same=False):
 			if any([any(collected[0]!=c) for c in collected[1:]]): 
 				raise Exception('\n[ERROR] objects not same')
 			else: return collected[0]
+
+def alternate_module(**kwargs):
+	"""
+	Systematic way to retrieve an alternate module from within a calculation code by consulting the meta.
+	"""
+	module_name = kwargs.get('module',None)
+	variable_name = kwargs.get('variable',None)
+	if not variable_name:
+		raise Exception('you must set `variable` in the alternate module')
+	if not module_name: 
+		raise Exception('you must set `module` in the alternate module')
+	try:
+		mod = importlib.import_module(module_name)
+		result = mod.__dict__.get(variable_name,None)
+	except Exception as e:
+		raise Exception('failed to import module "%s" and variable "%s" with exception %s'%(
+			module_name,variable_name,e))
+	return result
+
+

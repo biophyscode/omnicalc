@@ -313,6 +313,8 @@ class WorkSpace:
 		mod.MDAnalysis = MDAnalysis
 		#---looping tools
 		from base.tools import status,framelooper
+		from base.store import alternate_module
+		mod.alternate_module = alternate_module
 		mod.status = status
 		mod.framelooper = framelooper
 		#---parallel processing
@@ -684,10 +686,12 @@ class WorkSpace:
 		"""Wrap load which must be used by other modules."""
 		return load(name,cwd=cwd,verbose=verbose,exclude_slice_source=exclude_slice_source,filename=filename)
 
-	def plotload(self,plotname):
+	def plotload(self,plotname,status_override=False):
 		"""
 		Get data for plotting programs.
 		"""
+		#---usually plotload is called from plots or pipelines but we allow an override here
+		if status_override==True: self.plot_status = plotname
 		#---get the calculations from the plot dictionary in the meta files
 		plot_spec = self.plots.get(plotname,None)
 		if not plot_spec:
@@ -777,7 +781,9 @@ class WorkSpace:
 			else: collections = str_or_list(self.plots[this_status]['collections'])
 		try: sns = sorted(list(set([i for j in [self.vars['collections'][k] 
 			for k in collections] for i in j])))
-		except Exception as e: raise Exception(
+		except Exception as e: 
+			import ipdb;ipdb.set_trace()
+			raise Exception(
 			'error compiling the list of simulations from collections: %s'%collections)
 		return sns
 

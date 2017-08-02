@@ -361,6 +361,7 @@ class WorkSpace:
 		"""
 		Figure out groups for a downstream calculation.
 		"""
+		status('inferring group for %s'%calc,tag='bookkeeping')
 		if type(calc)==dict:
 			#---failed recursion method
 			if False:
@@ -781,11 +782,6 @@ class WorkSpace:
 					if len(collection_sets)>1: 
 						raise Exception('conflicting collections for calculations %s'%calc_specifier.keys())
 					else: collections = list(collection_sets[0])
-				elif type(calc_specifier)==list:
-					collections_list = [str_or_list(self.calcs[c]['collections']) for c in calc_specifier]
-					if len(list(set([tuple(i) for i in collections_list])))!=1:
-						raise Exception('non-equal collections for upstream calculations: %s'%calc_specifier)
-					else: collections = collections_list[0]
 				else: collections = str_or_list(self.calcs[calc_specifier]['collections'])
 			else: collections = str_or_list(self.plots[this_status]['collections'])
 		try: sns = sorted(list(set([i for j in [self.vars['collections'][k] 

@@ -1051,6 +1051,13 @@ class ComputeJob:
 		#---match this job to a result
 		self.result = self.match_result()
 
+	def slice_compare(self,this,that):
+		"""
+		Compare slices in the result matcher specifically ignoring some features which are irrelevant, namely
+		the group. This allows downstream calculations to pull in slices derived from different groups.
+		"""
+		return all([this[key]==that[key] for key in this.keys()+that.keys() if key!='group'])
+
 	def match_result(self):
 		"""
 		Check if this job is done.
@@ -1074,8 +1081,10 @@ class ComputeJob:
 		#---! switching to itemwise comparison
 		#---! this is weird because it was working for ptdins
 		matches = [key for key,val in self.work.postdat.posts().items() if all([
-			val.specs['slice']==target['slice'],
-			val.specs.get('specs',None)==target['specs'],
+			self.slice_compare(val.specs['slice'],target['slice']),
+			#---! recently (2017.07.29) changed the default for the specs to an empty dictionary from None
+			#---! ...so that you can point to upstream calculations all cases
+			val.specs.get('specs',{})==target.get('specs',{}),
 			#---! calc spec objects sometimes have Calculation type or dictionary ... but why?
 			val.specs['calc'].name==target['calc']['calc_name'],])]
 		if len(matches)>1: 
@@ -1086,7 +1095,8 @@ class ComputeJob:
 				print('[WARNING] ULTRAWARNING we had a rematch!')
 				return rematch[0]
 			raise Exception('multiple unique matches in the spec files. major error upstream?')
-		elif len(matches)==1: return matches[0]
+		elif len(matches)==1: 
+			return matches[0]
 		#---! note that in order to port omnicalc back to ptdins, rpb added dat_type to Slice.flat()
 		#---here we allow more stuff in the spec than you have in the meta file since the legacy
 		#---! removed lots of debugging notes here		
@@ -1094,6 +1104,8 @@ class ComputeJob:
 		#---! ...however the slices need to be matched
 		matches = [name for name,post in self.work.postdat.posts().items() 
 			if post.specs['calc']==self.calc and self.slice.flat()==post.specs['slice']]
-		if len(matches)==1: return matches[0]
+		if len(matches)==1: 
+			return matches[0]
 		#---match failure returns nothing
 		return
+

@@ -264,8 +264,11 @@ class WorkSpace:
 		depends = {t[0]:[t[ii+1] for ii,i in enumerate(t) if ii<len(t)-1 and t[ii]=='upstream'] 
 			for t in upstream_catalog}
 		calckeys = [i for i in self.calcs if i not in depends]
+		#---if the calculation uses an upstream list instead of dictionary we flatten it
+		depends = dict([(k,(v if not all([type(i)==list for i in v]) else 
+			[j for k in v for j in k])) for k,v in depends.items()])
 		#---check that the calckeys has enough elements 
-		list(set(calckeys+[i for j in depends.values() for i in j]))			
+		list(set(calckeys+[i for j in depends.values() for i in j]))
 		#---paranoid security check for infinite loop
 		start_time = time.time()
 		while any(depends):
@@ -549,6 +552,9 @@ class WorkSpace:
 		for unum,((upmark,calcname),calc) in enumerate(upstreams):
 			status('caching upstream: %s'%calcname,tag='status',looplen=len(upstreams),i=unum)
 			result = ComputeJob(sl=job.slice,calc=calc,work=self).result
+			if not result:
+				raise Exception('cannot find result for calculation %s with specs %s'%(
+					calcname,calc.__dict__))
 			outgoing['upstream'][calcname] = self.load(
 				name=self.postdat.toc[result].files['dat'],cwd=self.paths['post_data_spot'])
 		#---for backwards compatibility we decorate the kwargs with the slice name and group

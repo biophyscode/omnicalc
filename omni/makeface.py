@@ -99,20 +99,13 @@ def import_remote(script,is_script=False):
 	sys.path = paths
 	return strip_builtins(mod.__dict__)
 
-def fab_deprecated(text,*flags):
-	"""On the chopping block."""
-	colors = dict(fail='\033[91m',warning='\033[93m',header='\033[95m',okblue='\033[95m',
-		okgreen='\033[92m',endc='\033[0m',bold='\033[1m',underline='\033[4m')
-	if flags and sys.stdout.isatty()==True: 
-		text = ''.join(colors[f] for f in flags)+text+colors['endc']
-	return text
-
 def fab(text,*flags):
 	"""Colorize the text."""
 	#---three-digit codes: first one is style (0 and 2 are regular, 3 is italics, 1 is bold)
 	colors = {'gray':(0,37,48),'cyan_black':(1,36,40),'red_black':(1,31,40),'black_gray':(0,37,40),
 		'white_black':(1,37,40),'mag_gray':(0,35,47)}
-	if flags and sys.stdout.isatty()==True: 
+	if flags and not hasattr(sys.stdout,'isatty'): pass
+	elif flags and sys.stdout.isatty()==True: 
 		if any(f for f in flags if f not in colors): raise Exception('cannot find a color in %s'%str(flags))
 		for f in flags[::-1]: 
 			style,fg,bg = colors[f]

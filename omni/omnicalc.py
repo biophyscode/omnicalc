@@ -316,6 +316,9 @@ class WorkSpace:
 		mod.MDAnalysis = MDAnalysis
 		#---looping tools
 		from base.tools import status,framelooper
+		from base.store import alternate_module,uniquify
+		mod.alternate_module = alternate_module
+		mod.uniquify = uniquify
 		mod.status = status
 		mod.framelooper = framelooper
 		#---parallel processing
@@ -361,6 +364,7 @@ class WorkSpace:
 		"""
 		Figure out groups for a downstream calculation.
 		"""
+		status('inferring group for %s'%calc,tag='bookkeeping')
 		if type(calc)==dict:
 			#---failed recursion method
 			if False:
@@ -690,10 +694,12 @@ class WorkSpace:
 		"""Wrap load which must be used by other modules."""
 		return load(name,cwd=cwd,verbose=verbose,exclude_slice_source=exclude_slice_source,filename=filename)
 
-	def plotload(self,plotname):
+	def plotload(self,plotname,status_override=False):
 		"""
 		Get data for plotting programs.
 		"""
+		#---usually plotload is called from plots or pipelines but we allow an override here
+		if status_override==True: self.plot_status = plotname
 		#---get the calculations from the plot dictionary in the meta files
 		plot_spec = self.plots.get(plotname,None)
 		if not plot_spec:
@@ -782,16 +788,13 @@ class WorkSpace:
 					if len(collection_sets)>1: 
 						raise Exception('conflicting collections for calculations %s'%calc_specifier.keys())
 					else: collections = list(collection_sets[0])
-				elif type(calc_specifier)==list:
-					collections_list = [str_or_list(self.calcs[c]['collections']) for c in calc_specifier]
-					if len(list(set([tuple(i) for i in collections_list])))!=1:
-						raise Exception('non-equal collections for upstream calculations: %s'%calc_specifier)
-					else: collections = collections_list[0]
 				else: collections = str_or_list(self.calcs[calc_specifier]['collections'])
 			else: collections = str_or_list(self.plots[this_status]['collections'])
 		try: sns = sorted(list(set([i for j in [self.vars['collections'][k] 
 			for k in collections] for i in j])))
-		except Exception as e: raise Exception(
+		except Exception as e: 
+			import ipdb;ipdb.set_trace()
+			raise Exception(
 			'error compiling the list of simulations from collections: %s'%collections)
 		return sns
 

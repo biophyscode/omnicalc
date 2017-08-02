@@ -4,12 +4,13 @@
 Storage functions. Require a workspace in globals so do an import/export.
 """
 
-import os,sys,re,glob,json
+import os,sys,re,glob,json,importlib
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from base.tools import str_or_list,status
 from PIL import Image
 from PIL import PngImagePlugin
+import numpy as np
 
 def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	dpi=300,form='png',version=False,pdf=False,tight=True,pad_inches=0,figure_held=None):
@@ -145,3 +146,31 @@ def datmerge(kwargs,name,key,same=False):
 			if any([any(collected[0]!=c) for c in collected[1:]]): 
 				raise Exception('\n[ERROR] objects not same')
 			else: return collected[0]
+
+def alternate_module(**kwargs):
+	"""
+	Systematic way to retrieve an alternate module from within a calculation code by consulting the meta.
+	"""
+	module_name = kwargs.get('module',None)
+	variable_name = kwargs.get('variable',None)
+	if not variable_name:
+		raise Exception('you must set `variable` in the alternate module')
+	if not module_name: 
+		raise Exception('you must set `module` in the alternate module')
+	try:
+		mod = importlib.import_module(module_name)
+		result = mod.__dict__.get(variable_name,None)
+	except Exception as e:
+		raise Exception('failed to import module "%s" and variable "%s" with exception %s'%(
+			module_name,variable_name,e))
+	return result
+
+def uniquify(array):
+    """Get unique rows in an array."""
+    #---contiguous array trick
+    alt = np.ascontiguousarray(array).view(
+        np.dtype((np.void,array.dtype.itemsize*array.shape[1])))
+    unique,idx,counts = np.unique(alt,return_index=True,return_counts=True)
+    #---sort by count, descending
+    idx_sorted = np.argsort(counts)[::-1]
+    return idx[idx_sorted],counts[idx_sorted]

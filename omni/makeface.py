@@ -140,7 +140,7 @@ def makeface(*arglist):
 		#---note that it is crucial that the following group contains all incoming 
 		if re.match(regex_kwargs,arg):
 			parname,parval = re.findall(regex_kwargs,arg)[0]
-			kwargs[parname] = parval
+			kwargs[parname] = {'True':True,'true':True,'False':False,'false':False}.get(parval,parval)
 		else:
 			if sys.version_info<(3,3): 
 				#---the following will be removed by python 3.6

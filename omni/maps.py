@@ -376,6 +376,7 @@ class CalcMeta:
 					raise Exception('???')
 				calc.specs_linked = copy.deepcopy(calc.specs)
 				upstream = calc.specs_linked['specs'].pop('upstream',None)
+				status('getting upstream calculation specs for %s'%calcname,tag='bookkeeping')
 				ups = self.get_upstream(upstream) or []
 				#---tag and link the upstream calculations
 				for calc in ups: 
@@ -383,7 +384,12 @@ class CalcMeta:
 
 	def match_upstream_stub_or_specs(self,key,val):
 		"""
-		When matching upstream data we want to use a minimal syntax for specifying the settings for the upstream data type. Previously we did two comparisons, one of the stubs and one of the full data set. This fails when you want to specify the stub in one place and the full subdictionary in another. For that reason we replace the viewitems comparisons formerly in the get_upstream function with a more careful comparison.
+		When matching upstream data we want to use a minimal syntax for specifying the settings for the 
+		upstream data type. Previously (in ``get_upstream``)we did two comparisons, one of the stubs and one 
+		of the full data set. Note that a stub is the key inside of a loop which is expanded; it serves as a 
+		shortcut. This fails when you want to specify the stub in one place and the full subdictionary or 
+		explicit parameter in another. For that reason we replace the viewitems comparisons formerly in the 
+		``get_upstream`` function with a more careful comparison performed here.
 		"""
 		#---expand the dictionary into a list of paths using catalog
 		target_paths = list(catalog(val))
@@ -406,7 +412,9 @@ class CalcMeta:
 			if len(calculation_matches)!=1: 
 				raise Exception('cannot match calculation spec to an existing calculation')
 			else: return calculation_matches[0]
-		else: raise Exception('failed to match upstream data for %s to %s'%(key,val))
+		else: 
+			import ipdb;ipdb.set_trace()
+			raise Exception('failed to match upstream data for %s to %s'%(key,val))
 
 	def get_upstream(self,specs):
 		"""
@@ -424,44 +432,51 @@ class CalcMeta:
 					'calculation with no free parameters, however there are non-unique matches: %s'%
 					self.toc[upstream_calcname])
 			return [self.toc[upstream_calcname][0]]
-		for key,val in specs.items():
-			#---! upstream keys need to recurse or something?
-			if key=='upstream':
-				for key_up,val_up in val.items():
-					#---! why has rpb not encountered this yet?
-					raise Exception('???')
-			else:
-				#---! prototyping a new method for upstream matching
-				if False:
-					match = self.match_upstream_stub_or_specs(key,val)
-					upstream_calcs.append(match)
+		#---if the upstream object is a list we get the calculation specs from there
+		if type(specs)==list:
+			for calcname in specs:
+				upstream_calcs.append(self.toc[calcname][0])
+		elif type(specs)==dict:
+			for key,val in specs.items():
+				#---! upstream keys need to recurse or something?
+				if key=='upstream':
+					for key_up,val_up in val.items():
+						#---! why has rpb not encountered this yet?
+						raise Exception('???')
 				else:
-					#---previously we required that `i.stub['specs']==val` but this is too strict
-					#---! val cannot be None below??
-					if key not in self.toc: 
-						raise Exception('searching upstream data and cannot find calculation %s'%key)
-					matches = [i for ii,i in enumerate(self.toc[key]) 
-						if val!=None and val.viewitems()<=i.stub['specs'].viewitems()]
-					#---try to match the stubs. this will work if you point to an upstream calculation with the 
-					#---...name of a subdictionary that represents a single calculation under a loop
-					if len(matches)!=1:
-						#---the None key implies there is only one calculation with no specs
-						if not val:
-							if len(self.toc[key])!=1: 
-								raise Exception('received None for %s but there are %d calculations'%(
-									key,len(self.toc[key])))
-							else: upstream_calcs.append(self.toc[key][0])
-						#---we can also identify upstream calculations by their specifications explicitly
-						#---...by searching the toc. we allow the match to be a subset of the upstream 
-						#---...calculations and only require that the match be unique
-						else:
-							explicit_matches = [i for ii,i in enumerate(self.toc[key]) 
-								if i.specs['specs'].viewitems()>=val.viewitems()]
-							if len(explicit_matches)==1: upstream_calcs.append(explicit_matches[0])
-							else: 
-								raise Exception('failed to locate upstream data. explicit matches are: %s'
-									%explicit_matches)
-					else: upstream_calcs.append(matches[0])
+					#---! prototyping a new method for upstream matching
+					if True:
+						match = self.match_upstream_stub_or_specs(key,val)
+						upstream_calcs.append(match)
+					#---! when the new method above is tested we can remove the following
+					else:
+						#---previously we required that `i.stub['specs']==val` but this is too strict
+						#---! val cannot be None below??
+						if key not in self.toc: 
+							raise Exception('searching upstream data and cannot find calculation %s'%key)
+						matches = [i for ii,i in enumerate(self.toc[key]) 
+							if val!=None and val.viewitems()<=i.stub['specs'].viewitems()]
+						#---try to match the stubs. this will work if you point to an upstream calculation 
+						#---...with the name of a subdictionary that represents a single calculation under 
+						#---...a loop
+						if len(matches)!=1:
+							#---the None key implies there is only one calculation with no specs
+							if not val:
+								if len(self.toc[key])!=1: 
+									raise Exception('received None for %s but there are %d calculations'%(
+										key,len(self.toc[key])))
+								else: upstream_calcs.append(self.toc[key][0])
+							#---we can also identify upstream calculations by their specifications explicitly
+							#---...by searching the toc. we allow the match to be a subset of the upstream 
+							#---...calculations and only require that the match be unique
+							else:
+								explicit_matches = [i for ii,i in enumerate(self.toc[key]) 
+									if i.specs['specs'].viewitems()>=val.viewitems()]
+								if len(explicit_matches)==1: upstream_calcs.append(explicit_matches[0])
+								else: 
+									raise Exception('failed to locate upstream data. explicit matches are: %s'
+										%explicit_matches)
+						else: upstream_calcs.append(matches[0])
 		return upstream_calcs
 
 	def calcjobs(self,name):

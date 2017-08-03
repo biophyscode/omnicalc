@@ -414,7 +414,9 @@ class CalcMeta:
 				raise Exception('cannot match calculation spec to an existing calculation: %s'%
 					calculation_matches)
 			else: return calculation_matches[0]
-		else: raise Exception('failed to match upstream data for %s to %s'%(key,val))
+		else: raise Exception('failed to match upstream data for %s to %s '%(key,val)+
+			'this is typically the result of an upstream calculation that has a loop. make sure you select '
+			'one item in this upstream calculation in order to continue.')
 
 	def get_upstream(self,specs):
 		"""

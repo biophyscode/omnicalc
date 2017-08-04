@@ -407,14 +407,16 @@ class CalcMeta:
 					break
 		if sum(matches.values())==1: 
 			raw_calc = unrolled[0][[k for k,v in matches.items() if v][0]]
+			if 'specs' not in raw_calc: raw_calc['specs'] = {}
 			calculation_matches = [i for ii,i in enumerate(self.toc[key]) if i.specs==raw_calc]
 			#---note that the match above is very precise so the following error means something way wrong
 			if len(calculation_matches)!=1: 
-				raise Exception('cannot match calculation spec to an existing calculation')
+				raise Exception('cannot match calculation spec to an existing calculation: %s'%
+					calculation_matches)
 			else: return calculation_matches[0]
-		else: 
-			import ipdb;ipdb.set_trace()
-			raise Exception('failed to match upstream data for %s to %s'%(key,val))
+		else: raise Exception('failed to match upstream data for %s to %s '%(key,val)+
+			'this is typically the result of an upstream calculation that has a loop. make sure you select '
+			'one item in this upstream calculation in order to continue.')
 
 	def get_upstream(self,specs):
 		"""
@@ -556,6 +558,15 @@ class CalcMeta:
 				if dict(copy.deepcopy(specs),**copy.deepcopy(calc.stub['specs']))==specs]
 			if len(matches)==1: return matches[0]
 			else:
+				#---! note that there are *way* too many conditionals here
+				#---before we except we try one last time to find the right calculation. in this case we send
+				#---...along the specs and calcname to the upstream finder which mimics the inferences used
+				#---...to retrieve upstream calculations in the compute loop and hence allows you to use
+				#---...both the loop aliases and the raw parameters in the same lookup
+				try:
+					matches = self.get_upstream({name:specs})
+					if len(matches)==1: return matches[0]
+				except: pass
 				if len(self.toc[name])>0:
 					print('[WARNING] here is a hint because we are excepting soon. '+
 						'the first specs of the toc for this calculation is: %s'%self.toc[name][0].specs)

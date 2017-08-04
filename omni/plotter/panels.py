@@ -60,11 +60,11 @@ def square_tiles(ntiles,figsize,favor_rows=False,wspace=None,hspace=None):
 	Create a grid of tiles with sequential order.
 	"""
 	nrows = ncols = int(np.ceil(np.sqrt(ntiles)))
-	nrows -= int(1*(ntiles==(nrows-1)*ncols))
+	nrows -= int(1*(ntiles<=(nrows-1)*ncols))
 	if not favor_rows: nrows,ncols = ncols,nrows
 	layout = {'out':{'grid':[1,1]},'ins':{'grid':[nrows,ncols]}}
 	if wspace: layout['ins']['wspace'] = wspace
-	if hspace: layout['ins']['wspace'] = hspace
+	if hspace: layout['ins']['hspace'] = hspace
 	axes,fig = 	panelplot(figsize=figsize,layout=layout)
 	for i in range(nrows*ncols-ntiles): fig.delaxes(axes[-1*(i+1)])
-	return axes,fig
+	return axes[:ntiles],fig

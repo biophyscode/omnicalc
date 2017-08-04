@@ -65,7 +65,7 @@ def status(string,i=0,looplen=None,bar_character=None,width=None,spacer='.',
 	#---! it would be useful to receive a signal here to suppress the status bar from 
 	#---! ...printing to the log file on backrun.
 	#---use unicode if not piping to a log file
-	logfile = sys.stdout.isatty()==False
+	logfile = (not hasattr(sys.stdout,'isatty')) or sys.stdout.isatty()==False
 	#---use of equals sign below is deprecated when we suppress status bars in the log file below
 	if not logfile: 
 		left,right,bb = u'\u2590',u'\u258C',(u'\u2592' if bar_character==None else bar_character)

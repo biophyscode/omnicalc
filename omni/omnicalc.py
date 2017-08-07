@@ -264,8 +264,11 @@ class WorkSpace:
 		depends = {t[0]:[t[ii+1] for ii,i in enumerate(t) if ii<len(t)-1 and t[ii]=='upstream'] 
 			for t in upstream_catalog}
 		calckeys = [i for i in self.calcs if i not in depends]
+		#---if the calculation uses an upstream list instead of dictionary we flatten it
+		depends = dict([(k,(v if not all([type(i)==list for i in v]) else 
+			[j for k in v for j in k])) for k,v in depends.items()])
 		#---check that the calckeys has enough elements 
-		list(set(calckeys+[i for j in depends.values() for i in j]))			
+		list(set(calckeys+[i for j in depends.values() for i in j]))
 		#---paranoid security check for infinite loop
 		start_time = time.time()
 		while any(depends):
@@ -313,6 +316,9 @@ class WorkSpace:
 		mod.MDAnalysis = MDAnalysis
 		#---looping tools
 		from base.tools import status,framelooper
+		from base.store import alternate_module,uniquify
+		mod.alternate_module = alternate_module
+		mod.uniquify = uniquify
 		mod.status = status
 		mod.framelooper = framelooper
 		#---parallel processing
@@ -358,6 +364,7 @@ class WorkSpace:
 		"""
 		Figure out groups for a downstream calculation.
 		"""
+		status('inferring group for %s'%calc,tag='bookkeeping')
 		if type(calc)==dict:
 			#---failed recursion method
 			if False:
@@ -545,6 +552,9 @@ class WorkSpace:
 		for unum,((upmark,calcname),calc) in enumerate(upstreams):
 			status('caching upstream: %s'%calcname,tag='status',looplen=len(upstreams),i=unum)
 			result = ComputeJob(sl=job.slice,calc=calc,work=self).result
+			if not result:
+				raise Exception('cannot find result for calculation %s with specs %s'%(
+					calcname,calc.__dict__))
 			outgoing['upstream'][calcname] = self.load(
 				name=self.postdat.toc[result].files['dat'],cwd=self.paths['post_data_spot'])
 		#---for backwards compatibility we decorate the kwargs with the slice name and group
@@ -684,10 +694,12 @@ class WorkSpace:
 		"""Wrap load which must be used by other modules."""
 		return load(name,cwd=cwd,verbose=verbose,exclude_slice_source=exclude_slice_source,filename=filename)
 
-	def plotload(self,plotname):
+	def plotload(self,plotname,status_override=False):
 		"""
 		Get data for plotting programs.
 		"""
+		#---usually plotload is called from plots or pipelines but we allow an override here
+		if status_override==True: self.plot_status = plotname
 		#---get the calculations from the plot dictionary in the meta files
 		plot_spec = self.plots.get(plotname,None)
 		if not plot_spec:
@@ -776,16 +788,13 @@ class WorkSpace:
 					if len(collection_sets)>1: 
 						raise Exception('conflicting collections for calculations %s'%calc_specifier.keys())
 					else: collections = list(collection_sets[0])
-				elif type(calc_specifier)==list:
-					collections_list = [str_or_list(self.calcs[c]['collections']) for c in calc_specifier]
-					if len(list(set([tuple(i) for i in collections_list])))!=1:
-						raise Exception('non-equal collections for upstream calculations: %s'%calc_specifier)
-					else: collections = collections_list[0]
 				else: collections = str_or_list(self.calcs[calc_specifier]['collections'])
 			else: collections = str_or_list(self.plots[this_status]['collections'])
 		try: sns = sorted(list(set([i for j in [self.vars['collections'][k] 
 			for k in collections] for i in j])))
-		except Exception as e: raise Exception(
+		except Exception as e: 
+			import ipdb;ipdb.set_trace()
+			raise Exception(
 			'error compiling the list of simulations from collections: %s'%collections)
 		return sns
 

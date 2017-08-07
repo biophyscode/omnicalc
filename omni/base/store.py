@@ -4,21 +4,20 @@
 Storage functions. Require a workspace in globals so do an import/export.
 """
 
-import os,sys,re,glob,json
+import os,sys,re,glob,json,collections,importlib
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from base.tools import str_or_list,status
 from PIL import Image
 from PIL import PngImagePlugin
+import numpy as np
 
 def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	dpi=300,form='png',version=False,pdf=False,tight=True,pad_inches=0,figure_held=None):
 	"""
 	Function which saves the global matplotlib figure without overwriting.
 	"""
-	status('saving picture',tag='store')
 	#---intervene here to check the wordspace for picture-saving "hooks" that apply to all new pictures
-	################### this was highly stupid: from base.header import work
 	if 'picture_hooks' in work.vars:
 		extra_meta = work.vars['picture_hooks']
 		#---redundant keys are not allowed: either they are in picture_hooks or passed to picturesave
@@ -42,6 +41,7 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	#---backup if necessary
 	savename += '.'+form
 	base_fn = os.path.join(directory,savename)
+	status('saving picture to %s'%savename,tag='store')
 	if os.path.isfile(base_fn) and backup:
 		for i in range(1,100):
 			latestfile = '.'.join(base_fn.split('.')[:-1])+'.bak'+('%02d'%i)+'.'+base_fn.split('.')[-1]
@@ -93,6 +93,19 @@ def picturedat(savename,directory='./',bank=False):
 			if os.path.isfile(latestfile): dicts[latestfile] = json.loads(Image.open(latestfile).info)
 		return dicts
 
+def lowest_common_dict_denominator(data):
+	"""..."""
+	if isinstance(data,basestring): return str(data)
+	elif isinstance(data,collections.Mapping): 
+		return dict(map(lowest_common_dict_denominator,data.iteritems()))
+	elif isinstance(data,collections.Iterable): 
+		return type(data)(map(lowest_common_dict_denominator,data))
+	else: return data
+
+def compare_dicts(a,b):
+	"""Compare dictionaries with unicode strings."""
+	return lowest_common_dict_denominator(a)==lowest_common_dict_denominator(b)
+
 def picturefind(savename,directory='./',meta=None):
 	"""
 	Find a picture in the plot repository.
@@ -101,11 +114,11 @@ def picturefind(savename,directory='./',meta=None):
 	regex = '^.+\.v([0-9]+)\.png'
 	fns = glob.glob(directory+'/'+savename+'.v*')
 	nums = map(lambda y:(y,int(re.findall(regex,y)[0])),filter(lambda x:re.match(regex,x),fns))
-	matches = [fn for fn,num in nums if meta==picturedat(os.path.basename(fn),directory=directory)]
+	matches = [fn for fn,num in nums if 
+		compare_dicts(meta,picturedat(os.path.basename(fn),directory=directory))]
 	if len(matches)>1 and meta!=None: 
 		print('[ERROR] multiple matches found for %s'%savename)
 		raise Exception('???')
-		import pdb;pdb.set_trace()
 	if matches==[] and meta==None:
 		return dict([(os.path.basename(fn),
 			picturedat(os.path.basename(fn),directory=directory)) for fn,num in nums]) 
@@ -145,3 +158,31 @@ def datmerge(kwargs,name,key,same=False):
 			if any([any(collected[0]!=c) for c in collected[1:]]): 
 				raise Exception('\n[ERROR] objects not same')
 			else: return collected[0]
+
+def alternate_module(**kwargs):
+	"""
+	Systematic way to retrieve an alternate module from within a calculation code by consulting the meta.
+	"""
+	module_name = kwargs.get('module',None)
+	variable_name = kwargs.get('variable',None)
+	if not variable_name:
+		raise Exception('you must set `variable` in the alternate module')
+	if not module_name: 
+		raise Exception('you must set `module` in the alternate module')
+	try:
+		mod = importlib.import_module(module_name)
+		result = mod.__dict__.get(variable_name,None)
+	except Exception as e:
+		raise Exception('failed to import module "%s" and variable "%s" with exception %s'%(
+			module_name,variable_name,e))
+	return result
+
+def uniquify(array):
+    """Get unique rows in an array."""
+    #---contiguous array trick
+    alt = np.ascontiguousarray(array).view(
+        np.dtype((np.void,array.dtype.itemsize*array.shape[1])))
+    unique,idx,counts = np.unique(alt,return_index=True,return_counts=True)
+    #---sort by count, descending
+    idx_sorted = np.argsort(counts)[::-1]
+    return idx[idx_sorted],counts[idx_sorted]

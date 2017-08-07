@@ -846,7 +846,7 @@ def store(obj,name,path,attrs=None,print_types=False,verbose=True):
 			print('[WRITING] '+key+' dtype='+str(obj[key].dtype))
 		#---python3 cannot do unicode so we double check the type
 		#---! the following might be wonky
-		if (type(obj[key])==np.ndarray and re.match('^str',obj[key].dtype.name) 
+		if (type(obj[key])==np.ndarray and re.match('^str|^unicode',obj[key].dtype.name) 
 			and 'U' in obj[key].dtype.str):
 			obj[key] = obj[key].astype('S')
 		try: dset = fobj.create_dataset(key,data=obj[key])

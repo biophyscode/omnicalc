@@ -84,6 +84,7 @@ class WorkSpace:
 		self.slice_meta = SliceMeta(self.slices,work=self,do_slices=do_slices)
 		#---get the right calculation order
 		self.calc_order = self.infer_calculation_order()
+		asciitree(dict(compute_sequence=self.calc_order))
 		#---plot and pipeline skip calculations and call the target script
 		self.plot_status,self.pipeline_status = plot,pipeline
 		if not plot and not pipeline and not checkup:
@@ -261,8 +262,7 @@ class WorkSpace:
 		#---...use none/None as a placeholder or use the name as the key as in "upstream: name"
 		for uu,uc in enumerate(upstream_catalog):
 			if uc[-1]=='upstream': upstream_catalog[uu] = upstream_catalog[uu]+[delve(self.calcs,*uc)]
-		depends = {t[0]:[t[ii+1] for ii,i in enumerate(t) if ii<len(t)-1 and t[ii]=='upstream'] 
-			for t in upstream_catalog}
+		depends = {t[0]:[t[ii+1] for ii,i in enumerate(t) if ii<len(t)-1 and t[ii]=='upstream'] for t in upstream_catalog}
 		calckeys = [i for i in self.calcs if i not in depends]
 		#---if the calculation uses an upstream list instead of dictionary we flatten it
 		depends = dict([(k,(v if not all([type(i)==list for i in v]) else 
@@ -364,7 +364,6 @@ class WorkSpace:
 		"""
 		Figure out groups for a downstream calculation.
 		"""
-		status('inferring group for %s'%calc,tag='bookkeeping')
 		if type(calc)==dict:
 			#---failed recursion method
 			if False:
@@ -788,7 +787,17 @@ class WorkSpace:
 					if len(collection_sets)>1: 
 						raise Exception('conflicting collections for calculations %s'%calc_specifier.keys())
 					else: collections = list(collection_sets[0])
-				else: collections = str_or_list(self.calcs[calc_specifier]['collections'])
+				else: 
+					if type(calc_specifier)==list and len(calc_specifier)==1:
+						collections = str_or_list(self.calcs[calc_specifier[0]]['collections'])
+					elif type(calc_specifier)==list: 
+						collections_several = [str_or_list(self.calcs[c]['collections']) 
+							for c in calc_specifier]
+						if any([set(i)!=set(collections_several[0]) for i in collections_several]):
+							raise Exception('upstream collections are not equal: %s'%collections_several+
+								'we recommend setting `collections` explicitly in the plot metadata')
+						else: collections = str_or_list(self.calcs[calc_specifier[0]]['collections'])
+					else: collections = str_or_list(self.calcs[calc_specifier]['collections'])
 			else: collections = str_or_list(self.plots[this_status]['collections'])
 		try: sns = sorted(list(set([i for j in [self.vars['collections'][k] 
 			for k in collections] for i in j])))

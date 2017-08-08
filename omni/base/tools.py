@@ -31,6 +31,8 @@ def catalog(base,path=None):
 	"""
 	Traverse all paths in a nested dictionary.
 	"""
+	#---this case handles terminal blank dictionaries. added 2017.08.07 and needs propagated
+	if base=={}: yield path,{}
 	if not path: path=[]
 	if isinstance(base,dict):
 		for x in base.keys():

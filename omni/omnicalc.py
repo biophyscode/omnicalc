@@ -693,7 +693,7 @@ class WorkSpace:
 		"""Wrap load which must be used by other modules."""
 		return load(name,cwd=cwd,verbose=verbose,exclude_slice_source=exclude_slice_source,filename=filename)
 
-	def plotload(self,plotname,status_override=False):
+	def plotload(self,plotname,status_override=False,sns=None):
 		"""
 		Get data for plotting programs.
 		"""
@@ -719,6 +719,8 @@ class WorkSpace:
 			else: raise Exception('dev')
 			#---fill in each upstream calculation
 			calcs = dict([(c,self.calcs[c]) for c in plot_spec_list]) 
+		#---in rare cases the user can override the simulation names
+		sns_this = self.sns() if not sns else sns
 		#---previous codes expect specs to hold the specs in the calcs from plotload
 		#---we store the specs for the outgoing calcs variable and then later accumulate some extra
 		#---...information for each simulation
@@ -731,7 +733,7 @@ class WorkSpace:
 		for calc_name,specs in calcs.items():
 			calc = self.calc_meta.find_calculation(calc_name,specs)
 			#---! correct to loop over this? is this set by the plotname?
-			for sn in self.sns():
+			for sn in sns_this:
 				job_filter = [j for j in upstream_jobs if j.calc==calc and j.sn==sn]
 				if len(job_filter)>1:
 					raise Exception('found too many matching jobs: %s'%job_filter)

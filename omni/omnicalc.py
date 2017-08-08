@@ -802,7 +802,6 @@ class WorkSpace:
 		try: sns = sorted(list(set([i for j in [self.vars['collections'][k] 
 			for k in collections] for i in j])))
 		except Exception as e: 
-			import ipdb;ipdb.set_trace()
 			raise Exception(
 			'error compiling the list of simulations from collections: %s'%collections)
 		return sns

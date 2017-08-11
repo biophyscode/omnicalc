@@ -16,6 +16,8 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	dpi=300,form='png',version=False,pdf=False,tight=True,pad_inches=0,figure_held=None):
 	"""
 	Function which saves the global matplotlib figure without overwriting.
+	!Note that saving tuples get converted to lists in the metadata so if you notice that your plotter is not 
+	overwriting then this is probably why.
 	"""
 	#---intervene here to check the wordspace for picture-saving "hooks" that apply to all new pictures
 	if 'picture_hooks' in work.vars:
@@ -35,7 +37,7 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 			fns = glob.glob(os.path.join(directory,savename+'.v*'))
 			nums = [int(re.findall('^.+\.v([0-9]+)\.png',fn)[0]) for fn in fns 
 				if re.match('^.+\.v[0-9]+\.png',fn)]
-			ind = max(nums)+1 if nums != [] else 1
+			ind = max(nums)+1 if nums!=[] else 1
 			savename += '.v%d'%ind
 		else: savename = re.findall('(.+)\.[a-z]+',os.path.basename(search))[0]
 	#---backup if necessary

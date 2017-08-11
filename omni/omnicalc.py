@@ -360,11 +360,11 @@ class WorkSpace:
 		#---! check if these files don't exist
 		return [base_name+tag+i for i in ['.dat','.spec','']]
 
-	def infer_group(self,calc):
+	def infer_group(self,calc,loud=False):
 		"""
 		Figure out groups for a downstream calculation.
 		"""
-		status('inferring group for %s'%calc,tag='bookkeeping')
+		if loud: status('inferring group for %s'%calc,tag='bookkeeping')
 		if type(calc)==dict:
 			#---failed recursion method
 			if False:
@@ -747,6 +747,7 @@ class WorkSpace:
 						raise Exception(
 							'cannot find calculation result %s in the requested '%job.result+
 							'post-processing data. are you sure that all of your calculations are complete?')
+					status('fetching %s'%self.postdat.toc[job.result].files['dat'],tag='load')
 					data[calc_name][job.sn] = {'data':self.load(
 						name=self.postdat.toc[job.result].files['dat'],
 						cwd=self.paths['post_data_spot'])}

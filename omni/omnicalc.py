@@ -84,6 +84,7 @@ class WorkSpace:
 		self.slice_meta = SliceMeta(self.slices,work=self,do_slices=do_slices)
 		#---get the right calculation order
 		self.calc_order = self.infer_calculation_order()
+		asciitree(dict(compute_sequence=self.calc_order))
 		#---plot and pipeline skip calculations and call the target script
 		self.plot_status,self.pipeline_status = plot,pipeline
 		if not plot and not pipeline and not checkup:
@@ -261,8 +262,7 @@ class WorkSpace:
 		#---...use none/None as a placeholder or use the name as the key as in "upstream: name"
 		for uu,uc in enumerate(upstream_catalog):
 			if uc[-1]=='upstream': upstream_catalog[uu] = upstream_catalog[uu]+[delve(self.calcs,*uc)]
-		depends = {t[0]:[t[ii+1] for ii,i in enumerate(t) if ii<len(t)-1 and t[ii]=='upstream'] 
-			for t in upstream_catalog}
+		depends = {t[0]:[t[ii+1] for ii,i in enumerate(t) if ii<len(t)-1 and t[ii]=='upstream'] for t in upstream_catalog}
 		calckeys = [i for i in self.calcs if i not in depends]
 		#---if the calculation uses an upstream list instead of dictionary we flatten it
 		depends = dict([(k,(v if not all([type(i)==list for i in v]) else 
@@ -694,7 +694,7 @@ class WorkSpace:
 		"""Wrap load which must be used by other modules."""
 		return load(name,cwd=cwd,verbose=verbose,exclude_slice_source=exclude_slice_source,filename=filename)
 
-	def plotload(self,plotname,status_override=False):
+	def plotload(self,plotname,status_override=False,sns=None):
 		"""
 		Get data for plotting programs.
 		"""
@@ -720,6 +720,8 @@ class WorkSpace:
 			else: raise Exception('dev')
 			#---fill in each upstream calculation
 			calcs = dict([(c,self.calcs[c]) for c in plot_spec_list]) 
+		#---in rare cases the user can override the simulation names
+		sns_this = self.sns() if not sns else sns
 		#---previous codes expect specs to hold the specs in the calcs from plotload
 		#---we store the specs for the outgoing calcs variable and then later accumulate some extra
 		#---...information for each simulation
@@ -732,7 +734,7 @@ class WorkSpace:
 		for calc_name,specs in calcs.items():
 			calc = self.calc_meta.find_calculation(calc_name,specs)
 			#---! correct to loop over this? is this set by the plotname?
-			for sn in self.sns():
+			for sn in sns_this:
 				job_filter = [j for j in upstream_jobs if j.calc==calc and j.sn==sn]
 				if len(job_filter)>1:
 					raise Exception('found too many matching jobs: %s'%job_filter)
@@ -789,12 +791,21 @@ class WorkSpace:
 					if len(collection_sets)>1: 
 						raise Exception('conflicting collections for calculations %s'%calc_specifier.keys())
 					else: collections = list(collection_sets[0])
-				else: collections = str_or_list(self.calcs[calc_specifier]['collections'])
+				else: 
+					if type(calc_specifier)==list and len(calc_specifier)==1:
+						collections = str_or_list(self.calcs[calc_specifier[0]]['collections'])
+					elif type(calc_specifier)==list: 
+						collections_several = [str_or_list(self.calcs[c]['collections']) 
+							for c in calc_specifier]
+						if any([set(i)!=set(collections_several[0]) for i in collections_several]):
+							raise Exception('upstream collections are not equal: %s'%collections_several+
+								'we recommend setting `collections` explicitly in the plot metadata')
+						else: collections = str_or_list(self.calcs[calc_specifier[0]]['collections'])
+					else: collections = str_or_list(self.calcs[calc_specifier]['collections'])
 			else: collections = str_or_list(self.plots[this_status]['collections'])
 		try: sns = sorted(list(set([i for j in [self.vars['collections'][k] 
 			for k in collections] for i in j])))
 		except Exception as e: 
-			import ipdb;ipdb.set_trace()
 			raise Exception(
 			'error compiling the list of simulations from collections: %s'%collections)
 		return sns
@@ -856,7 +867,7 @@ def store(obj,name,path,attrs=None,print_types=False,verbose=True):
 			print('[WRITING] '+key+' dtype='+str(obj[key].dtype))
 		#---python3 cannot do unicode so we double check the type
 		#---! the following might be wonky
-		if (type(obj[key])==np.ndarray and re.match('^str',obj[key].dtype.name) 
+		if (type(obj[key])==np.ndarray and re.match('^str|^unicode',obj[key].dtype.name) 
 			and 'U' in obj[key].dtype.str):
 			obj[key] = obj[key].astype('S')
 		try: dset = fobj.create_dataset(key,data=obj[key])

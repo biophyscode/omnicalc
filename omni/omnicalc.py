@@ -578,6 +578,11 @@ class WorkSpace:
 				traj_file = [os.path.join(self.paths['post_data_spot'],i) for i in 
 					str_or_list(job.slice.flat()['dcds'])]
 				result,attrs = function(grofile=struct_file,trajfile=traj_file,**outgoing)
+			#---placeholders for incoming mesoscale data
+			elif job.slice.flat()['slice_type']=='readymade_meso_v1':
+				struct_file = 'mesoscale_no_structure'
+				traj_file = 'mesoscale_no_trajectory'
+				result,attrs = function(grofile=struct_file,trajfile=traj_file,**outgoing)
 			else: raise Exception('unclear trajectory mode')
 		elif job.calc.specs['uptype']=='post':
 			#---! new upstream method above

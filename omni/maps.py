@@ -285,7 +285,7 @@ class DatSpec(NamingConvention):
 		#---! good opportunity to match a calc on disk with a calc in calc_meta
 		try:
 			self.specs['calc'] = self.work.calc_meta.find_calculation(
-				name=self.specs['calc']['calc_name'],specs=self.specs['specs'])
+				name=self.specs['calc']['calc_name'],specs=self.specs['specs'],loud=False)
 		#---sometimes we hide calculations that are already complete because we are adding data
 		except: 
 			#---create a dummy calcspec if we cannot find the calculation in the meta
@@ -358,6 +358,7 @@ class CalcMeta:
 		"""
 		Represent the calculations from the metadata.
 		"""
+		loud = kwargs.pop('loud',False)
 		if 'work' not in kwargs: raise Exception('sorry! send work manually in kwargs please')
 		self.work = kwargs.pop('work')
 		if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
@@ -379,7 +380,7 @@ class CalcMeta:
 					raise Exception('???')
 				calc.specs_linked = copy.deepcopy(calc.specs)
 				upstream = calc.specs_linked['specs'].pop('upstream',None)
-				status('getting upstream calculation specs for %s'%calcname,tag='bookkeeping')
+				if loud: status('getting upstream calculation specs for %s'%calcname,tag='bookkeeping')
 				ups = self.get_upstream(upstream) or []
 				#---tag and link the upstream calculations
 				for calc in ups: 
@@ -537,7 +538,7 @@ class CalcMeta:
 				except: pass
 		return new_calcs if not return_stubs else (new_calcs,new_calcs_stubs)
 
-	def find_calculation(self,name,specs):
+	def find_calculation(self,name,specs,loud=True):
 		"""
 		Find a calculation in the master CalcMeta list by specs.
 		"""
@@ -571,7 +572,7 @@ class CalcMeta:
 					if len(matches)==1: return matches[0]
 				except: pass
 				if len(self.toc[name])>0:
-					print('[WARNING] here is a hint because we are excepting soon. '+
+					if loud: print('[WARNING] here is a hint because we are excepting soon. '+
 						'the first specs of the toc for this calculation is: %s'%self.toc[name][0].specs)
 				else: print('[WARNING] here is a hint because we are excepting soon: there are no calcs')
 				raise Exception('failed to find calculation %s with specs %s in the CalcMeta'%(name,specs)+

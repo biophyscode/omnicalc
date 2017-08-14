@@ -360,10 +360,11 @@ class WorkSpace:
 		#---! check if these files don't exist
 		return [base_name+tag+i for i in ['.dat','.spec','']]
 
-	def infer_group(self,calc):
+	def infer_group(self,calc,loud=False):
 		"""
 		Figure out groups for a downstream calculation.
 		"""
+		if loud: status('inferring group for %s'%calc,tag='bookkeeping')
 		if type(calc)==dict:
 			#---failed recursion method
 			if False:
@@ -674,7 +675,8 @@ class WorkSpace:
 				print('[NOTE] there is no %s entry in plots so we are using calculations'%plotname)
 			except Exception as e: 
 				raise Exception('you should add %s to plots '%plotname+'since we could not '
-					'formulate a default plot for that calculation')			
+					'formulate a default plot for that calculation. '
+					'also make sure `plot-%s.py` exists'%plotname)			
 		#---we hard-code the plot script naming convention here
 		script_name = self.find_script('plot-%s'%plotname)
 		header_script = 'omni/base/header.py'
@@ -753,6 +755,7 @@ class WorkSpace:
 						raise Exception(
 							'cannot find calculation result %s in the requested '%job.result+
 							'post-processing data. are you sure that all of your calculations are complete?')
+					status('fetching %s'%self.postdat.toc[job.result].files['dat'],tag='load')
 					data[calc_name][job.sn] = {'data':self.load(
 						name=self.postdat.toc[job.result].files['dat'],
 						cwd=self.paths['post_data_spot'])}

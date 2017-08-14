@@ -572,7 +572,12 @@ class WorkSpace:
 					for i in [struct_file,traj_file]]
 				#---! use explicit kwargs to the function however it would be useful to 
 				#---! ...introspect on the arguments e.g. grofile vs struct
-				result,attrs = function(grofile=struct_file,trajfile=traj_file,**outgoing)
+				incoming_data = function(grofile=struct_file,trajfile=traj_file,**outgoing)
+				if type(incoming_data)==type(None) or len(incoming_data)!=2:
+					raise Exception('function %s must return a tuple '%function.__name__+
+						'with two objects: a result dictionary for HDF5 storage and an unstructured '+
+						'attributes dictionary typically')
+				result,attrs = incoming_data
 			elif job.slice.flat()['slice_type']=='readymade_namd':
 				#---no dat_type for readymade_namd unlike standard/gmx
 				struct_file = os.path.join(self.paths['post_data_spot'],job.slice.flat()['psf'])

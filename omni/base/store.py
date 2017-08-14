@@ -13,7 +13,7 @@ from PIL import PngImagePlugin
 import numpy as np
 
 def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
-	dpi=300,form='png',version=False,pdf=False,tight=True,pad_inches=0,figure_held=None):
+	dpi=300,form='png',version=False,pdf=False,tight=True,pad_inches=0,figure_held=None,loud=True):
 	"""
 	Function which saves the global matplotlib figure without overwriting.
 	!Note that saving tuples get converted to lists in the metadata so if you notice that your plotter is not 
@@ -31,7 +31,7 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	#---if version then we choose savename based on the next available index
 	if version:
 		#---check for this meta
-		search = picturefind(savename,directory=directory,meta=meta)
+		search = picturefind(savename,directory=directory,meta=meta,loud=loud)
 		if not search:
 			if meta == None: raise Exception('[ERROR] versioned image saving requires meta')
 			fns = glob.glob(os.path.join(directory,savename+'.v*'))
@@ -43,7 +43,7 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	#---backup if necessary
 	savename += '.'+form
 	base_fn = os.path.join(directory,savename)
-	status('saving picture to %s'%savename,tag='store')
+	if loud: status('saving picture to %s'%savename,tag='store')
 	if os.path.isfile(base_fn) and backup:
 		for i in range(1,100):
 			latestfile = '.'.join(base_fn.split('.')[:-1])+'.bak'+('%02d'%i)+'.'+base_fn.split('.')[-1]
@@ -51,7 +51,7 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 		if i == 99 and os.path.isfile(latestfile):
 			raise Exception('except: too many copies')
 		else: 
-			status('backing up '+base_fn+' to '+latestfile,tag='store')
+			if loud: status('backing up '+base_fn+' to '+latestfile,tag='store')
 			os.rename(base_fn,latestfile)
 	#---intervene to use the PDF backend if desired
 	#---...this is particularly useful for the hatch-width hack 
@@ -108,11 +108,11 @@ def compare_dicts(a,b):
 	"""Compare dictionaries with unicode strings."""
 	return lowest_common_dict_denominator(a)==lowest_common_dict_denominator(b)
 
-def picturefind(savename,directory='./',meta=None):
+def picturefind(savename,directory='./',meta=None,loud=True):
 	"""
 	Find a picture in the plot repository.
 	"""
-	status('searching pictures',tag='store')
+	if loud: status('searching pictures',tag='store')
 	regex = '^.+\.v([0-9]+)\.png'
 	fns = glob.glob(directory+'/'+savename+'.v*')
 	nums = map(lambda y:(y,int(re.findall(regex,y)[0])),filter(lambda x:re.match(regex,x),fns))

@@ -84,7 +84,7 @@ class WorkSpace:
 		self.slice_meta = SliceMeta(self.slices,work=self,do_slices=do_slices)
 		#---get the right calculation order
 		self.calc_order = self.infer_calculation_order()
-		asciitree(dict(compute_sequence=self.calc_order))
+		if not plot and not pipeline: asciitree(dict(compute_sequence=self.calc_order))
 		#---plot and pipeline skip calculations and call the target script
 		self.plot_status,self.pipeline_status = plot,pipeline
 		if not plot and not pipeline and not checkup:
@@ -747,8 +747,9 @@ class WorkSpace:
 				else: 
 					job = job_filter[0]
 					if job.result not in self.postdat.toc:
+						asciitree({'missing calculation: %s'%job.calc.name:job.calc.__dict__['stub']})
 						raise Exception(
-							'cannot find calculation result %s in the requested '%job.result+
+							'cannot find calculation result (see above) in the requested '+
 							'post-processing data. are you sure that all of your calculations are complete?')
 					status('fetching %s'%self.postdat.toc[job.result].files['dat'],tag='load')
 					data[calc_name][job.sn] = {'data':self.load(

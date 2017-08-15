@@ -78,7 +78,8 @@ class NamingConvention:
 	#---keys required in a slice in the meta file for a particular umbrella naming convention
 	omni_slicer_namer = {
 		'standard':{'slice_keys':['groups','slices']},
-		'readymade_namd':{'slice_keys':['readymade_namd']},}
+		'readymade_namd':{'slice_keys':['readymade_namd']},
+		'readymade_meso_v1':{'slice_keys':['readymade_meso_v1']},}
 	#---alternate view of the namer
 	parser = dict(omni_namer)
 
@@ -117,6 +118,7 @@ class NamingConvention:
 		"""
 		sn,group = kwargs['sn'],kwargs['group']
 		if kind=='readymade_namd': slice_files = {'struct':kwargs['psf'],'traj':kwargs['dcds']}
+		elif kind=='readymade_meso_v1': slice_files = {}
 		elif kind=='standard':
 			if 'groups' in kwargs and group not in kwargs['groups']: 
 				raise Exception('simulation %s does not have requested group %s'%(sn,group))
@@ -317,7 +319,8 @@ class DatSpec(NamingConvention):
 		slice_type = self.job.slice.flat()['slice_type']
 		#---standard slice type gets the standard naming
 		parser_key = {'standard':('standard','datspec'),
-			'readymade_namd':('raw','datspec')}.get(slice_type,None)
+			'readymade_namd':('raw','datspec'),
+			'readymade_meso_v1':('raw','datspec')}.get(slice_type,None)
 		if not parser_key: raise Exception('unclear parser key')
 		basename = self.parser[parser_key]['d2n']%dict(
 			calc_name=self.job.calc.name,**self.job.slice.flat())
@@ -599,7 +602,7 @@ class SliceMeta:
 		self.slices = dict([(sn,{}) for sn in meta])
 		self.groups = dict([(sn,{}) for sn in meta])
 		for sn,sl in meta.items():
-			for slice_type in [i for i in sl if i in ['readymade_namd','slices']]:
+			for slice_type in [i for i in sl if i in ['readymade_namd','readymade_meso_v1','slices']]:
 				slice_group = sl[slice_type]
 				if slice_type=='readymade_namd':
 					for slice_name,spec in slice_group.items():
@@ -609,6 +612,14 @@ class SliceMeta:
 								slice_name,sn))
 						self.slices[sn][(slice_name,None)] = dict(slice_type='readymade_namd',
 							dat_type='namd',spec=spec)
+				elif slice_type=='readymade_meso_v1':
+					for slice_name,spec in slice_group.items():
+						if slice_name in self.slices[sn]:
+							raise Exception(
+								'redundant slice named %s for simulation %s in the metadata'%(
+								slice_name,sn))
+						self.slices[sn][(slice_name,None)] = dict(slice_type='readymade_meso_v1',
+							dat_type='meso_v1',spec=spec)
 				elif slice_type=='slices':
 					for slice_name,spec in slice_group.items():
 						#---without deepcopy you will pop the dictionary and screw up the internal refs
@@ -649,6 +660,17 @@ class SliceMeta:
 					for fn in proto_slice['spec'].get('dcds',[]):
 						if fn in self.work.postdat.toc: del self.work.postdat.toc[fn]
 					#---! ADD FILES HERE
+				elif proto_slice['slice_type']=='readymade_meso_v1':
+					name = 'dummy%d'%int(time.time())
+					#---! rare case where we require None if no spot
+					spotname = self.work.raw.spotname_lookup(sn),
+					self.work.postdat.toc[name] = Slice(
+						name=name,namedat={},slice_type='readymade_meso_v1',dat_type='meso_v1',
+						spec=proto_slice['spec'],short_name=self.work.namer.short_namer(sn,spot=spotname))
+					#---! add validation for incoming data here. see the NAMD example above, in which we
+					#---! ...check that psf and dcd files referenced in the slice in the metadata are 
+					#---! ...actually in the post-processing folder. this might not be necessary for 
+					#---! ...incoming mesoscale data (which are probably not in the post folder anyway)
 				#---! previous idea was to make slices and then create a comparison operator
 				#---search the slices for one with the right specs
 				#---including simulation short_name is enforced here

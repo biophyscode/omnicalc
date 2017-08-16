@@ -262,7 +262,8 @@ class WorkSpace:
 		#---...use none/None as a placeholder or use the name as the key as in "upstream: name"
 		for uu,uc in enumerate(upstream_catalog):
 			if uc[-1]=='upstream': upstream_catalog[uu] = upstream_catalog[uu]+[delve(self.calcs,*uc)]
-		depends = {t[0]:[t[ii+1] for ii,i in enumerate(t) if ii<len(t)-1 and t[ii]=='upstream'] for t in upstream_catalog}
+		depends = dict([(t[0],[t[ii+1] for ii,i in enumerate(t) if ii<len(t)-1 and t[ii]=='upstream']) 
+			for t in upstream_catalog])
 		calckeys = [i for i in self.calcs if i not in depends]
 		#---if the calculation uses an upstream list instead of dictionary we flatten it
 		depends = dict([(k,(v if not all([type(i)==list for i in v]) else 

@@ -253,8 +253,9 @@ class WorkSpace:
 
 	def infer_calculation_order(self):
 		"""
-		Needs tested and confirmed possibly with a safety check of some kind to avoid infinite recursion.
-		Lifted directly from omnicalc workspace action function.
+		Catalog the upstream calculation dependencies for all of the calculations and generate a sequence 
+		which ensures that each calculation follows its dependencies. Note that we have a 10s timer in place 
+		to warn the user that they might have a loop (which would cause infinite recursion). 
 		"""
 		#---infer the correct order for the calculation keys from their upstream dependencies
 		upstream_catalog = [i for i,j in catalog(self.calcs) if 'upstream' in i]
@@ -262,8 +263,11 @@ class WorkSpace:
 		#---...use none/None as a placeholder or use the name as the key as in "upstream: name"
 		for uu,uc in enumerate(upstream_catalog):
 			if uc[-1]=='upstream': upstream_catalog[uu] = upstream_catalog[uu]+[delve(self.calcs,*uc)]
-		depends = dict([(t[0],[t[ii+1] for ii,i in enumerate(t) if ii<len(t)-1 and t[ii]=='upstream']) 
-			for t in upstream_catalog])
+		depends = {}
+		#---formulate a list of dependencies while accounting for multiple upstream dependencies
+		for t in upstream_catalog:
+			if t[0] not in depends: depends[t[0]] = []
+			depends[t[0]].extend([t[ii+1] for ii,i in enumerate(t) if ii<len(t)-1 and t[ii]=='upstream'])
 		calckeys = [i for i in self.calcs if i not in depends]
 		#---if the calculation uses an upstream list instead of dictionary we flatten it
 		depends = dict([(k,(v if not all([type(i)==list for i in v]) else 
@@ -277,7 +281,8 @@ class WorkSpace:
 			if all([j in calckeys for j in i]) and i!=[]: calckeys.append(ii)
 			else: depends[ii] = i
 			if time.time()>(start_time+10): 
-				raise Exception('possibly loop in your graph of dependent calculations')
+				raise Exception('this is taking too long. '
+					'you might have a loop in your graph of dependencies')
 		return calckeys
 
 	def get_simulations_in_collection(self,*names):

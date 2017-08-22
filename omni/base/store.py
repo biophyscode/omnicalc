@@ -20,7 +20,7 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	overwriting then this is probably why.
 	"""
 	#---intervene here to check the wordspace for picture-saving "hooks" that apply to all new pictures
-	if 'picture_hooks' in work.vars:
+	if 'work' in globals() and 'picture_hooks' in work.vars:
 		extra_meta = work.vars['picture_hooks']
 		#---redundant keys are not allowed: either they are in picture_hooks or passed to picturesave
 		redundant_extras = [i for i in extra_meta if i in meta]

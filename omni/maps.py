@@ -1090,6 +1090,9 @@ class ComputeJob:
 		Compare slices in the result matcher specifically ignoring some features which are irrelevant, namely
 		the group. This allows downstream calculations to pull in slices derived from different groups.
 		"""
+		#---initial check for fundamentally different data types
+		if this['dat_type']!=that['dat_type']: return False
+		#---otherwise we check all keys except group
 		return all([this[key]==that[key] for key in this.keys()+that.keys() if key!='group'])
 
 	def match_result(self):

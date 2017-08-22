@@ -347,7 +347,7 @@ class WorkSpace:
 		#---attach standard tools
 		self.attach_standard_tools(mod)
 		if not hasattr(mod,calcname): raise Exception(('performing calculation "%s" and we found '+
-			'%s but it does not contain a function named %s')%(calcame,script_name,calcname))
+			'%s but it does not contain a function named %s')%(calcname,script_name,calcname))
 		return getattr(mod,calcname)
 
 	def get_new_dat_name(self,base_name):

@@ -8,6 +8,7 @@ from base.hypothesis import hypothesis
 from maps import NamingConvention,PostDat,ComputeJob,Calculation
 from maps import Slice,SliceMeta,DatSpec,CalcMeta,ParsedRawData
 from datapack import asciitree,delve,delveset
+from makeface import fab
 #---typical first encounter with super-python reqs so we warn the user if they have no good env yet
 #---note that omnicalc now has automatic loading via activate_env
 msg_needs_env = ('\n[WARNING] failed to load a key requirement (yaml) '
@@ -62,7 +63,7 @@ class WorkSpace:
 			meta_incoming = [i for j in [glob.glob(os.path.join(self.cwd,'calcs','specs',g)) 
 				for g in self.config['meta_filter']] for i in j]
 		#---read the specs according to incoming meta flags
-		self.specs = self.read_specs(meta=meta_incoming)
+		self.specs = self.read_specs(meta=meta_incoming,merge_method=self.config.get('merge_method',None))
 		#---prepare a namer from the global omni_namer
 		self.namer = NamingConvention(work=self,
 			short_namer=self.meta.get('short_namer',None),
@@ -84,7 +85,9 @@ class WorkSpace:
 		self.slice_meta = SliceMeta(self.slices,work=self,do_slices=do_slices)
 		#---get the right calculation order
 		self.calc_order = self.infer_calculation_order()
-		if not plot and not pipeline: asciitree(dict(compute_sequence=self.calc_order))
+		if not plot and not pipeline: 
+			asciitree(dict(compute_sequence=[i+(' %s '%fab(' IGNORED! ','cyan_black') 
+				if self.calcs.get(i,{}).get('ignore',False) else '') for i in self.calc_order]))
 		#---plot and pipeline skip calculations and call the target script
 		self.plot_status,self.pipeline_status = plot,pipeline
 		if not plot and not pipeline and not checkup:
@@ -169,12 +172,12 @@ class WorkSpace:
 		self.specs_raw = specs
 		return specs
 
-	def read_specs(self,meta=None,merge_method='careful'):
+	def read_specs(self,meta=None,merge_method=None):
 		"""
 		Read and interpret calculation specs.
 		Lifted directly from old workspace.load_specs.
 		"""
-		if merge_method!='careful': raise Exception('dev')
+		if not merge_method: merge_method = 'careful'
 		#---note that we handle cwd when defining the specs_files, not when checking them
 		if not meta: specs_files = glob.glob(os.path.join(self.cwd,*self.specs_path))
 		else: 
@@ -227,6 +230,11 @@ class WorkSpace:
 									'usually occurs because you have many meta files and you only want '+
 									'to use one. try the "meta" keyword argument to specify the path '+
 									'to the meta file you want. note meta is "%s"')%(topkey,key,meta))
+		elif merge_method=='sequential':
+			#---load yaml files in the order they are specified in the config.py file with overwrites
+			specs = allspecs.pop(0)
+			for spec in allspecs:
+				specs.update(**spec)
 		else: raise Exception('\n[ERROR] unclear meta specs merge method %s'%merge_method)
 		#---allow empty meta files
 		if not specs: 
@@ -476,9 +484,16 @@ class WorkSpace:
 		jobs = []
 		#---loop over calculations
 		for calckey in (self.calc_order if not calcnames else str_or_list(calcnames)):
+			#---opportunity to ignore calculations without awkward block commenting or restructuring
+			#---...in the yaml file
+			if self.calcs[calckey].get('ignore',False):
+				status('you have marked "ignore: True" in calculation %s so we are skipping'%calckey,
+					tag='note')
+				continue
 			#---loop over calculation jobs expanded by the "loop" keyword by the CalcMeta class
 			calcset = self.calc_meta.calcjobs(calckey)
 			for calc in self.calc_meta.calcjobs(calckey):
+
 				#---get slice name
 				slice_name = calc.specs['slice_name']
 				#---loop over simulations
@@ -511,6 +526,10 @@ class WorkSpace:
 		"""
 		Run through computations.
 		"""
+
+		############################
+		import matplotlib as mpl;mpl.use('Agg')
+
 		completed = [job for job in self.jobs if job.result]
 		pending = [job for job in self.jobs if not job.result]
 		#---flesh out the pending jobs
@@ -669,6 +688,10 @@ class WorkSpace:
 		! Get this out of the workspace.
 		"""
 		plots = self.specs.get('plots',{})
+		#---we hard-code the plot script naming convention here
+		script_name = self.find_script('plot-%s'%plotname)
+		if not os.path.isfile(script_name):
+			raise Exception('cannot find script %s'%script_name)
 		if plotname in plots: plotspec = plots[plotname]
 		else: 
 			#---previously required a plots entry however the following code makes a default plot
@@ -680,10 +703,7 @@ class WorkSpace:
 				print('[NOTE] there is no %s entry in plots so we are using calculations'%plotname)
 			except Exception as e: 
 				raise Exception('you should add %s to plots '%plotname+'since we could not '
-					'formulate a default plot for that calculation. '
-					'also make sure `plot-%s.py` exists'%plotname)			
-		#---we hard-code the plot script naming convention here
-		script_name = self.find_script('plot-%s'%plotname)
+					'formulate a default plot for that calculation.')			
 		header_script = 'omni/base/header.py'
 		meta_out = ' '.join(meta) if type(meta)==list else ('null' if not meta else meta)
 		#---custom arguments passed to the header so it knows how to execute the plot script

@@ -99,3 +99,11 @@ def status(string,i=0,looplen=None,bar_character=None,width=None,spacer='.',
 			sys.stdout.write('[STATUSBAR] '+string+bar+countstring+timestring+' ')
 		if i+1<looplen: sys.stdout.flush()
 		else: sys.stdout.write('\n')
+
+def dictsum(*args):
+	"""
+	Merge dictionaries sequentially.
+	"""
+	if not all([type(d)==dict for d in args]):
+		raise Exception('dictsum can only accept dict objects')
+	return dict([(k,v) for d in args for k,v in d.items()])

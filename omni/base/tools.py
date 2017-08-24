@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os,sys,re,inspect,subprocess,time,collections,traceback
+import os,sys,re,inspect,subprocess,time,collections,traceback,importlib
 try: import yaml
 except: print('[WARNING] no yaml so environment is not ready')
 
@@ -101,9 +101,14 @@ def status(string,i=0,looplen=None,bar_character=None,width=None,spacer='.',
 		else: sys.stdout.write('\n')
 
 def dictsum(*args):
-	"""
-	Merge dictionaries sequentially.
-	"""
+	"""Merge dictionaries sequentially."""
 	if not all([type(d)==dict for d in args]):
 		raise Exception('dictsum can only accept dict objects')
 	return dict([(k,v) for d in args for k,v in d.items()])
+
+def gopher(spec,module_name='module',variable_name='function'):
+	"""Load an external module. Useful for changing the workflow without changing the code."""
+	mod = importlib.import_module(spec[module_name])
+	target = mod.__dict__.get(spec[variable_name],None)
+	if not target: raise Exception('add %s and %s to the specs'%(module_name,variable_name))
+	return target

@@ -532,10 +532,6 @@ class WorkSpace:
 		"""
 		Run through computations.
 		"""
-
-		############################
-		import matplotlib as mpl;mpl.use('Agg')
-
 		completed = [job for job in self.jobs if job.result]
 		pending = [job for job in self.jobs if not job.result]
 		#---flesh out the pending jobs

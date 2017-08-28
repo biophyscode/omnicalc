@@ -749,10 +749,12 @@ class WorkSpace:
 				'collections':self.calcs[plotname]['collections'],
 				'slices':self.calcs[plotname]['slice_name']}
 		#---if the plot spec is a dictionary, it needs no changes
-		if type(plot_spec['calculation'])==dict: calcs = plot_spec['calculation']
+		if 'calculation' in plot_spec and type(plot_spec['calculation'])==dict: 
+			calcs = plot_spec['calculation']
 		#---strings and lists of calculations require further explication from other elements of meta
 		else:
-			if type(plot_spec['calculation']) in str_types: plot_spec_list = [plot_spec['calculation']]
+			if 'calculation' not in plot_spec: plot_spec_list = [plotname]
+			elif type(plot_spec['calculation']) in str_types: plot_spec_list = [plot_spec['calculation']]
 			elif type(plot_spec['calculation'])==list: plot_spec_list = plot_spec['calculation']
 			else: raise Exception('dev')
 			#---fill in each upstream calculation

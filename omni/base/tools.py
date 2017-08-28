@@ -100,6 +100,12 @@ def status(string,i=0,looplen=None,bar_character=None,width=None,spacer='.',
 		if i+1<looplen: sys.stdout.flush()
 		else: sys.stdout.write('\n')
 
+def dictsum(*args):
+	"""Merge dictionaries sequentially."""
+	if not all([type(d)==dict for d in args]):
+		raise Exception('dictsum can only accept dict objects')
+	return dict([(k,v) for d in args for k,v in d.items()])
+
 def gopher(spec,module_name='module',variable_name='function'):
 	"""Load an external module. Useful for changing the workflow without changing the code."""
 	mod = importlib.import_module(spec[module_name])

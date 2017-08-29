@@ -65,6 +65,10 @@ def square_tiles(ntiles,figsize,favor_rows=False,wspace=None,hspace=None):
 	layout = {'out':{'grid':[1,1]},'ins':{'grid':[nrows,ncols]}}
 	if wspace: layout['ins']['wspace'] = wspace
 	if hspace: layout['ins']['hspace'] = hspace
+	#---send a single number and we will make the plot proportional (however this might 
+	#---...not be perfect if tiles are not square)
+	if type(figsize) not in [tuple,list]:
+		figsize = tuple([figsize*ncols/max([nrows,ncols]),figsize*nrows/max([nrows,ncols])])
 	axes,fig = 	panelplot(figsize=figsize,layout=layout)
 	for i in range(nrows*ncols-ntiles): fig.delaxes(axes[-1*(i+1)])
 	return axes[:ntiles],fig

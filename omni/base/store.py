@@ -126,12 +126,12 @@ def picturefind(savename,directory='./',meta=None,loud=True):
 			picturedat(os.path.basename(fn),directory=directory)) for fn,num in nums]) 
 	return matches if not matches else matches[0]
 
-def plotload(plotname,specfile=None,choice_override=None,use_group=False):
+def plotload(plotname,specfile=None,choice_override=None,use_group=False,whittle_calc=None):
 	"""
 	Wrapper around WorkSpace.plotload method for backwards compatibility with plot scripts, which 
 	expect to find this function in globals to get data.
 	"""
-	data,calc = work.plotload(plotname)
+	data,calc = work.plotload(plotname,whittle_calc=whittle_calc)
 	return data,calc
 
 def datmerge(kwargs,name,key,same=False):

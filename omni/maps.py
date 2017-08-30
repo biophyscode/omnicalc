@@ -554,8 +554,7 @@ class CalcMeta:
 			#---try to match the stub
 			#---! ytf does the following fail?
 			if False:
-				matches = [calc for calc in self.toc[name] 
-					if calc.stub['specs'].viewitems()>=specs.viewitems()]
+				matches = [calc for calc in self.toc[name] if calc.stub['specs'].viewitems()>=specs.viewitems()]
 			if len(self.toc[name])==1: return self.toc[name][0]
 			#---! paranoid use of deepcopy below?
 			matches = [calc for calc in self.toc[name] 
@@ -571,13 +570,18 @@ class CalcMeta:
 					matches = self.get_upstream({name:specs})
 					if len(matches)==1: return matches[0]
 				except: pass
+
 				if len(self.toc[name])>0:
-					if loud: print('[WARNING] here is a hint because we are excepting soon. '+
-						'the first specs of the toc for this calculation is: %s'%self.toc[name][0].specs)
+					if loud: 
+						print('[WARNING] here is a hint because we are excepting soon. '+
+							'the first specs of the toc for this calculation is coming up ')
+						asciitree(dict(example=self.toc[name][0].specs))
 				else: print('[WARNING] here is a hint because we are excepting soon: there are no calcs')
-				raise Exception('failed to find calculation %s with specs %s in the CalcMeta'%(name,specs)+
-					'. it is likely that you need to *be more specific* (found %d then %d matches). '%
-					(match_len_first,len(matches))+
+				status('printing specs for the missing calculation',tag='error')
+				asciitree(dict(missing=specs))
+				raise Exception('failed to find calculation %s in the CalcMeta with specs given above. '%name+
+					'it is likely that you need to *be more specific* '+
+					'since we found %d (first pass) then %d (second pass) matches. '%(match_len_first,len(matches))+
 					'remember that you can specify calculation specs as a dictionary in the plot request. '+
 					'see the warning above for more details.')
 

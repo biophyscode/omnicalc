@@ -492,7 +492,7 @@ class WorkSpace:
 		for calckey in (self.calc_order if not calcnames else str_or_list(calcnames)):
 			#---opportunity to ignore calculations without awkward block commenting or restructuring
 			#---...in the yaml file
-			if self.calcs[calckey].get('ignore',False):
+			if calckey in self.calcs and self.calcs[calckey].get('ignore',False):
 				status('you have marked "ignore: True" in calculation %s so we are skipping'%calckey,
 					tag='note')
 				continue
@@ -727,7 +727,7 @@ class WorkSpace:
 		"""Wrap load which must be used by other modules."""
 		return load(name,cwd=cwd,verbose=verbose,exclude_slice_source=exclude_slice_source,filename=filename)
 
-	def plotload(self,plotname,status_override=False,sns=None):
+	def plotload(self,plotname,status_override=False,sns=None,whittle_calc=None):
 		"""
 		Get data for plotting programs.
 		"""
@@ -744,8 +744,10 @@ class WorkSpace:
 			plot_spec = {'calculation':plotname,
 				'collections':self.calcs[plotname]['collections'],
 				'slices':self.calcs[plotname]['slice_name']}
+		#---special pass-through for the calculation specs used by the collect_upstream function
+		if whittle_calc is not None: calcs = whittle_calc
 		#---if the plot spec is a dictionary, it needs no changes
-		if 'calculation' in plot_spec and type(plot_spec['calculation'])==dict: 
+		elif 'calculation' in plot_spec and type(plot_spec['calculation'])==dict: 
 			calcs = plot_spec['calculation']
 		#---strings and lists of calculations require further explication from other elements of meta
 		else:
@@ -754,7 +756,8 @@ class WorkSpace:
 			elif type(plot_spec['calculation'])==list: plot_spec_list = plot_spec['calculation']
 			else: raise Exception('dev')
 			#---fill in each upstream calculation
-			calcs = dict([(c,self.calcs[c]) for c in plot_spec_list]) 
+			calcs = dict([(c,self.calcs[c]) for c in plot_spec_list])
+			#---! note to ryan. in the case of the ocean project with standard naming, the length here matters
 		#---in rare cases the user can override the simulation names
 		sns_this = self.sns() if not sns else sns
 		#---previous codes expect specs to hold the specs in the calcs from plotload

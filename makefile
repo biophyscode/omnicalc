@@ -50,7 +50,7 @@ endif
 
 # route the make command to makeface every time
 touchup:
-	@touch $(checkfile)
+	( umask 002 && touch $(checkfile) )
 $(checkfile): touchup
 ifeq ($(ENV_CMD),)
 	@env PYTHON_DEBUG=$(PYTHON_DEBUG) python $(python_flags) \

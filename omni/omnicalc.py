@@ -582,7 +582,7 @@ class WorkSpace:
 		outgoing.update(slice_name=job.slice.slice_name,group=job.slice.group)
 
 		#---THE MOST IMPORTANT LINES IN THE WHOLE CODE (here we call the calculation function)
-		if job.calc.specs['uptype']=='simulation':
+		if job.calc.specs.get('uptype','simulation')=='simulation':
 			if job.slice.flat()['slice_type']=='standard':
 				self.postdat.toc[job.slice.name].__dict__['namedat']['dat_type']
 				if not self.postdat.toc[job.slice.name].__dict__['namedat']['dat_type']=='gmx':

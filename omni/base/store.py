@@ -57,24 +57,26 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	#---...this is particularly useful for the hatch-width hack 
 	#---...(search self.output(0.1, Op.setlinewidth) in 
 	#---...python2.7/site-packages/matplotlib/backends/backend_pdf.py and raise it to e.g. 3.0)
-	if pdf:
+	if pdf and form!='png': raise Exception('can only use PDF conversion when writing png')
+	elif pdf:
 		alt_name = re.sub('.png$','.pdf',savename)
 		#---holding the figure allows other programs e.g. ipython notebooks to show and save the figure
 		(figure_held if figure_held else plt).savefig(alt_name,dpi=dpi,bbox_extra_artists=extras,
-			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None)
+			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None,format=form)
 		#---convert pdf to png
 		os.system('convert -density %d %s %s'%(dpi,alt_name,base_fn))
 		os.remove(alt_name)
 	else: 
 		(figure_held if figure_held else plt).savefig(base_fn,dpi=dpi,bbox_extra_artists=extras,
-			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None)
+			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None,format=form)
 	plt.close()
 	#---add metadata to png
-	if meta != None:
+	if form=='png' and meta!=None:
 		im = Image.open(base_fn)
 		imgmeta = PngImagePlugin.PngInfo()
 		imgmeta.add_text('meta',json.dumps(meta))
 		im.save(base_fn,form,pnginfo=imgmeta)
+	else: print('[WARNING] you are saving as %s and only png allows metadata-versioned pictures'%form)
 
 def picturedat(savename,directory='./',bank=False):
 	"""

@@ -9,6 +9,8 @@ from maps import NamingConvention,PostDat,ComputeJob,Calculation
 from maps import Slice,SliceMeta,DatSpec,CalcMeta,ParsedRawData
 from datapack import asciitree,delve,delveset
 from makeface import fab
+from base.autoplotters import inject_supervised_plot_tools
+
 #---typical first encounter with super-python reqs so we warn the user if they have no good env yet
 #---note that omnicalc now has automatic loading via activate_env
 msg_needs_env = ('\n[WARNING] failed to load a key requirement (yaml) '
@@ -36,7 +38,7 @@ class WorkSpace:
 	#---! currently hard-coded
 	nprocs = 4
 
-	def __init__(self,plot=None,plot_call=False,pipeline=None,meta=None,
+	def __init__(self,plot=None,plot_call=False,pipeline=None,meta=None,plotspecs=None,
 		confirm_compute=False,cwd=None,do_slices=True,checkup=False):
 		"""
 		Prepare the workspace.
@@ -47,6 +49,7 @@ class WorkSpace:
 		if plot and pipeline: raise Exception('only plot or pipeline')
 		#---read the omnicalc config and specs files
 		self.config = read_config(cwd=self.cwd)
+		self.mpl_agg = self.config.get('mpl_agg',False)
 		#---unpack the paths right into the workspace for calculation functions
 		#---add paths here for backwards compatibility at the plotting stage
 		self.paths = dict([(key,self.config[key]) for key in ['post_plot_spot','post_data_spot']])
@@ -94,7 +97,7 @@ class WorkSpace:
 			#---match calculation codes with target slices
 			self.jobs = self.prepare_calculations()
 			self.compute(confirm=confirm_compute)
-		elif plot: self.plot(plotname=plot,plot_call=plot_call,meta=meta_incoming)
+		elif plot: self.plot(plotname=plot,plot_call=plot_call,meta=meta_incoming,plotspecs=plotspecs)
 		elif pipeline: self.pipeline(name=pipeline,plot_call=plot_call,meta=meta_incoming)
 		#---checkup is for the factory to probe the workspace
 		elif checkup: 
@@ -684,11 +687,22 @@ class WorkSpace:
 		"""
 		asciitree(dict([(key,val.specs['specs']) for key,val in self.postdat.posts().items()]))
 
-	def plot(self,plotname,plot_call=False,meta=None):
+	def plot(self,plotname,plot_call,meta=None,plotspecs=None):
 		"""
-		Plot something.
-		! Get this out of the workspace.
+		Plot something. The plot_call flag sets the version, incoming from the user-facing plot function.
+		Note we have two modes. The version 1 mode was designed to call a header script which supervised the 
+		execution of the plot. For a number of reasons (this required a second invocation of the workspace,
+		and left a lot of control up the header script), the version 2 mode executes everything here, in a
+		hopefully more transparent way.
 		"""
+		if plot_call==1: self.plot_legacy(plotname,meta=meta)
+		elif plot_call==2: self.plot_supervised(plotname,meta=meta,plotspecs=plotspecs)
+		#---when the workspace is instantiated in header.py we do not need to run the plot
+		elif plot_call==False: pass
+		else: raise Exception('invalid plot mode %s'%plot_call)
+		
+	def plot_legacy(self,plotname,meta=None):
+		"""Legacy plotting mode."""
 		plots = self.specs.get('plots',{})
 		#---we hard-code the plot script naming convention here
 		script_name = self.find_script('plot-%s'%plotname)
@@ -709,7 +723,47 @@ class WorkSpace:
 		header_script = 'omni/base/header.py'
 		meta_out = ' '.join(meta) if type(meta)==list else ('null' if not meta else meta)
 		#---custom arguments passed to the header so it knows how to execute the plot script
-		if plot_call: bash('./%s %s %s %s %s'%(header_script,script_name,plotname,'plot',meta_out))
+		#bash('./%s %s %s %s %s'%(header_script,script_name,plotname,'plot',meta_out))
+		bash('./%s %s %s %s'%(header_script,script_name,plotname,meta_out))
+
+	def plot_supervised(self,plotname,meta=None,**kwargs):
+		"""
+		Supervised plot execution.
+		This largely mimics omni/base/header.py.
+		"""
+		#---plotspecs include args/kwargs coming in from the command line so users can make choices there
+		plotspecs = kwargs.pop('plotspecs',{})
+		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
+		#---prepare the environment for the plot
+		out = dict(work=self,plotname=plotname)
+		outgoing_locals = dict()
+		#---per header.py we have to add to the path
+		for i in ['omni','calcs']:
+			if i not in sys.path: sys.path.insert(0,i)
+		#---inject supervised plot functions into the outgoing environment
+		inject_supervised_plot_tools(out)
+		#---execute the plot script
+		script = self.find_script('plot-%s'%plotname)
+		with open(script) as fp: code = fp.read()
+		#---supervised execution is noninteractive and runs plots based on plotspecs
+		#---...hence we run the script as per the replot() function in omni/base/header.py
+		#---...see the header function for more detail
+		#---run the script once with name not main (hence no global execution allowed)
+		local_env = {'__name__':'__main__'}
+		exec(compile(code,script,'exec'),out,local_env)
+		#---we need to get plot script globals back into globals in the autoplot so we 
+		#---...pass locals into out which goes to autoplot then to globals if the mode is supervised
+		out.update(**local_env)
+		plot_super = out['plot_super']
+		#---the loader is required for this method
+		plot_super.loader()
+		#---intervene to interpret command-line arguments
+		kwargs_plot = plotspecs.pop('kwargs',{})
+		#---command line arguments that follow the plot script name must name the functions
+		plot_super.routine = plotspecs.pop('args',{})
+		if plotspecs: raise Exception('unprocessed plotspecs %s'%plotspecs)
+		if kwargs_plot: raise Exception('unprocessed plotting kwargs %s'%kwargs_plot)
+		plot_super.autoplot(out=out)
 
 	def pipeline(self,name,plot_call=False,meta=None):
 		"""
@@ -900,12 +954,18 @@ def compute(meta=None,confirm=False,kill_switch=None):
 	"""
 	work = WorkSpace(meta=meta,confirm_compute=confirm)
 
-def plot(name,meta=None):
+def plot(name,*args,**kwargs):
 	"""
 	Plot something
 	"""
-	#---! avoid unnecessary calculations for the plot we want
-	work = WorkSpace(plot=name,plot_call=True,meta=meta)
+	#---pop off protected keywords and everything else is passed through
+	meta = kwargs.pop('meta',None)
+	#---currently we have two execution modes: the standard interactive one and a non-interactive version
+	#---...where the user specifies exactly which plot to create
+	#---we infer the mode from the presence of args
+	plot_call = 2 if args or kwargs else 1
+	#---direct the workspace that this is a plot and hence avoid other calculations
+	work = WorkSpace(plot=name,plot_call=plot_call,meta=meta,plotspecs={'kwargs':kwargs,'args':args})
 
 def pipeline(name,meta=None):
 	"""

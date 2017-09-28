@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os,sys
+import os,sys,re
 from base.tools import status
 
 """

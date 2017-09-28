@@ -884,7 +884,9 @@ class WorkSpace:
 		for unum,upstream in enumerate(upstreams_stubs):
 			#---use the whittle option to select a particular calculation
 			dat,cal = self.plotload(calcname,whittle_calc={calcname:upstream['specs']})
-			tag = upstreams_stubs[unum]['specs']['design']
+			#---! this is specific to curvature coupling
+			try: tag = upstreams_stubs[unum]['specs']['design']
+			except: tag = str(unum)
 			if type(tag)==dict: tag = 'v%d'%unum
 			datas[tag] = dict([(sn,dat[sn]['data']) for sn in self.sns()])
 			calcs[tag] = dict([(sn,cal) for sn in self.sns()])

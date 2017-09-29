@@ -56,7 +56,7 @@ class PlotSupervisor:
 				raise Exception('this script does not have a plot function named %s'%plot_name)
 			self.plot_functions[plot_name]()
 
-def autoload(plot_super):
+def autoload(plotrun):
 	"""
 	Decorate a loader function to be run every time the script is run.
 	The loader functions should only reload data on a particular condition i.e. a key variable is not found
@@ -66,7 +66,7 @@ def autoload(plot_super):
 		#---the autoload decorator nested here so we get the supervisor as a parameter
 		#---add the function to the supervisor
 		name = function.__name__
-		plot_super.register_loader(name,function)
+		plotrun.register_loader(name,function)
 		def wrapper(*args,**kwargs):
 			#---you cannot call status here. have the function announce itself
 			status('!!!!!!!!!!!!!!!!',tag='load')
@@ -74,7 +74,7 @@ def autoload(plot_super):
 		return wrapper
 	return autoload_decorator
 
-def autoplot(plot_super):
+def autoplot(plotrun):
 	"""
 	Register a plot function with the supervisor.
 	"""
@@ -82,7 +82,7 @@ def autoplot(plot_super):
 		#---the autoplot decorator nested here so we get the supervisor as a parameter
 		#---add the function to the supervisor
 		name = function.__name__
-		plot_super.register(name,function)
+		plotrun.register(name,function)
 		def wrapper(*args,**kwargs):
 			function(*args,**kwargs)
 		return wrapper
@@ -114,7 +114,7 @@ def inject_supervised_plot_tools(out,mode='supervised'):
 		deepcopy=deepcopy,np=np)
 	#---add a plot supervisor instance and the autoplotter decorators
 	from autoplotters import PlotSupervisor,autoload,autoplot
-	out.update(plot_super=PlotSupervisor(mode=mode))
+	out.update(plotrun=PlotSupervisor(mode=mode))
 	#---we use str_types frequently for python 2,3 cross-compatibility
 	str_types = [str,unicode] if sys.version_info<(3,0) else [str]
 	out.update(autoload=autoload,autoplot=autoplot,str_types=str_types)

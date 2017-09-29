@@ -25,7 +25,10 @@ work = WorkSpace(plot=plotname,meta=meta)
 from base.autoplotters import inject_supervised_plot_tools
 out = dict(work=work,plotname=plotname)
 inject_supervised_plot_tools(out,mode='interactive')
-#---dump the injected functions into the global namespace
+#---dump the injected functions into the global namespace and builtims
+import builtins
+for key,val in out.items(): builtins.__dict__[key] = val
+builtins._plotrun_specials = out.keys()
 globals().update(**out)
 
 #---define the replotter
@@ -48,11 +51,11 @@ def replot():
 		globals().update(**local_env)
 		#---run the loader function which should conditionally referesh data (i.e. only as needed)
 		status('running the loader function "%s" from "%s"'%(
-			plot_super.loader_name,os.path.basename(script)),tag='load')
+			plotrun.loader_name,os.path.basename(script)),tag='load')
 		#---if the loader is a function we run it otherwise it defaults to None
-		if plot_super.loader!=None: plot_super.loader()
+		if plotrun.loader!=None: plotrun.loader()
 		#---run any plots in the routine
-		plot_super.autoplot()
+		plotrun.autoplot()
 		#---in case the user has prototyped code in an if-main section we run the script once more
 		#---...noting of course that it is very unlikely to have changed since the compile above
 		exec(compile(code,script,'exec'),globals())

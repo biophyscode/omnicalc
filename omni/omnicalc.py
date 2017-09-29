@@ -754,16 +754,16 @@ class WorkSpace:
 		#---we need to get plot script globals back into globals in the autoplot so we 
 		#---...pass locals into out which goes to autoplot then to globals if the mode is supervised
 		out.update(**local_env)
-		plot_super = out['plot_super']
+		plotrun = out['plotrun']
 		#---the loader is required for this method
-		plot_super.loader()
+		plotrun.loader()
 		#---intervene to interpret command-line arguments
 		kwargs_plot = plotspecs.pop('kwargs',{})
 		#---command line arguments that follow the plot script name must name the functions
-		plot_super.routine = plotspecs.pop('args',{})
+		plotrun.routine = plotspecs.pop('args',{})
 		if plotspecs: raise Exception('unprocessed plotspecs %s'%plotspecs)
 		if kwargs_plot: raise Exception('unprocessed plotting kwargs %s'%kwargs_plot)
-		plot_super.autoplot(out=out)
+		plotrun.autoplot(out=out)
 
 	def pipeline(self,name,plot_call=False,meta=None):
 		"""

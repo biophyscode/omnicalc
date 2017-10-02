@@ -94,6 +94,7 @@ def inject_supervised_plot_tools(out,mode='supervised'):
 	This function was centralized here so that both the interactive header and non-interactive execution
 	modes can use it.
 	"""
+	import os,sys,re
 	work = out['work']
 	#---import sequence from original header.py
 	import store
@@ -114,6 +115,8 @@ def inject_supervised_plot_tools(out,mode='supervised'):
 	from copy import deepcopy
 	#---we would prefer not to import numpy here but it is important for backwards compatibility
 	import numpy as np
+	out.update(np=np,os=os,sys=sys,re=re)
+	#---load custom functions
 	out.update(plotload=plotload,picturesave=picturesave,status=status,panelplot=panelplot,
 		square_tiles=square_tiles,tracebacker=tracebacker,hypothesis=hypothesis,sweeper=sweeper,
 		deepcopy=deepcopy,np=np)

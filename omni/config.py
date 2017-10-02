@@ -91,7 +91,7 @@ def set_config(*args,**kwargs):
 	This was adapted from the automacs.runner.acme version to be more generic.
 	"""
 	config_toc = {'post_plot_spot':'single','post_data_spot':'single','calculations_repo':'single',
-		'meta_filter':'many','activate_env':'single','merge_method':'single'}
+		'meta_filter':'many','activate_env':'single','merge_method':'single','mpl_agg':'single'}
 	if len(args)>=2: what,args = args[0],args[1:]
 	elif len(args)==1: raise Exception('cannot accept a single argument')
 	else: what = None

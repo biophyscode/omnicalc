@@ -102,6 +102,11 @@ def inject_supervised_plot_tools(out,mode='supervised'):
 	store.work = work
 	from store import plotload,picturesave
 	from tools import status
+	#---matplotlib is first loaded here
+	import matplotlib as mpl 
+	if work.mpl_agg: mpl.use('Agg')
+	import matplotlib.pyplot as plt
+	out.update(mpl=mpl,plt=plt)
 	#---the plotter __init__.py sets the imports (importantly, including mpl,plt with modifications)
 	from plotter.panels import panelplot,square_tiles
 	from makeface import tracebacker
@@ -118,12 +123,6 @@ def inject_supervised_plot_tools(out,mode='supervised'):
 	#---we use str_types frequently for python 2,3 cross-compatibility
 	str_types = [str,unicode] if sys.version_info<(3,0) else [str]
 	out.update(autoload=autoload,autoplot=autoplot,str_types=str_types)
-
-	#---matplotlib is first loaded here
-	import matplotlib as mpl 
-	if work.mpl_agg: mpl.use('Agg')
-	import matplotlib.pyplot as plt
-	out.update(mpl=mpl,plt=plt)
 
 	#---custom "art director" can be useful for coordinating aesthetics for different projects
 	from plotter.art_director_importer import import_art_director,protected_art_words

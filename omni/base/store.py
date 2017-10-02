@@ -5,8 +5,6 @@ Storage functions. Require a workspace in globals so do an import/export.
 """
 
 import os,sys,re,glob,json,collections,importlib
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 from base.tools import str_or_list,status
 from PIL import Image
 from PIL import PngImagePlugin
@@ -19,6 +17,9 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	!Note that saving tuples get converted to lists in the metadata so if you notice that your plotter is not 
 	overwriting then this is probably why.
 	"""
+	#---earlier import allows users to set Agg so we import here, later
+	import matplotlib as mpl
+	import matplotlib.pyplot as plt
 	#---intervene here to check the wordspace for picture-saving "hooks" that apply to all new pictures
 	if 'work' in globals() and 'picture_hooks' in work.vars:
 		extra_meta = work.vars['picture_hooks']

@@ -1135,6 +1135,7 @@ class ComputeJob:
 			if len(rematch)==1: 
 				print('[WARNING] ULTRAWARNING we had a rematch!')
 				return rematch[0]
+			else: print('[WARNING] multiple matches %s'%matches)
 			raise Exception('multiple unique matches in the spec files. major error upstream?')
 		elif len(matches)==1: 
 			return matches[0]

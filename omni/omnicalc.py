@@ -745,6 +745,8 @@ class WorkSpace:
 		#---execute the plot script
 		script = self.find_script('plot-%s'%plotname)
 		with open(script) as fp: code = fp.read()
+		#---handle builtins before executing
+		#---! testing individual calling requires: import builtins;builtins._plotrun_specials = out.keys()
 		#---supervised execution is noninteractive and runs plots based on plotspecs
 		#---...hence we run the script as per the replot() function in omni/base/header.py
 		#---...see the header function for more detail

@@ -17,6 +17,8 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	!Note that saving tuples get converted to lists in the metadata so if you notice that your plotter is not 
 	overwriting then this is probably why.
 	"""
+	#---automatically share images with group members (note that you could move this to config)
+	os.umask(0o002)
 	#---earlier import allows users to set Agg so we import here, later
 	import matplotlib as mpl
 	import matplotlib.pyplot as plt

@@ -1044,3 +1044,18 @@ def load(name,cwd=None,verbose=False,exclude_slice_source=False,filename=False):
 	if filename: data['filename'] = fn
 	rawdat.close()
 	return data
+
+def audit_plots(filename='audit.yaml'):
+	"""
+	Keeping track of plotting test sets
+	"""
+	#---retrieve
+	with open(os.path.join('calcs','specs',filename)) as fp: audit_data = yaml.load(fp.read())
+	plotnames = [re.match('^plot-(.+)\.py',os.path.basename(fn)).group(1) 
+		for fn in glob.glob('calcs/plot-*')]
+	#---assume audits just have passing
+	passing = audit_data.get('passing',{})
+	asciitree(dict(passing=passing))
+	#---not tested
+	untested = sorted([i for i in plotnames if i not in passing])
+	asciitree(dict(untested=untested))

@@ -243,7 +243,7 @@ class DatSpec(NamingConvention):
 		elif job: self.from_job(job)
 		else: raise Exception('this class needs a file or a job')
 
-	def from_file(self,fn,dn):
+	def from_file(self,fn,dn,lax=False):
 		"""
 		DatSpec objects can be imported from file (including from previous versions of omnicalc)
 		or they can be constructed in anticipation of finishing a calculation job and *making* the file 
@@ -285,15 +285,21 @@ class DatSpec(NamingConvention):
 		#---! good opportunity to match a calc on disk with a calc in calc_meta
 		try:
 			self.specs['calc'] = self.work.calc_meta.find_calculation(
-				name=self.specs['calc']['calc_name'],specs=self.specs['specs'],loud=False)
+				name=self.specs['calc']['calc_name'],specs=self.specs['specs'],
+				slice=self.specs['slice'],loud=False)
 		#---sometimes we hide calculations that are already complete because we are adding data
-		except: 
+		except Exception as e: 
 			#---create a dummy calcspec if we cannot find the calculation in the meta
 			#---! note that we may wish to populate this more. this error was found when trying to find a
 			#---! ...match later, and the find_match function was trying to look in the CalcSpec for a 
 			#---! ...calculation which had been removed from the meta
 			#---we supply a name because find_match will be looking for one
-			self.specs['calc'] = Calculation(name=None,specs={},stub=[])
+			#---note that after adding multiplexing for the large-memory ENTH calculations here, we added
+			#---...the lax flag to prevent this because it is very difficult to debut
+			#---! the next user who wants to remove items from the meta and still run the compute with those
+			#---! ...objects on disk can connect the lax keyword to the metadata to hide an old calculation if desired
+			if lax: self.specs['calc'] = Calculation(name=None,specs={},stub=[])
+			else: raise
 
 	def from_job(self,job):
 		"""
@@ -381,12 +387,15 @@ class CalcMeta:
 				calc.specs_linked = copy.deepcopy(calc.specs)
 				upstream = calc.specs_linked['specs'].pop('upstream',None)
 				if loud: status('getting upstream calculation specs for %s'%calcname,tag='bookkeeping')
-				ups = self.get_upstream(upstream) or []
+				ups = self.get_upstream(upstream,calcname_up=calcname,
+					multiplex=calc.specs.get('multiplex',False)) or []
 				#---tag and link the upstream calculations
 				for calc in ups: 
-					self.toc[calcname][cnum].specs_linked['specs'][('up',calc.name)] = calc
+					if type(calc)==list:
+						self.toc[calcname][cnum].specs_linked['specs'][('up','MULTIPLEXED!')] = calc
+					else: self.toc[calcname][cnum].specs_linked['specs'][('up',calc.name)] = calc
 
-	def match_upstream_stub_or_specs(self,key,val):
+	def match_upstream_stub_or_specs(self,key,val,multiplex=False):
 		"""
 		When matching upstream data we want to use a minimal syntax for specifying the settings for the 
 		upstream data type. Previously (in ``get_upstream``)we did two comparisons, one of the stubs and one 
@@ -409,20 +418,26 @@ class CalcMeta:
 				if path not in explicit and path not in implicit: 
 					matches[cnum] = False
 					break
-		if sum(matches.values())==1: 
+		if sum(matches.values())==1 or multiplex: 
 			raw_calc = unrolled[0][[k for k,v in matches.items() if v][0]]
 			if 'specs' not in raw_calc: raw_calc['specs'] = {}
 			calculation_matches = [i for ii,i in enumerate(self.toc[key]) if i.specs==raw_calc]
 			#---note that the match above is very precise so the following error means something way wrong
-			if len(calculation_matches)!=1: 
+			if len(calculation_matches)!=1 and not multiplex: 
 				raise Exception('cannot match calculation spec to an existing calculation: %s'%
 					calculation_matches)
-			else: return calculation_matches[0]
-		else: raise Exception('failed to match upstream data for %s to %s '%(key,val)+
-			'this is typically the result of an upstream calculation that has a loop. make sure you select '
-			'one item in this upstream calculation in order to continue.')
+			elif len(calculation_matches)==1 and not multiplex: return calculation_matches[0]
+			#---for concatenated slices set multiplex in the calculation dictionary
+			else: return calculation_matches
+		elif sum(matches.values())==0:
+			#---! better error reporting needed
+			raise Exception('failed to find an upstream match')
+		else: 
+			raise Exception('failed to match upstream data for %s to %s '%(key,val)+
+				'this is typically the result of an upstream calculation that has a loop. make sure you select '
+				'one item in this upstream calculation in order to continue.')
 
-	def get_upstream(self,specs):
+	def get_upstream(self,specs,calcname_up=None,multiplex=False):
 		"""
 		Get upstream calculations.
 		"""
@@ -434,9 +449,10 @@ class CalcMeta:
 		elif type(specs) in str_types: 
 			upstream_calcname = specs
 			if not len(self.toc[upstream_calcname])==1: 
-				raise Exception('the get_upstream function received a string "%s" indicating an upstream '+
-					'calculation with no free parameters, however there are non-unique matches: %s'%
-					self.toc[upstream_calcname])
+				msg = ('the get_upstream for function received a string indicating an upstream '+
+				'calculation with no free parameters, however there are non-unique matches'+
+				'. note that specs="%s"%s'%(specs,', upstream="%s"'%calcname_up if calcname_up!=None else ''))
+				raise Exception(msg)
 			return [self.toc[upstream_calcname][0]]
 		#---if the upstream object is a list we get the calculation specs from there
 		if type(specs)==list:
@@ -452,7 +468,7 @@ class CalcMeta:
 				else:
 					#---! prototyping a new method for upstream matching
 					if True:
-						match = self.match_upstream_stub_or_specs(key,val)
+						match = self.match_upstream_stub_or_specs(key,val,multiplex=multiplex)
 						upstream_calcs.append(match)
 					#---! when the new method above is tested we can remove the following
 					else:
@@ -538,7 +554,7 @@ class CalcMeta:
 				except: pass
 		return new_calcs if not return_stubs else (new_calcs,new_calcs_stubs)
 
-	def find_calculation(self,name,specs,loud=True):
+	def find_calculation(self,name,specs,slice=None,loud=True):
 		"""
 		Find a calculation in the master CalcMeta list by specs.
 		"""
@@ -546,19 +562,18 @@ class CalcMeta:
 			raise Exception('calculation named %s is not in the CalcMeta table of contents: %s'%(
 				name,self.toc.keys()))
 		#---try to match calc specs explicitly
-		matches = [calc for calc in self.toc[name] 
-			if calc.specs['specs'].viewitems()>=specs.viewitems()]
+		matches = [calc for calc in self.toc[name] if calc.specs.get('specs',{}).viewitems()>=specs.viewitems()]
 		if len(matches)==1: return matches[0]
 		else: 
 			match_len_first = len(matches)
 			#---try to match the stub
 			#---! ytf does the following fail?
 			if False:
-				matches = [calc for calc in self.toc[name] if calc.stub['specs'].viewitems()>=specs.viewitems()]
+				matches = [calc for calc in self.toc[name] if calc.stub.get('specs',{}).viewitems()>=specs.viewitems()]
 			if len(self.toc[name])==1: return self.toc[name][0]
 			#---! paranoid use of deepcopy below?
 			matches = [calc for calc in self.toc[name] 
-				if dict(copy.deepcopy(specs),**copy.deepcopy(calc.stub['specs']))==specs]
+				if dict(copy.deepcopy(specs),**copy.deepcopy(calc.stub.get('specs',{})))==specs]
 			if len(matches)==1: return matches[0]
 			else:
 				#---! note that there are *way* too many conditionals here
@@ -570,14 +585,17 @@ class CalcMeta:
 					matches = self.get_upstream({name:specs})
 					if len(matches)==1: return matches[0]
 				except: pass
-
+				#---third try in this frankenstein function for handling the multiplexer case where we try to use the
+				#---...slice as a final filter. making the match here is essential for allowing loops over slices
+				#---...inside of a calculation (we call this feature "multiplex")
+				#---! cancelled this attempt
 				if len(self.toc[name])>0:
 					if loud: 
 						print('[WARNING] here is a hint because we are excepting soon. '+
 							'the first specs of the toc for this calculation is coming up ')
 						asciitree(dict(example=self.toc[name][0].specs))
 				else: print('[WARNING] here is a hint because we are excepting soon: there are no calcs')
-				status('printing specs for the missing calculation',tag='error')
+				status('printing specs for the missing or non-unique calculation',tag='error')
 				asciitree(dict(missing=specs))
 				raise Exception('failed to find calculation %s in the CalcMeta with specs given above. '%name+
 					'it is likely that you need to *be more specific* '+

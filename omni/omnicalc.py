@@ -1052,7 +1052,7 @@ def audit_plots(filename='audit.yaml'):
 	#---retrieve
 	with open(os.path.join('calcs','specs',filename)) as fp: audit_data = yaml.load(fp.read())
 	plotnames = [re.match('^plot-(.+)\.py',os.path.basename(fn)).group(1) 
-		for fn in glob.glob('calcs/plot-*')]
+		for fn in glob.glob('calcs/plot-*') if re.match('^plot-(.+)\.py',os.path.basename(fn))]
 	#---assume audits just have passing
 	passing = audit_data.get('passing',{})
 	asciitree(dict(passing=passing))

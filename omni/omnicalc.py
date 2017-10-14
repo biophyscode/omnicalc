@@ -658,8 +658,7 @@ class WorkSpace:
 				textwrap.wrap(computer_error_attrs_passthrough,width=80)]))
 			raise Exception('some calculation specs were not saved: %s'%unaccounted)
 
-		#---the following storage routine was previously known as "version 2" and is now the default. ...
-		#---! finish this comment
+		#---the following storage routine was previously known as "version 2" and is now the default
 		dat_fn,spec_fn,base_name_indexed = self.get_new_dat_name(post.basename())
 		spec_fn_full,dat_fn_full = [os.path.join(self.paths['post_data_spot'],f) for f in [spec_fn,dat_fn]]
 		for fn in [dat_fn,spec_fn]:
@@ -745,8 +744,10 @@ class WorkSpace:
 		#---execute the plot script
 		script = self.find_script('plot-%s'%plotname)
 		with open(script) as fp: code = fp.read()
-		#---handle builtins before executing
-		#---! testing individual calling requires: import builtins;builtins._plotrun_specials = out.keys()
+		#---handle builtins before executing. we pass all keys in out through builtins for other modules
+		import builtins
+		builtins._plotrun_specials = out.keys()
+		for key in out: builtins.__dict__[key] = out[key]
 		#---supervised execution is noninteractive and runs plots based on plotspecs
 		#---...hence we run the script as per the replot() function in omni/base/header.py
 		#---...see the header function for more detail

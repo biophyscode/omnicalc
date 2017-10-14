@@ -431,7 +431,7 @@ class CalcMeta:
 			else: return calculation_matches
 		elif sum(matches.values())==0:
 			#---! better error reporting needed
-			raise Exception('failed to find an upstream match')
+			raise Exception('failed to find an upstream match: %s,%s'%(key,val))
 		else: 
 			raise Exception('failed to match upstream data for %s to %s '%(key,val)+
 				'this is typically the result of an upstream calculation that has a loop. make sure you select '
@@ -1168,4 +1168,3 @@ class ComputeJob:
 			return matches[0]
 		#---match failure returns nothing
 		return
-

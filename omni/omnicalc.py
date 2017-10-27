@@ -602,6 +602,12 @@ class WorkSpace:
 						'with two objects: a result dictionary for HDF5 storage and an unstructured '+
 						'attributes dictionary typically')
 				result,attrs = incoming_data
+			elif job.slice.flat()['slice_type']=='readymade_gmx':
+				#---no dat_type for readymade_namd unlike standard/gmx
+				struct_file = os.path.join(self.paths['post_data_spot'],job.slice.flat()['gro'])
+				traj_file = [os.path.join(self.paths['post_data_spot'],i) for i in 
+					str_or_list(job.slice.flat()['xtcs'])]
+				result,attrs = function(grofile=struct_file,trajfile=traj_file,**outgoing)
 			elif job.slice.flat()['slice_type']=='readymade_namd':
 				#---no dat_type for readymade_namd unlike standard/gmx
 				struct_file = os.path.join(self.paths['post_data_spot'],job.slice.flat()['psf'])

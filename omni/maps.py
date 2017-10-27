@@ -79,6 +79,7 @@ class NamingConvention:
 	omni_slicer_namer = {
 		'standard':{'slice_keys':['groups','slices']},
 		'readymade_namd':{'slice_keys':['readymade_namd']},
+		'readymade_gmx':{'slice_keys':['readymade_gmx']},
 		'readymade_meso_v1':{'slice_keys':['readymade_meso_v1']},}
 	#---alternate view of the namer
 	parser = dict(omni_namer)
@@ -118,6 +119,7 @@ class NamingConvention:
 		"""
 		sn,group = kwargs['sn'],kwargs['group']
 		if kind=='readymade_namd': slice_files = {'struct':kwargs['psf'],'traj':kwargs['dcds']}
+		elif kind=='readymade_gmx': slice_files = {'struct':kwargs['gro'],'traj':kwargs['xtcs']}
 		elif kind=='readymade_meso_v1': slice_files = {}
 		elif kind=='standard':
 			if 'groups' in kwargs and group not in kwargs['groups']: 
@@ -326,6 +328,7 @@ class DatSpec(NamingConvention):
 		#---standard slice type gets the standard naming
 		parser_key = {'standard':('standard','datspec'),
 			'readymade_namd':('raw','datspec'),
+			'readymade_gmx':('raw','datspec'),
 			'readymade_meso_v1':('raw','datspec')}.get(slice_type,None)
 		if not parser_key: raise Exception('unclear parser key')
 		basename = self.parser[parser_key]['d2n']%dict(
@@ -624,7 +627,9 @@ class SliceMeta:
 		self.slices = dict([(sn,{}) for sn in meta])
 		self.groups = dict([(sn,{}) for sn in meta])
 		for sn,sl in meta.items():
-			for slice_type in [i for i in sl if i in ['readymade_namd','readymade_meso_v1','slices']]:
+			#---list the special formats here. note that readymade_gmx is a near-duplicate of readymade_namd
+			special_formats = ['readymade_namd','readymade_gmx','readymade_meso_v1','slices']
+			for slice_type in [i for i in sl if i in special_formats]:
 				slice_group = sl[slice_type]
 				if slice_type=='readymade_namd':
 					for slice_name,spec in slice_group.items():
@@ -634,6 +639,14 @@ class SliceMeta:
 								slice_name,sn))
 						self.slices[sn][(slice_name,None)] = dict(slice_type='readymade_namd',
 							dat_type='namd',spec=spec)
+				elif slice_type=='readymade_gmx':
+					for slice_name,spec in slice_group.items():
+						if slice_name in self.slices[sn]:
+							raise Exception(
+								'redundant slice named %s for simulation %s in the metadata'%(
+								slice_name,sn))
+						self.slices[sn][(slice_name,None)] = dict(slice_type='readymade_gmx',
+							dat_type='gmx',spec=spec)
 				elif slice_type=='readymade_meso_v1':
 					for slice_name,spec in slice_group.items():
 						if slice_name in self.slices[sn]:
@@ -680,6 +693,19 @@ class SliceMeta:
 					psf = proto_slice['spec'].get('psf')
 					if psf in self.work.postdat.toc: del self.work.postdat.toc[psf]
 					for fn in proto_slice['spec'].get('dcds',[]):
+						if fn in self.work.postdat.toc: del self.work.postdat.toc[fn]
+					#---! ADD FILES HERE
+				#---! note that readymade_gmx was duplicated from readymade_namd in about 5min so check it!
+				elif proto_slice['slice_type']=='readymade_gmx':
+					name = 'dummy%d'%int(time.time())
+					#---! rare case where we require None if no spot
+					spotname = self.work.raw.spotname_lookup(sn),
+					self.work.postdat.toc[name] = Slice(
+						name=name,namedat={},slice_type='readymade_gmx',dat_type='gmx',
+						spec=proto_slice['spec'],short_name=self.work.namer.short_namer(sn,spot=spotname))
+					gro = proto_slice['spec'].get('gro')
+					if gro in self.work.postdat.toc: del self.work.postdat.toc[gro]
+					for fn in proto_slice['spec'].get('xtcs',[]):
 						if fn in self.work.postdat.toc: del self.work.postdat.toc[fn]
 					#---! ADD FILES HERE
 				elif proto_slice['slice_type']=='readymade_meso_v1':
@@ -765,7 +791,8 @@ class SliceMeta:
 				group_selection = self.groups[new_slice['sn']][group_name]
 				new_slice.update(group_name=group_name,group_selection=group_selection)
 				#---retrieve the last starting structure for making groups REMOVE THIS COMMENT
-				#---! note that this function was called get_last_start_structure in legacy omnicalc REMOVE THIS COMMENT
+				#---! note that this function was called get_last_start_structure in legacy omnicalc 
+				#---! ...REMOVE THIS COMMENT
 				new_slice['last_structure'] = self.work.raw.get_last_structure(new_slice['sn'])
 				fn = make_slice_gromacs(postdir=self.work.postdir,**new_slice)
 				namedat = self.work.postdat.interpret_name(fn+'.gro')
@@ -789,6 +816,7 @@ class SliceMeta:
 		elif (slice_name,None) in self.slices[sn]:
 			return self.slices[sn][(slice_name,None)]
 		else:
+			import ipdb;ipdb.set_trace()
 			asciitree(dict([('%s,%s'%k,v.__dict__) for k,v in self.slices[sn].items()]))
 			raise Exception('see slices (meta) above. '+
 				'cannot find slice for simulation %s: %s,%s'%(sn,slice_name,group))

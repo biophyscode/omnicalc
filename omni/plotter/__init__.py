@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 #---note that this works on clean openSuSE 42.2 installation, then install texlive then texlive-sfmath
+#---we require latex because too many plots already use latex commands. see dockerfiles for help installing 
+#---...the latex packages. note that this is the point at which latex would need to be turned off
 
 import matplotlib as mpl 
 import matplotlib.pyplot as plt

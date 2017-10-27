@@ -15,6 +15,7 @@ labels
 
 def import_art_director(fn,cwd='calcs'):
 	"""
+	Read the art director file.
 	"""
 	#---filename comes from a yaml file and points to a file with `calcs` as the implicit root 
 	fn_abs = os.path.join(os.getcwd(),cwd,fn)

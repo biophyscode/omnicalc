@@ -40,6 +40,7 @@ def replot_old_school():
 	with open(script) as fp: code = fp.read()
 	try: exec(compile(code,script,'exec'),globals())
 	except Exception as e: tracebacker(e)
+
 #---define the replotter
 def replot():
 	"""
@@ -82,6 +83,11 @@ def replot():
 		exec(compile(code,script,'exec'),globals())
 	except Exception as e: tracebacker(e)
 
+#---clean up
+for key in ['key']:
+	if key in globals(): del globals()[key]
+
 print('[PLOTTER] running plots via __file__="%s"; you can execute again with `replot()`'%__file__)
 #---execute once and user can repeat 
 replot()
+

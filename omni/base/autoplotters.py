@@ -69,8 +69,10 @@ def autoload(plotrun):
 		plotrun.register_loader(name,function)
 		def wrapper(*args,**kwargs):
 			#---you cannot call status here. have the function announce itself
-			status('!!!!!!!!!!!!!!!!',tag='load')
+			#---...actually this comes through in the jupyter notebook. removed for clarity
+			status('running autoload'%(args,kwargs),tag='load')
 			function(*args,**kwargs)
+			status('autoload is complete'%(args,kwargs),tag='load')
 		return wrapper
 	return autoload_decorator
 

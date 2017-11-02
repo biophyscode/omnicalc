@@ -565,14 +565,16 @@ class CalcMeta:
 			raise Exception('calculation named %s is not in the CalcMeta table of contents: %s'%(
 				name,self.toc.keys()))
 		#---try to match calc specs explicitly
-		matches = [calc for calc in self.toc[name] if calc.specs.get('specs',{}).viewitems()>=specs.viewitems()]
+		matches = [calc for calc in self.toc[name] 
+			if calc.specs.get('specs',{}).viewitems()>=specs.viewitems()]
 		if len(matches)==1: return matches[0]
 		else: 
 			match_len_first = len(matches)
 			#---try to match the stub
 			#---! ytf does the following fail?
 			if False:
-				matches = [calc for calc in self.toc[name] if calc.stub.get('specs',{}).viewitems()>=specs.viewitems()]
+				matches = [calc for calc in self.toc[name] 
+					if calc.stub.get('specs',{}).viewitems()>=specs.viewitems()]
 			if len(self.toc[name])==1: return self.toc[name][0]
 			#---! paranoid use of deepcopy below?
 			matches = [calc for calc in self.toc[name] 
@@ -676,7 +678,7 @@ class SliceMeta:
 		#---parse the spots so we know them for the namer
 		self.work.raw = ParsedRawData(self.work)
 		#---now we reprocess each slice into a Slice instance for later comparison
-		needs_slices = []
+		needs_slices,imported_slices = [],[]
 		for sn in self.slices:
 			for slice_name,group_name in self.slices[sn]:
 				proto_slice = self.slices[sn][(slice_name,group_name)]
@@ -700,14 +702,41 @@ class SliceMeta:
 					name = 'dummy%d'%int(time.time())
 					#---! rare case where we require None if no spot
 					spotname = self.work.raw.spotname_lookup(sn),
-					self.work.postdat.toc[name] = Slice(
-						name=name,namedat={},slice_type='readymade_gmx',dat_type='gmx',
-						spec=proto_slice['spec'],short_name=self.work.namer.short_namer(sn,spot=spotname))
+
+					"""
+					here we handle the extraction of information for the readymade_gmx type
+					this type differs from readymade_namd because we require that the filename matches
+						a slice that was created with automacs
+					this requirement allows users to merge sliced simulations with new simulations
+						which is a current use-case for some archived data that Ryan is analyzing
+					in the remainder of this conditional, we will prepare a slice object from the filename
+						in order to achieve a match in a slice_compare call downstream and hence "import"
+						the old slices with exactly the same data structure we would have if we made the 
+						slices ourselves.
+					note that the make_slice_gromacs function always makes the slices with the same naming
+						convention. after slices are made, we use interpret_name to save the data for that
+						slice. below is the second use of the interpret_name function, which allows us to
+						effectively "import" previously-made slices as if we had made them below.
+					"""
 					gro = proto_slice['spec'].get('gro')
+					name_bare = re.match('^(.+)\.gro$',gro).group(1)
+					try: namedat = self.work.postdat.interpret_name(gro)
+					except: raise Exception(('failed to interpret the name of %s. note that '
+						'readymade_gmx inputs must follow the automacs naming convention')%gro)
+					#---after all this we backfill the proto_slice so that we do not need to make this 
+					#---...imported slice below
+					proto_slice = dict(spec=dict([(key,namedat['body'][key]) for key in 
+						['start','end','short_name','skip','pbc','group']]),
+						slice_type='readymade_gmx',dat_type='gmx')
+					#---mimics the extras definition below for prepping needs_slices
+					extras = dict(slice_type='standard',dat_type='gmx',
+						group=group_name,slice_name=slice_name,sn=sn,spec=proto_slice['spec'])
+					mature_slice = Slice(name=name_bare,namedat=namedat,**extras)
+					this_group_name = namedat['body']['group']
+					imported_slices.append((sn,slice_name,this_group_name,mature_slice))
 					if gro in self.work.postdat.toc: del self.work.postdat.toc[gro]
 					for fn in proto_slice['spec'].get('xtcs',[]):
 						if fn in self.work.postdat.toc: del self.work.postdat.toc[fn]
-					#---! ADD FILES HERE
 				elif proto_slice['slice_type']=='readymade_meso_v1':
 					name = 'dummy%d'%int(time.time())
 					#---! rare case where we require None if no spot
@@ -725,6 +754,8 @@ class SliceMeta:
 				try: spotname = self.work.raw.spotname_lookup(sn)
 				except: spotname = None
 				slice_req = dict(short_name=self.work.namer.short_namer(sn,spot=spotname),**proto_slice)
+				#---here we convert readymade_gmx slices to standard to look them up and avoid making new
+				if slice_req['slice_type']=='readymade_gmx': slice_req['slice_type'] = 'standard'
 				valid_slices = self.work.postdat.search_slices(**slice_req)
 				if len(valid_slices)>1: raise Exception('multiple valid slices')
 				elif len(valid_slices)==0: 
@@ -733,6 +764,9 @@ class SliceMeta:
 						group=group_name,slice_name=slice_name,sn=sn,spec=proto_slice['spec'])
 					needs_slices.append((dict(sn=sn,**slice_req),extras))
 				else: self.slices[sn][(slice_name,group_name)] = self.work.postdat.toc[valid_slices[0]]
+		#---add all premade gromacs imported slices to the list
+		for sn,slice_name,group_name,mature_slice in imported_slices: 
+			self.slices[sn][(slice_name,group_name)] = mature_slice
 		#---we tag all slices with useful metadata
 		for sn in self.slices:
 			#---only decorate proper slices, not dictionaries
@@ -794,6 +828,7 @@ class SliceMeta:
 				#---! note that this function was called get_last_start_structure in legacy omnicalc 
 				#---! ...REMOVE THIS COMMENT
 				new_slice['last_structure'] = self.work.raw.get_last_structure(new_slice['sn'])
+				#---here is the call to the slice-maker
 				fn = make_slice_gromacs(postdir=self.work.postdir,**new_slice)
 				namedat = self.work.postdat.interpret_name(fn+'.gro')
 				mature_slice = Slice(name=fn,namedat=namedat,**extras)
@@ -1143,6 +1178,7 @@ class ComputeJob:
 		#---initial check for fundamentally different data types
 		if this['dat_type']!=that['dat_type']: return False
 		#---otherwise we check all keys except group
+		#---note that by this point, readymade_gmx slices look just like we made them
 		return all([this[key]==that[key] for key in this.keys()+that.keys() if key!='group'])
 
 	def match_result(self):

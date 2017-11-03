@@ -46,3 +46,6 @@ def picturesave(*args,**kwargs):
 #---clean up
 for key in ['this_path','key']:
 	if key in globals(): del globals()[key]
+
+#---downstream scripts need to know if we are in a notebook
+is_live = True

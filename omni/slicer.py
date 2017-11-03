@@ -9,6 +9,9 @@ import os,sys,time,re,subprocess
 from config import bash
 from base.tools import status
 
+#---only load gmxpaths once when it is used
+gmxpaths = None
+
 def make_slice_gromacs(**kwargs):
 	"""
 	Make a slice that does not exist yet.
@@ -174,15 +177,13 @@ def get_gmx_paths(override=False,gmx_series=False,hostname=None):
 	if 'state' in globals(): state.gmxpaths = gmxpaths
 	return gmxpaths
 	
-#---get gmxpaths for this module only once
-try: gmxpaths = get_gmx_paths()
-except: pass
-
 def edrcheck(fn,debug=False):
 	"""
 	Given the path of an EDR file we return its start and end time.
 	!!! Perhaps store the EDR data in a more comprehensive format.
 	"""
+	global gmxpaths
+	if gmxpaths==None: gmxpaths = get_gmx_paths()
 	start,end = None,None
 	cmd = gmxpaths['gmxcheck']+' -e %s'%fn
 	p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stdin=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
@@ -275,6 +276,8 @@ def slice_trajectory(**kwargs):
 	The keyfinders are lambda functions that take keys and return the correct filename.
 	Grafted in from classic factory almost verbatim.
 	"""
+	global gmxpaths
+	if gmxpaths==None: gmxpaths = get_gmx_paths()
 	call = bash
 	#---process kwargs
 	start,end,skip,sequence = [kwargs[k] for k in 'start end skip sequence'.split()]

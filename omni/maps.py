@@ -699,44 +699,54 @@ class SliceMeta:
 					#---! ADD FILES HERE
 				#---! note that readymade_gmx was duplicated from readymade_namd in about 5min so check it!
 				elif proto_slice['slice_type']=='readymade_gmx':
-					name = 'dummy%d'%int(time.time())
 					#---! rare case where we require None if no spot
 					spotname = self.work.raw.spotname_lookup(sn),
-
-					"""
-					here we handle the extraction of information for the readymade_gmx type
-					this type differs from readymade_namd because we require that the filename matches
-						a slice that was created with automacs
-					this requirement allows users to merge sliced simulations with new simulations
-						which is a current use-case for some archived data that Ryan is analyzing
-					in the remainder of this conditional, we will prepare a slice object from the filename
-						in order to achieve a match in a slice_compare call downstream and hence "import"
-						the old slices with exactly the same data structure we would have if we made the 
-						slices ourselves.
-					note that the make_slice_gromacs function always makes the slices with the same naming
-						convention. after slices are made, we use interpret_name to save the data for that
-						slice. below is the second use of the interpret_name function, which allows us to
-						effectively "import" previously-made slices as if we had made them below.
-					"""
 					gro = proto_slice['spec'].get('gro')
-					name_bare = re.match('^(.+)\.gro$',gro).group(1)
-					try: namedat = self.work.postdat.interpret_name(gro)
-					except: raise Exception(('failed to interpret the name of %s. note that '
-						'readymade_gmx inputs must follow the automacs naming convention')%gro)
-					#---after all this we backfill the proto_slice so that we do not need to make this 
-					#---...imported slice below
-					proto_slice = dict(spec=dict([(key,namedat['body'][key]) for key in 
-						['start','end','short_name','skip','pbc','group']]),
-						slice_type='readymade_gmx',dat_type='gmx')
-					#---mimics the extras definition below for prepping needs_slices
-					extras = dict(slice_type='standard',dat_type='gmx',
-						group=group_name,slice_name=slice_name,sn=sn,spec=proto_slice['spec'])
-					mature_slice = Slice(name=name_bare,namedat=namedat,**extras)
-					this_group_name = namedat['body']['group']
-					imported_slices.append((sn,slice_name,this_group_name,mature_slice))
-					if gro in self.work.postdat.toc: del self.work.postdat.toc[gro]
-					for fn in proto_slice['spec'].get('xtcs',[]):
-						if fn in self.work.postdat.toc: del self.work.postdat.toc[fn]
+					namedat = self.work.postdat.interpret_name(gro)
+					#---if we cannot parse the name then this is a gromacs slice made without omnicalc
+					#---note that this switches between importing omnicalc-style slices and generic-named ones
+					if namedat==None:
+						if gro in self.work.postdat.toc: del self.work.postdat.toc[gro]
+						for fn in proto_slice['spec'].get('xtcs',[]):
+							if fn in self.work.postdat.toc: del self.work.postdat.toc[fn]
+						name = 'dummy%d'%int(time.time())
+						self.work.postdat.toc[name] = Slice(
+							name=name,namedat={},slice_type='readymade_gmx',dat_type='gmx',
+							spec=proto_slice['spec'],short_name=self.work.namer.short_namer(sn,spot=spotname))
+					#---gromacs slices made with omnicalc may need to be imported into a scheme with other
+					#---...slices that still need to be made so we have to more carefully construct the data
+					else:
+						"""
+						here we handle the extraction of information for the readymade_gmx type
+						this type differs from readymade_namd because we require that the filename matches
+							a slice that was created with automacs
+						this requirement allows users to merge sliced simulations with new simulations
+							which is a current use-case for some archived data that Ryan is analyzing
+						in the remainder of this conditional, we will prepare a slice object from the filename
+							in order to achieve a match in a slice_compare call downstream and hence "import"
+							the old slices with exactly the same data structure we would have if we made the 
+							slices ourselves.
+						note that the make_slice_gromacs function always makes the slices with the same naming
+							convention. after slices are made, we use interpret_name to save the data for that
+							slice. below is the second use of the interpret_name function, which allows us to
+							effectively "import" previously-made slices as if we had made them below.
+						"""
+						gro = proto_slice['spec'].get('gro')
+						name_bare = re.match('^(.+)\.gro$',gro).group(1)
+						#---after all this we backfill the proto_slice so that we do not need to make this 
+						#---...imported slice below
+						proto_slice = dict(spec=dict([(key,namedat['body'][key]) for key in 
+							['start','end','short_name','skip','pbc','group']]),
+							slice_type='readymade_gmx',dat_type='gmx')
+						#---mimics the extras definition below for prepping needs_slices
+						extras = dict(slice_type='standard',dat_type='gmx',
+							group=group_name,slice_name=slice_name,sn=sn,spec=proto_slice['spec'])
+						mature_slice = Slice(name=name_bare,namedat=namedat,**extras)
+						this_group_name = namedat['body']['group']
+						imported_slices.append((sn,slice_name,this_group_name,mature_slice))
+						if gro in self.work.postdat.toc: del self.work.postdat.toc[gro]
+						for fn in proto_slice['spec'].get('xtcs',[]):
+							if fn in self.work.postdat.toc: del self.work.postdat.toc[fn]
 				elif proto_slice['slice_type']=='readymade_meso_v1':
 					name = 'dummy%d'%int(time.time())
 					#---! rare case where we require None if no spot
@@ -755,7 +765,8 @@ class SliceMeta:
 				except: spotname = None
 				slice_req = dict(short_name=self.work.namer.short_namer(sn,spot=spotname),**proto_slice)
 				#---here we convert readymade_gmx slices to standard to look them up and avoid making new
-				if slice_req['slice_type']=='readymade_gmx': slice_req['slice_type'] = 'standard'
+				if namedat!=None and slice_req['slice_type']=='readymade_gmx': 
+					slice_req['slice_type'] = 'standard'
 				valid_slices = self.work.postdat.search_slices(**slice_req)
 				if len(valid_slices)>1: raise Exception('multiple valid slices')
 				elif len(valid_slices)==0: 

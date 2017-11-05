@@ -681,6 +681,8 @@ class SliceMeta:
 		needs_slices,imported_slices = [],[]
 		for sn in self.slices:
 			for slice_name,group_name in self.slices[sn]:
+				#---flag for importing omnicalc slices while also making new slices
+				is_omnicalc_import = False
 				proto_slice = self.slices[sn][(slice_name,group_name)]
 				#---some slices languish in limbo and we retrieve them here, since this is the stage at 
 				#---...which requests become "mature" slices, linked in from the postdat
@@ -716,6 +718,7 @@ class SliceMeta:
 					#---gromacs slices made with omnicalc may need to be imported into a scheme with other
 					#---...slices that still need to be made so we have to more carefully construct the data
 					else:
+						is_omnicalc_import = True
 						"""
 						here we handle the extraction of information for the readymade_gmx type
 						this type differs from readymade_namd because we require that the filename matches
@@ -765,7 +768,7 @@ class SliceMeta:
 				except: spotname = None
 				slice_req = dict(short_name=self.work.namer.short_namer(sn,spot=spotname),**proto_slice)
 				#---here we convert readymade_gmx slices to standard to look them up and avoid making new
-				if namedat!=None and slice_req['slice_type']=='readymade_gmx': 
+				if is_omnicalc_import and slice_req['slice_type']=='readymade_gmx': 
 					slice_req['slice_type'] = 'standard'
 				valid_slices = self.work.postdat.search_slices(**slice_req)
 				if len(valid_slices)>1: raise Exception('multiple valid slices')

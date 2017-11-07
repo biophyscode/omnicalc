@@ -105,10 +105,25 @@ def inject_supervised_plot_tools(out,mode='supervised'):
 	store.work = work
 	from store import plotload,picturesave
 	from tools import status
+	#---handle latex and matplotlibrc here
+	from config import read_config
+	config = read_config()
+	matplotlibrc_path = config.get('matplotlibrc','omni/plotter/matplotlibrc')
+	#---without an explicit matplotlibrc file, we check the config and then check for the latex binary
+	if (os.path.basename(matplotlibrc_path)!='matplotlibrc' or
+		not os.path.isfile(matplotlibrc_path)):
+		raise Exception('cannot find a file called "matplotlibrc" here: %s'%matplotlibrc_path)
+	os.environ['MATPLOTLIBRC'] = os.path.abspath(os.path.join(os.getcwd(),
+		os.path.dirname(matplotlibrc_path)))
 	#---matplotlib is first loaded here
 	import matplotlib as mpl 
 	if work.mpl_agg: mpl.use('Agg')
 	import matplotlib.pyplot as plt
+	#---we default to latex if it is available otherwise we consult config
+	use_latex = config.get('use_latex',None)
+	if use_latex==None:
+		from distutils.spawn import find_executable
+		use_latex = find_executable('latex')
 	out.update(mpl=mpl,plt=plt)
 	#---the plotter __init__.py sets the imports (importantly, including mpl,plt with modifications)
 	from plotter.panels import panelplot,square_tiles

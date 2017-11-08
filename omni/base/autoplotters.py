@@ -107,8 +107,14 @@ def inject_supervised_plot_tools(out,mode='supervised'):
 	from tools import status
 	#---handle latex and matplotlibrc here
 	from config import read_config
-	config = read_config()
-	matplotlibrc_path = config.get('matplotlibrc','omni/plotter/matplotlibrc')
+	try: 
+		config = read_config()
+		cwd = '.'
+	#---if execution does not happen in the omnicalc root we are in interactive mode running from calcs
+	except: 
+		cwd = '../'
+		config = read_config(cwd=cwd)
+	matplotlibrc_path = os.path.join(cwd,config.get('matplotlibrc','omni/plotter/matplotlibrc'))
 	#---without an explicit matplotlibrc file, we check the config and then check for the latex binary
 	if (os.path.basename(matplotlibrc_path)!='matplotlibrc' or
 		not os.path.isfile(matplotlibrc_path)):

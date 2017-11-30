@@ -57,7 +57,7 @@ class WorkSpace:
 		meta_incoming = meta
 		#---check the config.py for this omnicalc to find restrictions on metafiles
 		#---...note that this allows us to avoid using git branches and the meta flag in the CLI for 
-		#---...managing multiple meta files.
+		#---...managing multiplce meta files.
 		if not meta_incoming and self.config.get('meta_filter',None):
 			#---set_config forces meta_filter to be a list. each can be a glob. the path is relative to 
 			#---...the calcs/specs folder since that is the only acceptable location for meta files
@@ -784,7 +784,7 @@ class WorkSpace:
 		header_script = 'omni/base/header.py'
 		#---custom arguments passed to the header so it knows how to execute the plot script
 		meta_out = ' '.join(meta) if type(meta)==list else ('null' if not meta else meta)
-		if plot_call: bash('./%s %s %s %s %s'%(header_script,script_name,name,'pipeline',meta_out))
+		if plot_call: bash('./%s %s %s %s'%(header_script,script_name,name,meta_out))
 
 	def load(self,name,cwd=None,verbose=False,exclude_slice_source=False,filename=False):
 		"""Wrap load which must be used by other modules."""
@@ -881,6 +881,8 @@ class WorkSpace:
 		elif self.pipeline_status: this_status = self.pipeline_status
 		#---consult the calculation if the plot does no specify collections
 		if this_status not in self.plots:
+			if this_status not in self.calcs: 
+				raise Exception('missing %s from both plots and calcs. try adding it to plots'%this_status)
 			collections = str_or_list(self.calcs[this_status]['collections'])
 		else:
 			if 'collections' not in self.plots[this_status]:

@@ -302,9 +302,10 @@ def slice_trajectory(**kwargs):
 		except: 
 			raise Exception('development error. could not locate a TPR: %s'%kwargs)
 		#---assume cursor points to the trajectory we want
-		try: traj = traj_keyfinder(*keys)
-		except: 
-			raise Exception('could not locate trajectory for %s,%s,%s'%keys)
+		try: 
+			traj = traj_keyfinder(*keys)
+		except Exception as e: 
+			raise Exception('could not locate trajectory for %s,%s,%s'%keys+': %s'%e)
 		outfile = 'trjconv%d.%s'%(num,output_format)
 		tail = ' -b %d -e %d -dt %d -s %s -f %s -o %s%s%s'%(
 			t0 if t0>start else start,end,skip,tpr,traj,

@@ -953,6 +953,12 @@ class WorkSpace:
 			if type(tag)==dict: tag = 'v%d'%unum
 			datas[tag] = dict([(sn,dat[sn]['data']) for sn in self.sns()])
 			calcs[tag] = dict([(sn,cal) for sn in self.sns()])
+			#---! also specific to curvature coupling
+			#---! ... this design question must be resolved
+			try:
+				for sn in self.sns(): 
+					calcs[tag][sn]['calcs']['specs']['design'] = upstreams[unum]['specs']['design']
+			except: pass
 		#---singluar means the typical "focus" of the upstream calculation, plural is everything else
 		return dict(datas=datas,calcs=calcs,data=data,calc=calc)
 

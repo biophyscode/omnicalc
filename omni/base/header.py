@@ -61,13 +61,16 @@ def replot():
 		#---this is a problem because it reregisters the scripts
 		local_env = {'__name__':'__looking__'}
 		try: exec(compile(code,script,'exec'),globals(),local_env)
-		except:
+		except Exception as e:
 			#---note that old-school scripts might have problems with globals when you send out the local_env
 			#---...to replace __name__ above. in that case we just revert to the standard method. note that 
-			#---...this ensuress the global namespace is executed in the usual way, instead of the more heavy-handed
-			#---...approach in the new-style plot scripts
+			#---...this ensuress the global namespace is executed in the usual way, instead of 
+			#---...the more heavy-handed approach in the new-style plot scripts
 			status('falling back to old-school automatic plotting',tag='warning')
+			#---! added this exception reporter to investigate annoying replot-with-code-in-globals issue
+			status('exception was: %s'%e,tag='exception')
 			exec(compile(code,script,'exec'),globals())
+		local_env['__name__'] = '__replotting__'
 		#---we have to load local_env into globals here otherwise stray functions in the plot
 		#---...will not be found by other functions which might be decorated
 		globals().update(**local_env)

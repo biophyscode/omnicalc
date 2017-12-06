@@ -67,9 +67,22 @@ class WorkSpace:
 				for g in self.config['meta_filter']] for i in j]
 		#---read the specs according to incoming meta flags
 		self.specs = self.read_specs(meta=meta_incoming,merge_method=self.config.get('merge_method',None))
+		#---users can set a "master" short_namer in the meta dictionary if they have a very complex
+		#---... naming scheme i.e. multiple spots with spotnames in the post names
+		short_namer = self.meta.get('short_namer',None)
+		if short_namer==None:
+			nspots = self.config.get('spots',{})
+			#---if no "master" short_namer in the meta and multiple spots we force the user to make one
+			if len(nspots)>1: raise Exception('create a namer which is compatible with all of your spots '+
+				'(%s) and save it to "short_namer" in meta dictionary in the YAML file. '%nspots.keys()+
+				'this is an uncommon use-case which lets you use multiple spots without naming collisions.')
+			elif len(nspots)==0: short_namer = None
+			#---if you have one spot we infer the namer from the omnicalc config.py
+			else: short_namer = self.config.get('spots',{}).values()[0]['namer']	
+		#---if there is one spot, we set the short namer
 		#---prepare a namer from the global omni_namer
 		self.namer = NamingConvention(work=self,
-			short_namer=self.meta.get('short_namer',None),
+			short_namer=short_namer,
 			short_names=self.meta.get('short_names',None))
 		#---CALCULATION LOOP
 		self.calcs = self.specs.get('calculations',None)

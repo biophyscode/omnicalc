@@ -1241,8 +1241,10 @@ class ComputeJob:
 		#---! removed lots of debugging notes here		
 		#---! upgrades to the data structures are such that calculations can be directly matched
 		#---! ...however the slices need to be matched
-		matches = [name for name,post in self.work.postdat.posts().items() 
-			if post.specs['calc']==self.calc and self.slice.flat()==post.specs['slice']]
+
+		#this just needs to make sure that the specs are different but the slices are the same
+		matches = [name for name,post in self.work.postdat.posts().items()
+			if post.specs['specs']==self.calc.specs['specs'] and self.slice.flat()==post.specs['slice']]
 		if len(matches)==1: 
 			return matches[0]
 		#---match failure returns nothing

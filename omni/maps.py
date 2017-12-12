@@ -600,11 +600,13 @@ class CalcMeta:
 							'the first specs of the toc for this calculation is coming up ')
 						asciitree(dict(example=self.toc[name][0].specs))
 				else: print('[WARNING] here is a hint because we are excepting soon: there are no calcs')
-				status('printing specs for the missing or non-unique calculation',tag='error')
-				asciitree(dict(missing=specs))
+				if loud: 
+					status('printing specs for the missing or non-unique calculation',tag='error')
+					asciitree(dict(missing=specs))
 				raise Exception('failed to find calculation %s in the CalcMeta with specs given above. '%name+
 					'it is likely that you need to *be more specific* '+
-					'since we found %d (first pass) then %d (second pass) matches. '%(match_len_first,len(matches))+
+					'since we found %d (first pass) then %d (second pass) matches. '%(
+						match_len_first,len(matches))+
 					'remember that you can specify calculation specs as a dictionary in the plot request. '+
 					'see the warning above for more details.')
 

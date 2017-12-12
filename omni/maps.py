@@ -976,7 +976,12 @@ class ParsedRawData:
 			#---! development. needs tested. may only be used on near proto_slice in
 			#---! ...readymade_namd near line 581. remove this and error message after testing
 			#---! ...and note that the error below refers to refresh which is deprecated
-			return None
+
+			#if only one spot we can just take it
+			spotnames=list(set([spot[0] for spot in self.spots.keys()]))
+			if len(spotnames)==1:
+				return spotnames[0]
+			else: raise Exception('[ERROR] could not find simulation "%s" in the toc and more than one spot'%sn)
 			#---in case top diverges from prefixer we check the regexes
 			top_regexes = [v['regexes']['top'] for v in self.work.paths['spots'].values()]
 			if not any([re.match(top,sn) for top in top_regexes]):

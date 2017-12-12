@@ -58,7 +58,7 @@ def str_or_list(incoming):
 	else: return incoming
 
 def status(string,i=0,looplen=None,bar_character=None,width=None,spacer='.',
-	bar_width=25,tag='',start=None,pad=None):
+	bar_width=25,tag='',start=None,pad=None,refresh=True):
 	"""
 	Show a status bar and counter for a fixed-length operation.
 	Taken from AUTOMACS to work in python 2 and 3.
@@ -90,10 +90,12 @@ def status(string,i=0,looplen=None,bar_character=None,width=None,spacer='.',
 		bar = ' %s%s%s '%(left,int(bar_width*(i+1)/looplen)*bb+' '*\
 			(bar_width-int(bar_width*(i+1)/looplen)),right)
 		if not logfile: 
-			output = u'\r'+string+bar+countstring+timestring+' '
+			output = (u'\r' if refresh else '')+string+bar+countstring+timestring+' '
 			if sys.version_info<(3,0): output = output.encode('utf-8')
-			sys.stdout.flush()
-			sys.stdout.write(output)
+			if refresh:
+				sys.stdout.flush()
+				sys.stdout.write(output)
+			else: print(output)
 		else: 
 			#---suppressed progress bar in the logfile avoids using carriage return
 			sys.stdout.write('[STATUSBAR] '+string+bar+countstring+timestring+' ')

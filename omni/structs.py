@@ -10,6 +10,10 @@ import re,copy
 from base.tools import catalog
 from datapack import asciitree,delveset,delve
 
+#! why is my understanding if inequality backwards?
+#! ... removed: sl.data['val'].items()>=ls.data.items()
+def dictsub(subset,superset): return all(item in superset.items() for item in subset.items())
+
 class NamingConvention:
 	"""
 	Organize the naming conventions for omnicalc.
@@ -81,6 +85,8 @@ class TrajectoryStructure:
 
 	"""
 	Abstract definition for "slices" i.e. trajectories in omnicalc.
+	Initialization is handled by subclasses.
+	dev: no typechecking yet,
 	"""
 
 	class StructureKey:
@@ -95,9 +101,8 @@ class TrajectoryStructure:
 		"""Use a list to cross objects."""
 		def __init__(self,name): self.name = name
 
-	# flextypes for comparing data structures
-	#! hopefully this format is not too post hoc
-	# ------------------ REQUEST
+	# flex(ible) types for comparing data structures are stored as class attributes
+	# the core structures provide the best detail
 	_flexible_structure_request = {
 		# structure definition for a standard slice made by omnicalc
 		'standard_gromacs':{
@@ -106,8 +111,24 @@ class TrajectoryStructure:
 				'start':'number','end':'number','skip':'number'}},
 			'groups':{StructureKey('group_name'):'string'}},}
 
+	# the elements are individual components which may be derived from more than one request
+	_flexible_structure_element = {
+		'slice':{'key':'tuple','sn':'string',
+			'val':{'start':'number','end':'number','skip':'number','group':'string','pbc':'string'}},
+		'group':{'key':'tuple','val':'string','sn':'string'},}
+
+	# alternate structures are used for parsing legacy data
+	_flexible_structure_alternate = {
+		'calculation_request':{'sn':'string','group':'string','slice_name':'string'},
+		'legacy_spec_v2':{
+			'group':'string','sn':'string',
+			#! whittle dat_type and slice_type?
+			'dat_type':'string','slice_type':'string',
+			'short_name':'string','pbc':'string',
+			'start':'number','end':'number','skip':'number',},}
+
 	def classify(self,subject):
-		"""Identify the structure type using flextypes above."""
+		"""Identify a structure type using flextypes above."""
 		# chart the subject
 		routes = list(catalog(subject))
 		candidates = []
@@ -117,17 +138,17 @@ class TrajectoryStructure:
 		for key,val in structs.items():
 			template = list(catalog(val))
 			# make sure that all routes match the datastructure
-			if all([r in zip(*template)[0] for r,v in routes]): 	candidates.append(key)
+			if all([r in zip(*template)[0] for r,v in routes]): candidates.append(key)
 		if len(candidates)>1: raise Exception('matched multiple data structures to %s'%subject)
 		elif len(candidates)==0: raise Exception('failed to classify %s'%subject)
-		else: self.style = candidates[0]
+		else: return candidates[0]
 
-	def cross(self,subject):
+	def cross(self,style,data):
 		"""Turn a raw definition into multiple constituent components."""
 		# chart the subject
-		routes = list(catalog(subject))
+		routes = list(catalog(data))
 		# get the relevant structure and expand it
-		structure = getattr(self,'_flexible_structure_%s'%self.kind)[self.style]
+		structure = getattr(self,'_flexible_structure_%s'%self.kind)[style]
 		template = list(catalog(structure))
 		# hold the results and crosses
 		toc,crosses = {},[]
@@ -165,3 +186,45 @@ class TrajectoryStructure:
 				toc[key] = copy.deepcopy(raw)
 				delveset(toc[key],*tuple(list(subpath[:-1])+[rename]),value=val)
 		return toc
+
+	def _compare_calculation_request_to_legacy_spec_v2(self,cr,ls):
+		"""Match a calculation request to a legacy spec file (v2)."""
+		#! generalize this? should this be in a function or structure?
+		###### abandoned!!!!!!!!
+		conditions = [cr.data['group']==ls.data['group'],]
+		import ipdb;ipdb.set_trace()
+		return all(conditions)
+
+	def _compare_calculation_request_to_slice(self,cr,sl):
+		conditions = [
+			#! knowledge of the keys required here
+			sl.data['key'][0]=='slices',cr.data['slice_name']==sl.data['key'][1],
+			cr.data['sn']==sl.data['sn'],
+			cr.data['group']==sl.data['val']['group'],]
+		return all(conditions)
+
+	def _compare_legacy_spec_v2_to_slice(self,ls,sl):
+		conditions = [
+			# the slice type is a gromacs standard so we make sure the legacy spec agrees
+			ls.data['dat_type']=='gmx',ls.data['slice_type']=='standard',
+			dictsub(sl.data['val'],ls.data),sl.data['sn']==ls.data['sn']]
+		#if sl.data['sn']=='membrane-v650-enthx4-dev' and sl.data['sn']==ls.data['sn']:
+		#	import ipdb;ipdb.set_trace()
+		return all(conditions)
+
+	def test_equality(self,one,other,loud=False):
+		"""
+		Compare slices with flexible data structures.
+		Set loud to figure out where you need to add comparisons.
+		"""
+		orderings = [(one,other),(other,one)]
+		comps = ['_compare_%s_to_%s'%(a.style,b.style) for a,b in orderings]
+		if all([hasattr(self,c) for c in comps]): raise Exception('redundant _compare_... functions!')
+		compkeys = [cc for cc,c in enumerate(comps) if hasattr(self,c)]
+		if len(compkeys)==2: raise Exception('redundant comparisons are available %s'%comps)
+		# if we cannot compare the types they they are definitely not equivalent
+		elif len(compkeys)==0: 
+			if loud: print('[WARNING] cannot find comparison between: %s vs %s'%(one.style,other.style))
+			return False
+		# note that the argument order matters
+		else: return getattr(self,comps[compkeys[0]])(*orderings[compkeys[0]])

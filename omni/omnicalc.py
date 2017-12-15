@@ -5,32 +5,26 @@ OMNICALC WORKSPACE
 """
 
 import os,sys,re,glob,copy,json,time,tempfile
+import yaml
+
 from config import read_config
 from base.tools import catalog,delve,str_or_list,str_types,status
 from base.hypothesis import hypothesis
 from datapack import asciitree,delveset
 from structs import NamingConvention,TrajectoryStructure
-
-import yaml
+from base.autoplotters import inject_supervised_plot_tools
 
 # hold the workspace in globals
 global work,namer
 work,namer = None,None
 
-###
-### Utilities
-###
-
 def json_type_fixer(series):
 	"""Cast integer strings as integers, recursively. We also fix 'None'."""
+	#! move this somewhere else
 	for k,v in series.items():
 		if type(v) == dict: json_type_fixer(v)
 		elif type(v)in str_types and v.isdigit(): series[k] = int(v)
 		elif type(v)in str_types and v=='None': series[k] = None
-
-###
-### OMNICALC CLASSES
-### all classes are children of WorkSpace
 
 class WorkSpaceState:
 	def __init__(self,kwargs):
@@ -201,6 +195,14 @@ class Calculation:
 		# check for completeness
 		if self.calc_specs.keys()>={'collections','slice_name'}:
 			raise Exception('this calculation (%s) is missing some keys: %s'%(self.name,self.calc_specs))
+
+	def __eq__(self,other):
+		"""See if calculations are equivalent."""
+		#! note that calculations are considered identical if they have the same specs
+		#! ... we disregard the calc_specs because they include collections, slice names (which might change)
+		#! ... and the group name. we expect simulation and group and other details to be handled on 
+		#! ... slice comparison
+		return self.specs==other.specs
 
 class ComputeJob:
 	"""Supervise a single computation."""
@@ -388,80 +390,38 @@ class Calculations:
 				# loop over simulations
 				for sn in sns:
 					request_slice = dict(sn=sn,slice_name=slice_name,group=group_name)
+					sliced = Slice(kind='alternate',data=request_slice)
 					# join the slice and calculation in a job
-					jobs.append(ComputeJob(slice=request_slice,calc=calc))
+					jobs.append(ComputeJob(slice=sliced,calc=calc))
 		# the caller should save the result
 		return jobs
 
-if False:
-	###
-	### Slice and Data classes
-	### ...???
-
-	class Slice:
-
-		"""
-		Parent class which holds several different representations of what we call a "slice".
-		"""
-
-		def __init__(self,**kwargs):
-			"""
-			This class basically just holds the data and returns it in a "flat" form for some use cases.
-			"""
-			self.__dict__.update(**kwargs)
-			json_type_fixer(self.__dict__)
-
-		def flat(self):
-			"""
-			Reduce a slice into a more natural form.
-			"""
-			#---we include dat_type with slice_type
-			for key in ['slice_type','dat_type']:
-				this_type = self.namedat.get(key,None) if hasattr(self,'namedat') else None
-				if not this_type: this_type = self.__dict__.get(key)
-				if not this_type: raise Exception('indeterminate data type')
-				#---! clumsy
-				if key=='slice_type': slice_type = str(this_type)
-				elif key=='dat_type': dat_type = str(this_type)
-			me = dict(slice_type=slice_type,dat_type=dat_type,**self.namedat.get('body',{}))
-			me.update(**self.__dict__.get('spec',{}))
-			if 'short_name' not in me and 'short_name' in self.__dict__:
-				me['short_name'] = self.short_name
-			#---trick to fix integers
-			json_type_fixer(me)
-			return me
-
 class Slice(TrajectoryStructure):
 	"""A class which holds trajectory data of many kinds."""
+	def __init__(self,kind,data):
+		"""..."""
+		self.kind = kind
+		self.data = data
+		self.style = self.classify(self.data)
+	def __eq__(self,other):
+		"""Match slices."""
+		return self.test_equality(self,other)
+
+class PostData:
 	def __init__(self,**kwargs):
 		"""..."""
-		import ipdb;ipdb.set_trace()
-
-class PostData():
-	"""
-	Parent class for identifying a piece of post-processed data.
-	??? DatSpec instances can be picked up from a file on disk but also generated before running a job, which 
-	??? ... will inevitably write the post-processed data anyway.
-	"""
-	def __init__(self,fn=None,dn=None,job=None):
-		"""
-		We construct the DatSpec to mirror a completed result on disk OR a job we would like to run.
-		"""
+		self.fn,self.dn = kwargs.pop('fn'),kwargs.pop('dn'),
+		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
+		self.valid = True
+		#! check validity later?
 		global namer
 		self.namer = namer
-		self.valid = True
-		# check the data here
-		if fn and job: raise Exception('cannot send specs if you send a file')
-		elif fn and not dn: raise Exception('send the post directory')
-		elif fn and dn: self.from_file(fn,dn)
-		else: raise Exception('dev')
+		self.parse(fn=self.fn,dn=self.dn)
 
-	def from_file(self,fn,dn):
-		"""
-		DatSpec objects can be imported from file (including from previous versions of omnicalc)
-		or they can be constructed in anticipation of finishing a calculation job and *making* the file 
-		(see from_job below). This function handles most backwards compatibility.
-		"""
+	def parse(self,**kwargs):
+		"""..."""
+		fn,dn = kwargs.pop('fn'),kwargs.pop('dn'),
+		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		self.files = dict([(k,os.path.join(dn,fn+'.%s'%k)) for k in 'spec','dat'])
 		if not os.path.isfile(self.files['spec']):
 			raise Exception('cannot find this spec file %s'%self.files['spec'])
@@ -482,91 +442,17 @@ class PostData():
 			calc_specs = {'specs':self.specs['specs']}
 			# build a calculation
 			self.calc = Calculation(name=calcname,calc_specs=calc_specs)
-			# build a slice
-			#! using standard datspec here. will this change later?
-			basename = self.namer.parser[('standard','datspec')]['d2n']%self.namedat['body']
-			self.slice = 'MAKE SLICE'#$Slice(name=basename,namedat=self.namedat)
+			# build a slice from the version 2 specification
+			slice_raw = self.specs['slice']
+			if slice_raw.get('dat_type',None)=='gmx' and slice_raw.get('slice_type',None)=='standard':
+				#! hacking the problem of getting simulation name from shortname
+				try: sn = dict([(j,i) for i,j in self.namer.sns_toc.items()])[slice_raw['short_name']]
+				except: sn = 'missing simulation'
+				self.slice = Slice(kind='alternate',data=dict(slice_raw,sn=sn))
+				#! we could check the postprocessing name to see if it matches its own slice data
+			else: raise Exception('dev')
 		else: raise Exception('invalid spec version %s'%self.spec_version)
 		return
-
-		#########################
-
-		#---the namer is permissive so we catch errors here
-		if not self.namedat: raise Exception('name interpreter failure')
-		#---intervene here to handle backwards compatibility for VERSION 1 jobs
-		spec_version_2 = all(['slice' in self.specs,'specs' in self.specs,
-			'calc' in self.specs and 'calc_name' in self.specs['calc']])
-		#---! note that version 2 also has short_name in the top level but this might be removed?
-		#---any old spec files that do not satisfy VERSION 2 must be version 1. we fix them here.
-		if not spec_version_2:
-			#---version 1 spec files had calculation specs directly at the top level
-			self.specs = {'specs':copy.deepcopy(self.specs)}
-			#---the slice dictionary contains the information in the name, minus nnum, and calc_name
-			self.specs['slice'] = dict([(key,val) for key,val in self.namedat['body'].items()
-				if key not in ['nnum','calc_name']])
-			#---all version 1 spec files came from what we call standard/gmx slices
-			self.specs['slice'].update(slice_type='standard',dat_type='gmx')
-			#---version 2 has a simple calc dictionary
-			self.specs['calc'] = {'calc_name':self.namedat['body']['calc_name']}
-		#---we fill in groups and pbc for certain slice types
-		if (self.specs['slice']['slice_type']=='standard' and 
-			self.specs['slice']['dat_type']=='gmx' and 
-			any([i not in self.specs['slice'] for i in ['group','pbc']])):
-			if 'group' not in self.specs['slice']: 
-				self.specs['slice']['group'] = self.work.infer_group(self.specs)
-			if 'pbc' not in self.specs['slice']:
-				self.specs['slice']['pbc'] = self.work.infer_pbc(self.specs)
-		#---! good opportunity to match a calc on disk with a calc in calc_meta
-		try:
-			self.specs['calc'] = self.work.calc_meta.find_calculation(
-				name=self.specs['calc']['calc_name'],specs=self.specs['specs'],
-				slice=self.specs['slice'],loud=False)
-		#---sometimes we hide calculations that are already complete because we are adding data
-		except Exception as e: 
-			#---create a dummy calcspec if we cannot find the calculation in the meta
-			#---! note that we may wish to populate this more. this error was found when trying to find a
-			#---! ...match later, and the find_match function was trying to look in the CalcSpec for a 
-			#---! ...calculation which had been removed from the meta
-			#---we supply a name because find_match will be looking for one
-			#---note that after adding multiplexing for the large-memory ENTH calculations here, we added
-			#---...the lax flag to prevent this because it is very difficult to debut
-			#---! the next user who wants to remove items from the meta and still run the compute with those
-			#---! ...objects on disk can connect the lax keyword to the metadata to hide an old calculation if desired
-			if lax: self.specs['calc'] = Calculation(name=None,specs={},stub=[])
-			else: raise
-
-	def from_job(self,job):
-		"""
-		Create datspec object from a job in preparation for running the calculation.
-		"""
-		self.namedat = {}
-		#---retain the pointer to the job
-		self.job = job
-		#---construct specs for a new job
-		#---the following defines the VERSION 2 output which adds more, standardized data to the spec file
-		#---...in hopes that this will one day allow you to use arbitrary filenames for datspec objects. 
-		#---...note that we discard everything from the calculation except the calc_name which is the sole
-		#---...entry in the calc subdict and the specs, which are at the top level. we discard e.g. the 
-		#---...calculation collection and uptype because it's either obvious or has no bearing
-		self.specs = {'specs':self.job.calc.specs['specs'],
-			'calc':{'calc_name':self.job.calc.name},'slice':job.slice.flat()}
-
-	def basename(self):
-		"""
-		Name this slice.
-		"""
-		#---! hard-coded VERSION 2 here because this is only called for new spec files
-		slice_type = self.job.slice.flat()['slice_type']
-		#---standard slice type gets the standard naming
-		parser_key = {'standard':('standard','datspec'),
-			'readymade_namd':('raw','datspec'),
-			'readymade_gmx':('raw','datspec'),
-			'readymade_meso_v1':('raw','datspec')}.get(slice_type,None)
-		if not parser_key: raise Exception('unclear parser key')
-		basename = self.parser[parser_key]['d2n']%dict(
-			calc_name=self.job.calc.name,**self.job.slice.flat())
-		#---note that the basename does not have the nN number yet (nnum)
-		return basename
 
 class PostDataLibrary:
 	"""
@@ -610,13 +496,16 @@ class PostDataLibrary:
 	def slices(self): return dict([(key,val) for key,val in self.toc.items() 
 		if val.__class__.__name__=='Slice'])
 	def posts(self): return dict([(key,val) for key,val in self.toc.items() 
-		if val.__class__.__name__=='DatSpec'])
+		if val.__class__.__name__=='PostData'])
 
 	def search_results(self,job):
 		"""Search the posts for a particular result."""
-		candidates = self.posts()
-		key,val = candidates.items()[0]
-		import ipdb;ipdb.set_trace()
+		# search posts for the correct calculations
+		candidates = [key for key,val in self.posts().items() 
+			if val.calc==job.calc and val.slice==job.slice]
+		if len(candidates)>1: raise Exception('multiple matches for job %s'%job)
+		elif len(candidates)==0: return None
+		else: return self.toc[candidates[0]]
 
 	#!!!!
 	def search_slices(self,**kwargs):
@@ -647,32 +536,6 @@ class PostDataLibrary:
 		else: self.stable.remove(twin)
 		return basename
 
-class GMXGroup:
-	def __init__(self,sn,name,spec):
-		self.sn,self.name,self.spec = sn,name,spec
-
-if False:
-
-	class GMXSlice():
-		def __init__(self,sn,name,spec):
-			self.sn,self.slice_name,self.spec = sn,name,spec
-			#! how to handle the spotname
-			self.spotname = None
-		def build_name(self):
-			"""Generate a name for this slice. Strict naming is used for GROMACS slices."""
-			#! crucial connection to the naming convention
-			global namer
-			details = dict(self.spec,short_name=namer.short_namer(self.sn,self.spotname),suffix='gro')
-			name = namer.parser[('standard','gmx')]['d2n']%details
-			#! remove suffix here
-			basename = re.match('^(.+)\.gro$',name).group(1)
-			self.name = basename
-			return self.name
-
-class Slice(TrajectoryStructure):
-	def __init__(self,**kwargs):
-		self.raw = kwargs
-
 class SliceMeta(TrajectoryStructure):
 	"""
 	Catalog the slice requests.
@@ -683,92 +546,35 @@ class SliceMeta(TrajectoryStructure):
 		if self.slice_structures: raise Exception('dev. handle custom structures?')
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		self.toc = []
-		# tell TrajectoryStructure what kind of slice we are
+		# interpreting slices using the request structures
 		self.kind = 'request'
 		# loop over simulations and then slices
 		for sn,slices_spec in self.raw.items():
-			kind = self.classify(slices_spec)
+			# detect the style of a particular slice
+			style = self.classify(slices_spec)
 			# once slice specification can yield many slices
-			slices_raw = self.cross(slices_spec)
-			# make a formal slice out of the raw data
-			for key,val in slices_raw.items(): self.toc.append(Slice(key=key,val=val))
+			slices_raw = self.cross(style=style,data=slices_spec)
+			# make a formal slice element out of the raw data
+			for key,val in slices_raw.items(): 
+				self.toc.append(Slice(kind='element',data=dict(key=key,val=val,sn=sn)))
 
-	def search(self,**kwargs):
-		import ipdb;ipdb.set_trace()
-		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
-
-if False:
-	"""
-	####### Interpret slices from the metadata.
-	Note that all slices have a double loop over simulations, then top-level keys defined by the type.
-	Note that type structures are given below as class variables.
-	"""
-	_structs = {
-		# structure definition for a standard slice
-		'standard_gromacs':{'slices','groups'},}
-
-	def __init__(self,raw,**kwargs):
-		"""Prepare the metadata structure and interpret the slices."""
-		self.slice_structures = kwargs.pop('slice_structures',{})
-		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
-		# incoming raw should be the dictionary representation of the slices
-		self.raw = raw
-		self.structures = copy.deepcopy(self._structs)
-		# slice_structures can provide alternate slice definitions or override them
-		for key,val in self.slice_structures.items(): self.structures[key] = copy.deepcopy(val)
-		# convert structures to stubs for fast comparison
-		self.structures_stubs = dict([(name,list([(tuple(i),j) for i,j in catalog(struct)])) 
-			for name,struct in self.structures.items()])
-		#! slice are organized in a list here ??
-		self.gmx_groups = []
-		self.gmx_slices = {}
-		# loop over simulations and then slices
-		for sn,slices_spec in self.raw.items():
-			# identify the slice type
-			slice_type = self.classify_slice(**slices_spec)
-			# route the simulation name and slice type to its processing function
-			#! note that we wish this to be extensible so users can supply their own functions for
-			#! ... custom data types
-			if hasattr(self,'_proc_%s'%slice_type): 
-				getattr(self,'_proc_%s'%slice_type)(sn=sn,**slices_spec)
-			else: raise Exception('dev')
-
-	def classify_slice(self,**kwargs):
-		"""Classify a slice based on its structure."""
-		# slice structure now consists only of a list of keys enforced by the first conditional below
-		#! to expand the slice structures, try to identify kind via lists of keys and then try a more
-		#! ... elaborate comparison
-		#! previously prototyped some use of catalog/stubs to match the structures but this was too hard
-		kinds = [name for name,keylist in self.structures.items() 
-			if type(keylist) in [set,list] and set(kwargs.keys())<=set(keylist)]
-		if len(kinds)!=1: raise Exception('failed to uniquely classify the slice: %s'%kwargs)	
-		else: return kinds[0]
-
-	def _proc_standard_gromacs(self,sn,**kwargs):
-		"""Process a gromacs slice."""
-		# process groups
-		for group_name,group_spec in kwargs.pop('groups',{}).items(): 
-			self.gmx_groups.append(GMXGroup(sn=sn,name=group_name,spec=group_spec))
-		# process slices
-		for slice_name,slice_spec in kwargs.pop('slices',{}).items(): 
-			# cross with groups
-			for group_name in slice_spec.pop('groups',[]):
-				# slices are saved by the final name
-				this_slice = GMXSlice(sn=sn,name=slice_name,spec=dict(slice_spec,group=group_name))
-				self.gmx_slices[this_slice.build_name()] = this_slice
-		if kwargs: raise Exception('failed to clear the slice definitions: %s'%kwargs)
-
-	def search(self,**kwargs):
-		"""Search for a slice."""
-		matches = []
-		for key,spec in self.gmx_slices.items():
-			view = dict(group=spec.spec['group'],sn=spec.sn,slice_name=spec.slice_name)
-			if all([item in view.items() for item in kwargs.items()]):
-				matches.append((key,spec))
-		if len(matches)==0: raise Exception('failed to find slice %s'%kwargs)
-		elif len(matches)>1: 
-			raise Exception('failed to find slice %s because multiple matches: %s'%(kwargs,matches))
+	def search(self,candidate):
+		"""Search the requested slices."""
+		matches = [sl for sl in self.toc if sl==candidate]
+		if len(matches)>1: raise Exception('redundant matches for %s'%candidate)
+		elif len(matches)==0: return None
 		else: return matches[0]
+
+	# deprecated because we make the slice immediately
+	if False:
+		def calculation_to_request(self,**kwargs):
+			#! minor hack to match a calculation slice request to a slice request in SliceMeta
+			#! ... this will be replaced later
+			import ipdb;ipdb.set_trace()
+			index, = [ii for ii,i in enumerate(self.toc) if 
+				kwargs['slice_name']==i.raw['key'][1] and 'slices'==i.raw['key'][0] and
+				kwargs['sn']==i.raw['sn'] and kwargs['group']==i.raw['val']['group']]
+			return self.toc[index]
 
 class WorkSpace:
 	"""
@@ -790,6 +596,9 @@ class WorkSpace:
 		# settings and defaults
 		self.cwd = kwargs.pop('cwd',os.getcwd())
 		self.meta_cursor = kwargs.pop('meta_cursor',None)
+		# remove arguments for plotting
+		self.plot_args = kwargs.pop('plot_args',())
+		self.plot_kwargs = kwargs.pop('plot_kwargs',{})
 		# determine the state (kwargs is passed by reference so we clear it)
 		self.state = WorkSpaceState(kwargs)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
@@ -805,6 +614,10 @@ class WorkSpace:
 		for child in self._children: self.__dict__[child] = None
 		# the main compute loop for the workspace determines the execution function
 		getattr(self,self.state.execution_name)()
+
+	def simulation_names(self):
+		"""Return all simulation names from the metadata."""
+		return list(set([i for j in self.specs.collections.values() for i in j]))
 
 	def prepare_namer(self):
 		"""Parse metadata and config to check for the short_namer."""
@@ -822,6 +635,11 @@ class WorkSpace:
 			else: self.short_namer = self.config.get('spots',{}).values()[0]['namer']	
 		global namer
 		namer = self.namer = NamingConvention(short_namer=self.short_namer)
+		# populate a table of all simulation names for emergency use
+		#! spotname is none for now
+		spotname = None
+		self.namer.sns_toc = dict([(sn,self.namer.short_namer(sn,None)) 
+			for sn in self.simulation_names()])
 
 	def read_config(self):
 		"""Read the config and set paths."""
@@ -833,89 +651,116 @@ class WorkSpace:
 		self.postdir = self.paths['post_data_spot']
 		self.plotdir = self.paths['post_plot_spot']
 
+	def find_script(self,name,root='calcs'):
+		"""Find a generic script somewhere in the calculations folder."""
+		#! legacy code needs reviewed
+		# find the script with the funtion
+		fns = []
+		for (dirpath, dirnames, filenames) in os.walk(os.path.join(self.cwd,root)): 
+			fns.extend([dirpath+'/'+fn for fn in filenames])
+		search = [fn for fn in fns if re.match('^%s\.py$'%name,os.path.basename(fn))]
+		if len(search)==0: 
+			raise Exception('\n[ERROR] cannot find %s.py'%name)
+		elif len(search)>1: raise Exception('\n[ERROR] redundant matches: %s'%str(search))
+		# manually import the function
+		return search[0]
+
+	def plotload(self,plotname,**kwargs):
+		"""..."""
+		whittle_calc = kwargs.pop('whittle_calc',None)
+		if whittle_calc: raise Exception('dev')
+		import ipdb;ipdb.set_trace()
+
+	def plot_supervised(self,plotname,**kwargs):
+		"""
+		Supervised plot execution.
+		This largely mimics omni/base/header.py.
+		"""
+		#---plotspecs include args/kwargs coming in from the command line so users can make choices there
+		plotspecs = kwargs.pop('plotspecs',{})
+		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
+		#---prepare the environment for the plot
+		out = dict(work=self,plotname=plotname)
+		outgoing_locals = dict()
+		#---per header.py we have to add to the path
+		for i in ['omni','calcs']:
+			if i not in sys.path: sys.path.insert(0,i)
+		#---inject supervised plot functions into the outgoing environment
+		inject_supervised_plot_tools(out)
+		#---execute the plot script
+		script = self.find_script('plot-%s'%plotname)
+		with open(script) as fp: code = fp.read()
+		#---handle builtins before executing. we pass all keys in out through builtins for other modules
+		import builtins
+		builtins._plotrun_specials = out.keys()
+		for key in out: builtins.__dict__[key] = out[key]
+		#---supervised execution is noninteractive and runs plots based on plotspecs
+		#---...hence we run the script as per the replot() function in omni/base/header.py
+		#---...see the header function for more detail
+		#---run the script once with name not main (hence no global execution allowed)
+		local_env = {'__name__':'__main__'}
+		exec(compile(code,script,'exec'),out,local_env)
+		#---we need to get plot script globals back into globals in the autoplot so we 
+		#---...pass locals into out which goes to autoplot then to globals if the mode is supervised
+		out.update(**local_env)
+		plotrun = out['plotrun']
+		#---the loader is required for this method
+		plotrun.loader()
+		#---intervene to interpret command-line arguments
+		kwargs_plot = plotspecs.pop('kwargs',{})
+		#---command line arguments that follow the plot script name must name the functions
+		plotrun.routine = plotspecs.pop('args',{})
+		if plotspecs: raise Exception('unprocessed plotspecs %s'%plotspecs)
+		if kwargs_plot: raise Exception('unprocessed plotting kwargs %s'%kwargs_plot)
+		plotrun.autoplot(out=out)
+
+	def prelim(self):
+		"""Preliminary materials for compute and plot."""
+		# get the specs from the specs_folder object
+		self.meta = self.specs_folder.interpret()
+
 	def compute(self):
 		"""
 		Run a calculation. This is the main loop, and precedes the plot loop.
 		"""
-		# get the specs from the specs_folder object
-		self.specs = self.specs_folder.interpret()
+		self.prelim()
 		self.prepare_namer()
 		# prepare a calculations object
-		self.calcs = Calculations(specs=self.specs)
+		self.calcs = Calculations(specs=self.meta)
 		# prepare jobs from these calculations
 		self.jobs = self.calcs.prepare_jobs()
 		# parse the post-processing data
 		self.post = PostDataLibrary(where=self.postdir)
 		# formalize the slice requests
-		self.slices = SliceMeta(raw=self.specs.slices,
-			slice_structures=self.specs.director.get('slice_structures',{}))
-		# join jobs and slices
+		self.slices = SliceMeta(raw=self.meta.slices,
+			slice_structures=self.meta.director.get('slice_structures',{}))
+		queue_ready,queue_computes = [],[]
+		# join jobs with results
 		for job in self.jobs:
-			# search for the target slice
-			import ipdb;ipdb.set_trace()
-			job.target_slice = self.slices.search(**job.slice)
-			# all slices must be in the metadata
-			if not job.target_slice: raise Exception('slice is missing from metadata: %s'%job.slice)
-			# search for the result
-			#!!!!!!!!!!!!!!!
-
-			#! compare here then move the search elsewhere
-			candidates = []
-			for key,post in self.post.posts().items():
-				# compare the calculation specs
-				if post.calc.specs==job.calc.specs:
-					candidates.append(key)
-				# each post has a slice associated with it
-				#! whence these slices
-				# each job has a target slice
-			#! search slices
-			for key,sliced in self.post.slices().items():
-				if sliced.namedat==job.slice.namedat:
-					print(12431231)
-					break
-				#! compare the slices?
-				"""
-				slices
-					self.post.slices().values()[0].__dict__ omnicalc.Slice
-					post.slice.__dict__ is omnicalc.Slice
-					job.slice is just a dictionary
-					job.target_slice[1] is omnicalc.GMXSlice
-				search post.slices?
-				each post has a slice associated with it
-				whence these slices?
-				each job has a target slice
-				the job slice is minimal and the job.target_slice is a specific slice
-				the post slice has information from the name in it if gmx but otherwise just a name
-					because the post slice information comes from the datspec
-				possible plan
-					turn all target slices into simple slices
-					then compare post slice info from datspec to simple slices
-				"""
-			import ipdb;ipdb.set_trace()
-			self.post.search_results(job=job)
-
-		#! one job
-		job = self.jobs[0]
-		#! jobs are ugly
-		asciitree(dict(calc=job.calc.__dict__))
-
-		#? identify incomplete jobs?
-		import ipdb;ipdb.set_trace()
-
-		"""
-		what happens next?
-			slices are named and checked against postdat to see which ones to make
-			groups are ignored until we have to make slices
-			once you have a slice and a calculation we have to carefully check the spec files
-			if none are found we name it there then start computing
-			later once we make slices we check group naming
-		"""
+			# jobs have slices in alternate/calculation_request form and they must be fleshed out
+			slice_match = self.slices.search(job.slice)
+			if not slice_match: 
+				raise Exception('failed to find requested slice in the metadata: %s'%job.slice)
+			# replace the job slice with the metadata slice if we found a match
+			else: job.slice = slice_match
+			# search for a result
+			job.result = self.post.search_results(job=job)
+			if not job.result: queue_computes.append(job)
+			else: queue_ready.append(job)
+		if queue_computes: raise Exception('dev')
+		else: status('calculations are complete',tag='status')
 
 	def plot(self):
 		"""
 		Analyze calculations or make plots. This is meant to follow the compute loop.
 		"""
-		raise Exception('dev')
+		if len(self.plot_args)==0: raise Exception('you must send the plotname as an argument')
+		elif len(self.plot_args)==1: plotname = self.plot_args[0]
+		else: plotname,args = self.plot_args[0],self.plot_args[1:]
+		self.prelim()
+		if plotname in self.meta.plots and self.meta.plots[plotname].get('autoplot',True):
+			self.plot_supervised(plotname=plotname)
+		else: raise Exception('dev')
 
 ###
 ### INTERFACE FUNCTIONS
@@ -925,7 +770,7 @@ def compute(meta=None):
 	global work
 	if not work: work = WorkSpace(compute=True,meta_cursor=meta)
 
-def plot():
+def plot(*args,**kwargs):
 	#! alias or alternate naming for when "plot-" becomes tiresome?
 	global work
-	if not work: work = WorkSpace(plot=True)
+	if not work: work = WorkSpace(plot=True,plot_args=args,plot_kwargs=kwargs)

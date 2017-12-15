@@ -152,7 +152,7 @@ def inject_supervised_plot_tools(out,mode='supervised'):
 
 	#---custom "art director" can be useful for coordinating aesthetics for different projects
 	from plotter.art_director_importer import import_art_director,protected_art_words
-	art_director = work.vars.get('art_director',None)
+	art_director = work.meta.variables.get('art_director',None)
 	#---always set protected variables to null
 	for key in protected_art_words: out[key] = None
 	if art_director: 

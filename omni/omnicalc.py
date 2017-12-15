@@ -576,6 +576,13 @@ class SliceMeta(TrajectoryStructure):
 				kwargs['sn']==i.raw['sn'] and kwargs['group']==i.raw['val']['group']]
 			return self.toc[index]
 
+class PlotLoaded(dict):
+	def __init__(self,calcnames,sns): 
+		self.calcnames,self.sns = calcnames,sns
+	#def __getitem__(self,name):
+		#if name not in self.__dict__:
+		#	import ipdb;ipdb.set_trace()
+
 class WorkSpace:
 	"""
 	The workspace is the parent class for omnicalc.
@@ -617,13 +624,13 @@ class WorkSpace:
 
 	def simulation_names(self):
 		"""Return all simulation names from the metadata."""
-		return list(set([i for j in self.specs.collections.values() for i in j]))
+		return list(set([i for j in self.meta.collections.values() for i in j]))
 
 	def prepare_namer(self):
 		"""Parse metadata and config to check for the short_namer."""
 		# users can set a "master" short_namer in the meta dictionary if they have a very complex
 		# ... naming scheme i.e. multiple spots with spotnames in the post names
-		self.short_namer = self.specs.meta.get('short_namer',None)
+		self.short_namer = self.meta.meta.get('short_namer',None)
 		if self.short_namer==None:
 			nspots = self.config.get('spots',{})
 			#---if no "master" short_namer in the meta and multiple spots we force the user to make one
@@ -668,8 +675,48 @@ class WorkSpace:
 	def plotload(self,plotname,**kwargs):
 		"""..."""
 		whittle_calc = kwargs.pop('whittle_calc',None)
+		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		if whittle_calc: raise Exception('dev')
-		import ipdb;ipdb.set_trace()
+		# we always run the compute loop to make sure calculations are complete but also to get the jobs
+		self.compute()
+		plotspec = self.meta.plots.get(plotname,{})
+		plotload_version = plotspec.get('plotload_version',self.meta.director.get('plotload_output_style',1))
+		if not plotspec: raise Exception('dev')
+		sns = self.meta.get_simulations_in_collection(plotspec.get('collections',[]))
+		if not sns: raise Exception('no collections in plotspec. dev')
+		calcs = plotspec.get('calculation',{})
+		if type(calcs) in str_types: calcnames = [calcs]
+		elif type(calcs)==list: calcnames = calcs
+		elif type(calcs)==dict: raise Exception('dev')
+		else: raise Exception('dev')
+		bundle = dict([(k,PlotLoaded(calcnames=calcnames,sns=sns)) for k in ['data','calc']])
+		# search for results
+		for sn in sns:
+			#! handle if they are not strings?
+			for calcname in calcnames:
+				#! will all slices have a sn?
+				results = [r for r in self.results 
+					if r.slice.data['sn']==sn and r.calc.name==calcname]
+				if len(results)==0: 
+					raise Exception('dev. cannot find calculation %s for simulation %s'%(calcname,sn))
+				elif len(results)>1: raise Exception('too many matches')
+				else: result = results[0]
+				# add the data to the bundle
+				if calcname not in bundle['data']: bundle['data'][calcname] = {}
+				#! need to actually load it here
+				bundle['data'][calcname][sn] = {'data':result}
+				# add the calculation specs to the bundle
+				#! check the right format?
+				if calcname not in bundle['calc']: bundle['calc'][calcname] = {}
+				bundle['calc'][calcname][sn] = 'MISSING'
+		# return in a particular format
+		if plotload_version==1: 
+			# remove calculation name from the nested dictionary of only one
+			if len(calcnames)==1 and len(bundle['data'])==1 and len(bundle['calc'])==1:
+				bundle['data'] = bundle['data'].values()[0]
+				bundle['calc'] = bundle['calc'].values()[0]
+			return bundle['data'],bundle['calc']
+		else: raise Exception('dev')
 
 	def plot_supervised(self,plotname,**kwargs):
 		"""
@@ -713,16 +760,18 @@ class WorkSpace:
 		if plotspecs: raise Exception('unprocessed plotspecs %s'%plotspecs)
 		if kwargs_plot: raise Exception('unprocessed plotting kwargs %s'%kwargs_plot)
 		plotrun.autoplot(out=out)
+		import ipdb;ipdb.set_trace()
 
 	def prelim(self):
 		"""Preliminary materials for compute and plot."""
 		# get the specs from the specs_folder object
 		self.meta = self.specs_folder.interpret()
 
-	def compute(self):
+	def compute(self,**kwargs):
 		"""
 		Run a calculation. This is the main loop, and precedes the plot loop.
 		"""
+		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		self.prelim()
 		self.prepare_namer()
 		# prepare a calculations object
@@ -734,7 +783,8 @@ class WorkSpace:
 		# formalize the slice requests
 		self.slices = SliceMeta(raw=self.meta.slices,
 			slice_structures=self.meta.director.get('slice_structures',{}))
-		queue_ready,queue_computes = [],[]
+		# save completed jobs as results
+		self.results,queue_computes = [],[]
 		# join jobs with results
 		for job in self.jobs:
 			# jobs have slices in alternate/calculation_request form and they must be fleshed out
@@ -746,20 +796,20 @@ class WorkSpace:
 			# search for a result
 			job.result = self.post.search_results(job=job)
 			if not job.result: queue_computes.append(job)
-			else: queue_ready.append(job)
+			else: self.results.append(job)
 		if queue_computes: raise Exception('dev')
-		else: status('calculations are complete',tag='status')
 
 	def plot(self):
 		"""
 		Analyze calculations or make plots. This is meant to follow the compute loop.
 		"""
 		if len(self.plot_args)==0: raise Exception('you must send the plotname as an argument')
-		elif len(self.plot_args)==1: plotname = self.plot_args[0]
+		elif len(self.plot_args)==1: plotname,args = self.plot_args[0],()
 		else: plotname,args = self.plot_args[0],self.plot_args[1:]
 		self.prelim()
+		#! plot from a default calculation
 		if plotname in self.meta.plots and self.meta.plots[plotname].get('autoplot',True):
-			self.plot_supervised(plotname=plotname)
+			self.plot_supervised(plotname=plotname,plotspecs=dict(args=args,kwargs=self.plot_kwargs))
 		else: raise Exception('dev')
 
 ###

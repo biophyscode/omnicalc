@@ -13,6 +13,7 @@ from base.hypothesis import hypothesis
 from datapack import asciitree,delveset
 from structs import NamingConvention,TrajectoryStructure
 from base.autoplotters import inject_supervised_plot_tools
+from base.store import load
 
 # hold the workspace in globals
 global work,namer
@@ -576,12 +577,45 @@ class SliceMeta(TrajectoryStructure):
 				kwargs['sn']==i.raw['sn'] and kwargs['group']==i.raw['val']['group']]
 			return self.toc[index]
 
+class PlotSpec(dict):
+	"""Manage inferences about what to plot."""
+	def __init__(self,meta,plotname):
+		# point to the metadata
+		self.meta = meta
+		# plotname cursor. the user can change this manually
+		self.plotname = plotname
+		self._get_cursor()
+	def _get_cursor(self):
+		# get plot spec or fall back to calculations
+		self.cursor = self.meta.plots.get(self.plotname,self.meta.calculations.get(self.plotname,None))
+		if not self.cursor: raise Exception('failed to find plot or calculation "%s"'%self.plotname)
+	def sns(self):
+		return list(set(self.meta.get_simulations_in_collection(self.cursor.get('collections'))))
+	def get_calcnames(self):
+		# get calculation names from a key in a plot object
+		if self.plotname in self.meta.plots:
+			calcs_spec = self.meta.plots[self.plotname]
+			calcs = calcs_spec.get('calculation',calcs_spec.get('calculations',None))
+			if not calcs: 
+				raise Exception('plot %s in the metadata is missing the calculation(s) key'%self.plotname)
+			# the calculations key in a plot object can be a string, list, or dict
+			if type(calcs) in str_types: self.calcnames = [calcs]
+			elif type(calcs)==list: self.calcnames = calcs
+			elif type(calcs)==dict: raise Exception('dev')
+			else: raise Exception('dev')
+			return self.calcnames
+		# if no plot object we fall back to calculations
+		elif self.plotname in self.meta.calculations:
+			# if the plotname is not in plots we can only assume it refers to a single calculation
+			self.calcnames = [self.plotname]
+			return self.calcnames
+		else: raise Exception(('requesting calculation names for a plot called "%s" however this key '+
+			'cannot be found in either the plots or calculations section of the metadata')%self.plotname)
+
 class PlotLoaded(dict):
 	def __init__(self,calcnames,sns): 
+		#! development code for a new method of loading data for plots and analysis
 		self.calcnames,self.sns = calcnames,sns
-	#def __getitem__(self,name):
-		#if name not in self.__dict__:
-		#	import ipdb;ipdb.set_trace()
 
 class WorkSpace:
 	"""
@@ -672,51 +706,65 @@ class WorkSpace:
 		# manually import the function
 		return search[0]
 
+	def sns(self):
+		"""Get the list of simulations for a plot."""
+		# by the time you use sns you should already have a plotspec generated in plotload
+		return self.plotspec.sns()
+
 	def plotload(self,plotname,**kwargs):
-		"""..."""
+		"""
+		Export completed calculations to a plot environment.
+		"""
 		whittle_calc = kwargs.pop('whittle_calc',None)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		if whittle_calc: raise Exception('dev')
 		# we always run the compute loop to make sure calculations are complete but also to get the jobs
 		self.compute()
-		plotspec = self.meta.plots.get(plotname,{})
-		plotload_version = plotspec.get('plotload_version',self.meta.director.get('plotload_output_style',1))
-		if not plotspec: raise Exception('dev')
-		sns = self.meta.get_simulations_in_collection(plotspec.get('collections',[]))
-		if not sns: raise Exception('no collections in plotspec. dev')
-		calcs = plotspec.get('calculation',{})
-		if type(calcs) in str_types: calcnames = [calcs]
-		elif type(calcs)==list: calcnames = calcs
-		elif type(calcs)==dict: raise Exception('dev')
-		else: raise Exception('dev')
+		# make a plotspec object
+		self.plotspec = PlotSpec(meta=self.meta,plotname=plotname)
+		plotload_version = self.plotspec.get('plotload_version',self.meta.director.get('plotload_output_style',1))
+		sns = self.plotspec.sns()
+		# many plot functions use a deprecated work.plots[plotname]['specs'] call to get details about 
+		# ... the plots from the metadata. to support this feature we add the cursor from the plotspec
+		# ... object to the workspace. these calls must happen after plotload is called, but we prefer
+		# ... to wait until the plotspec is made. if this is a problem the plotspec should be made during
+		# ... plot_supervised. note  that we only supply specs via plotname but it will fall back to cals
+		self.plots = {self.plotname:self.plotspec.cursor}
+		# get a list of calculation names
+		calcnames = self.plotspec.get_calcnames()
+		# package the data for export to the plot environment
 		bundle = dict([(k,PlotLoaded(calcnames=calcnames,sns=sns)) for k in ['data','calc']])
 		# search for results
 		for sn in sns:
 			#! handle if they are not strings?
 			for calcname in calcnames:
 				#! will all slices have a sn?
-				results = [r for r in self.results 
+				jobs = [r for r in self.jobs 
 					if r.slice.data['sn']==sn and r.calc.name==calcname]
-				if len(results)==0: 
+				if len(jobs)==0: 
 					raise Exception('dev. cannot find calculation %s for simulation %s'%(calcname,sn))
-				elif len(results)>1: raise Exception('too many matches')
-				else: result = results[0]
+				elif len(jobs)>1: raise Exception('too many matches')
+				else: job = jobs[0]
 				# add the data to the bundle
 				if calcname not in bundle['data']: bundle['data'][calcname] = {}
-				#! need to actually load it here
-				bundle['data'][calcname][sn] = {'data':result}
+				# load the data
+				fn = job.result.files['dat']
+				data = load(os.path.basename(fn),cwd=os.path.dirname(fn))
+				bundle['data'][calcname][sn] = {'data':data}
 				# add the calculation specs to the bundle
 				#! check the right format?
 				if calcname not in bundle['calc']: bundle['calc'][calcname] = {}
 				bundle['calc'][calcname][sn] = 'MISSING'
-		# return in a particular format
+		# original plot codes expect a data,calc pair from this function
 		if plotload_version==1: 
-			# remove calculation name from the nested dictionary of only one
+			# remove calculation name from the nested dictionary if only one
 			if len(calcnames)==1 and len(bundle['data'])==1 and len(bundle['calc'])==1:
 				bundle['data'] = bundle['data'].values()[0]
 				bundle['calc'] = bundle['calc'].values()[0]
 			return bundle['data'],bundle['calc']
-		else: raise Exception('dev')
+		#! alternate plotload returns can be managed here with a global plotload_version from the director
+		#! ... or a plot-specific plotload_version set in the plot metadata
+		else: raise Exception('invalid plotload_version: %s'%plotload_version)
 
 	def plot_supervised(self,plotname,**kwargs):
 		"""
@@ -756,11 +804,12 @@ class WorkSpace:
 		#---intervene to interpret command-line arguments
 		kwargs_plot = plotspecs.pop('kwargs',{})
 		#---command line arguments that follow the plot script name must name the functions
-		plotrun.routine = plotspecs.pop('args',{})
+		plotrun.routine = plotspecs.pop('args',None)
+		#---change empty tuple to None because that means "everything" in plotrun
+		if plotrun.routine==(): plotrun.routine = None
 		if plotspecs: raise Exception('unprocessed plotspecs %s'%plotspecs)
 		if kwargs_plot: raise Exception('unprocessed plotting kwargs %s'%kwargs_plot)
 		plotrun.autoplot(out=out)
-		import ipdb;ipdb.set_trace()
 
 	def prelim(self):
 		"""Preliminary materials for compute and plot."""
@@ -806,6 +855,8 @@ class WorkSpace:
 		if len(self.plot_args)==0: raise Exception('you must send the plotname as an argument')
 		elif len(self.plot_args)==1: plotname,args = self.plot_args[0],()
 		else: plotname,args = self.plot_args[0],self.plot_args[1:]
+		# the plotname is needed by other functions namely self.sns
+		self.plotname = plotname
 		self.prelim()
 		#! plot from a default calculation
 		if plotname in self.meta.plots and self.meta.plots[plotname].get('autoplot',True):

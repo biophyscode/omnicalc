@@ -77,6 +77,7 @@ def replot():
 		#---run the loader function which should conditionally referesh data (i.e. only as needed)
 		status('running the loader function "%s" from "%s"'%(
 			plotrun.loader_name,os.path.basename(script)),tag='load')
+		import ipdb;ipdb.set_trace()
 		#---if the loader is a function we run it otherwise it defaults to None
 		if plotrun.loader!=None: plotrun.loader()
 		#---run any plots in the routine
@@ -93,4 +94,3 @@ for key in ['key']:
 print('[PLOTTER] running plots via __file__="%s"; you can execute again with `replot()`'%__file__)
 #---execute once and user can repeat 
 replot()
-

@@ -125,9 +125,12 @@ class TrajectoryStructure:
 			#! whittle dat_type and slice_type?
 			'dat_type':'string','slice_type':'string',
 			'short_name':'string','pbc':'string',
-			'start':'number','end':'number','skip':'number',},}
+			'start':'number','end':'number','skip':'number',},
+		'legacy_spec_v1_no_group':{
+			'sn':'string','dat_type':'string','slice_type':'string',
+			'short_name':'string','start':'number','end':'number','skip':'number',},}
 
-	def classify(self,subject):
+	def classify(self,subject,strict=False):
 		"""Identify a structure type using flextypes above."""
 		# chart the subject
 		routes = list(catalog(subject))
@@ -138,8 +141,13 @@ class TrajectoryStructure:
 		for key,val in structs.items():
 			template = list(catalog(val))
 			# make sure that all routes match the datastructure
-			if all([r in zip(*template)[0] for r,v in routes]): candidates.append(key)
-		if len(candidates)>1: raise Exception('matched multiple data structures to %s'%subject)
+			# strict mode ensures the structures match exactly
+			if ((not strict and all([r in zip(*template)[0] for r,v in routes]))or (strict and 
+				set([tuple(j) for j in zip(*routes)[0]])==set([tuple(j) for j in zip(*template)[0]]))): 
+				candidates.append(key)
+		# retry in strict mode if we get too many matches
+		if len(candidates)>1 and not strict: return self.classify(subject,strict=True)
+		elif len(candidates)>1 and strict: raise Exception('matched multiple data structures to %s'%subject)
 		elif len(candidates)==0: raise Exception('failed to classify %s'%subject)
 		else: return candidates[0]
 

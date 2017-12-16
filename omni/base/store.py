@@ -24,8 +24,8 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	import matplotlib.pyplot as plt
 	#---intervene here to check the wordspace for picture-saving "hooks" that apply to all new pictures
 	#---! is it necessary to pass the workspace here?
-	if 'work' in globals() and 'picture_hooks' in work.meta.variables:
-		extra_meta = work.meta.variables['picture_hooks']
+	if 'work' in globals() and 'picture_hooks' in work.metadata.variables:
+		extra_meta = work.metadata.variables['picture_hooks']
 		#---redundant keys are not allowed: either they are in picture_hooks or passed to picturesave
 		redundant_extras = [i for i in extra_meta if i in meta]
 		if any(redundant_extras):

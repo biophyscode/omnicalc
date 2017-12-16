@@ -18,9 +18,18 @@ is_live = False
 exec(open('omni/base/pythonrc.py').read())
 #---collect incoming names
 __file__,script,plotname = sys.argv[:3]
-meta = None if sys.argv[3]=='null' else sys.argv[3:]
-#---generate a workspace
-work = WorkSpace(plot=plotname,meta=meta)
+# decide if this is an autoplot or legacy plot
+use_autoplot = True
+if len(sys.argv)>3:
+	#! we allow three arguments for autoplot and an extra flag for legacy plotting
+	if len(sys.argv)>4: 
+		raise Exception('this header can accept only three arguments (header.py, plot script, plot name '
+			'with an optional NO_AUTOPLOT flag. we recieved %s'%sys.argv)
+	elif len(sys.argv)==4:
+		if sys.argv[3]=='NO_AUTOPLOT': use_autoplot = False
+		else: raise Exception('invalid arguments %s'%sys.argv)
+# updated call to the workspace signals that we do not need to run the plot because we are already here
+work = WorkSpace(plot=True,plot_args=(plotname,),plot_kwargs=dict(header_caller=True))
 #---prepare variables for export into the global namepsace of the script
 from base.autoplotters import inject_supervised_plot_tools
 out = dict(work=work,plotname=plotname)
@@ -47,11 +56,13 @@ def replot():
 	This function re-executes the script.
 	Confirmed that it remembers variables you add.
 	"""
-	#import ipdb;ipdb.set_trace()
-	#---redirect to standard plotting
-	if not work.plots.get(plotname,{}).get('autoplot',False): 
+	# previously we checked autoplot flags from the plots metadata here
+	# ... however now the autoplotting is controlled in several places in the workspace and passed as a flag
+	if not use_autoplot:
+		work.simplify_members_for_plotting()		
 		replot_old_school()
 		return
+
 	import os
 	with open(script) as fp: code = fp.read()
 	try:

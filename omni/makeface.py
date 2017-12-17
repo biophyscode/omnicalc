@@ -16,8 +16,6 @@ and ``**kwargs`` because arguments are passed from the ``Makefile`` to the pytho
 functions from the terminal by running ``make my_python_function some_true_bool_flag kwarg="some value"``. 
 Set ``commands`` in the ``config.py`` managed by :any:`acme <acme>` to specify which files provide functions 
 to the interface. You can set ``__all__`` in these files to hide extraneous functions from ``make``. 
-
-This makefile was forked from factory and updated with prechecker and zombie mode ca 2017.3.29.
 """
 
 default_config = {
@@ -186,7 +184,6 @@ def makeface(*arglist):
 		#---! run the kill switch here?
 
 if __name__ == "__main__": 
-	zombie_mode = False
 	try: from logo import logo
 	except: logo = ""
 	#---all arguments are passed directly to python but by convention we use the json flag for interactions
@@ -201,11 +198,6 @@ if __name__ == "__main__":
 		with open(config_fn) as fp: configurator = eval(fp.read())
 		source_scripts = str_or_list(configurator.get('commands',[]))
 	else: raise Exception('need to specify config_fn and config_key')
-	#---before running makeface we do any necessary pre-checks
-	#---! precheck is defunct because any precheck failure messes up the make target list anyway
-	if 'precheck' in configurator: 
-		try: exec(open(configurator['precheck']))
-		except Exception as zombie_mode: print('[WARNING] prechecker failed. continuing as zombie.')
 	#---filter sys.argv
 	argvs = [i for i in sys.argv if i not in drop_flags]
 	if source_scripts:
@@ -220,19 +212,13 @@ if __name__ == "__main__":
 				#---import as a local module
 				if (os.path.join(os.getcwd(),os.path.dirname(fn)) in sys.path
 					or os.path.dirname(fn)=='.'): 
-					if zombie_mode: 
-						try: new_funcs = import_local(fn)
-						except Exception as e: new_funcs = {}
-					else: new_funcs = import_local(fn)
+					new_funcs = import_local(fn)
 					makeface_funcs.update(**new_funcs)
 					if len(argvs)==1 and verbose: 
 						print('[NOTE] imported remotely from %s'%fn)
 						print('[NOTE] added functions: %s'%(' '.join(new_funcs)))
 				else: 
-					if zombie_mode: 
-						try: new_funcs = import_local(fn)
-						except Exception as e: new_funcs = {}
-					else: new_funcs = import_remote(fn)
+					new_funcs = import_remote(fn)
 					makeface_funcs.update(**new_funcs)
 					if len(argvs)==1: 
 						if verbose: 

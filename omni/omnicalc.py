@@ -2,30 +2,26 @@
 
 """
 OMNICALC WORKSPACE
+See structs.py for data structures.
+We consolidate all omnicalc conditionals here so they can access the global namer.
+Otherwise, parts of the workspace are passed to down to member instances.
 """
 
 import os,sys,re,glob,copy,json,time,tempfile
 import yaml
 
 from config import read_config,bash
+from datapack import json_type_fixer
 from base.tools import catalog,delve,str_or_list,str_types,status
 from base.hypothesis import hypothesis
 from datapack import asciitree,delveset
-from structs import NamingConvention,TrajectoryStructure,dictsub
+from structs import NamingConvention,TrajectoryStructure,dictsub,NoisyOmnicalcObject
 from base.autoplotters import inject_supervised_plot_tools
-from base.store import load
+from base.store import load,store
 
-# hold the workspace in globals
-global work,namer
-work,namer = None,None
-
-def json_type_fixer(series):
-	"""Cast integer strings as integers, recursively. We also fix 'None'."""
-	#! move this somewhere else
-	for k,v in series.items():
-		if type(v) == dict: json_type_fixer(v)
-		elif type(v)in str_types and v.isdigit(): series[k] = int(v)
-		elif type(v)in str_types and v=='None': series[k] = None
+global namer
+# namer via globals instead of passing
+namer = None
 
 class WorkSpaceState:
 	def __init__(self,kwargs):
@@ -176,7 +172,7 @@ class MetaData:
 		for name in names: sns.extend(self.collections.get(name,[]))
 		return sorted(list(set(sns)))
 
-class Calculation:
+class Calculation(NoisyOmnicalcObject):
 	"""
 	A calculation, including settings.
 	"""
@@ -208,6 +204,7 @@ class Calculation:
 		return self.specs==other.specs
 
 class ComputeJob:
+	def __repr__(self): return str(self.__dict__)
 	"""Supervise a single computation."""
 	def __init__(self,**kwargs):
 		self.calc = kwargs.pop('calc')
@@ -404,16 +401,46 @@ class Slice(TrajectoryStructure):
 class PostData:
 	def __init__(self,**kwargs):
 		"""..."""
-		self.fn,self.dn = kwargs.pop('fn'),kwargs.pop('dn'),
+		self.style = kwargs.pop('style')
+		# specs reflect the raw data in a spec file
+		self.specs = kwargs.pop('specs',{})
+		self.fn,self.dn = kwargs.pop('fn',None),kwargs.pop('dn',None)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		self.valid = True
 		#! check validity later?
 		global namer
 		self.namer = namer
-		self.parse(fn=self.fn,dn=self.dn)
+		if self.style=='read': 
+			if self.specs: raise Exception('cannot parse a spec file if you already sent specs')
+			self.parse(fn=self.fn,dn=self.dn)
+		elif self.style=='new': self.construct()
+		else: raise Exception('invalid style %s'%self.style)
+
+	def construct(self):
+		"""
+		Build a result object from new data.
+		"""
+		# build a slice
+		slice_raw = self.specs.get('slice',{})
+		sn = self.specs.get('meta',{}).get('sn','MISSING SN')
+		self.slice = Slice(kind='alternate',data=dict(slice_raw,sn=sn))
+		# get the specification version to mimic the parsed spec files
+		self.spec_version = self.specs.get('meta',{}).get('spec_version',3)
+		# build the calculation
+		self.calc = Calculation(name=self.specs.get('calc',{}).get('name','MISSING CALC NAME'),
+			calc_specs=self.specs.get('calc',{}).get('specs','MISSING CALC SPECS'))
+
+		# write an empty result file
+		store(obj={},name=re.sub('\.spec$','.dat',self.fn),path=self.dn,attrs={},verbose=True)
+
+		# write a dummy spec file and dat file
+		with open(os.path.join(self.dn,self.fn),'w') as fp: 
+			fp.write(json.dumps(self.specs))
 
 	def parse(self,**kwargs):
-		"""..."""
+		"""
+		Read a spec file into a result object
+		"""
 		fn,dn = kwargs.pop('fn'),kwargs.pop('dn'),
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		self.files = dict([(k,os.path.join(dn,fn+'.%s'%k)) for k in 'spec','dat'])
@@ -423,9 +450,11 @@ class PostData:
 		json_type_fixer(self.specs)
 		self.namedat = self.namer.interpret_name(fn+'.spec')
 		self.spec_version = None
-		#! DEVELOPMENT NOTE. when writing new spec files add the check here instead of below.
+		#! DEVELOPMENT NOTE: the following sequence classifies and converts spec files to post
+		#! ... could we redesign the omnicalc data structure to handle these conversions?
+		if set(self.specs.keys())=={'calc','meta','slice'}: self.spec_version = 3
 		# first we determine the version
-		if all(['slice' in self.specs,'specs' in self.specs,
+		elif all(['slice' in self.specs,'specs' in self.specs,
 			'calc' in self.specs and 'calc_name' in self.specs['calc']]): self.spec_version = 2
 		# version one spec files just have calculation specs in the top level. this was updated because 
 		# ... it is much more robust to save slice information in the spec file in case of naming issues, 
@@ -438,6 +467,7 @@ class PostData:
 			calcname = self.specs['calc']['calc_name']
 			# only load calculation specs since slices will be compared independently
 			calc_specs = {'specs':self.specs['specs']}
+			#import ipdb;ipdb.set_trace()
 			# build a calculation
 			self.calc = Calculation(name=calcname,calc_specs=calc_specs)
 			# build a slice from the version 2 specification
@@ -469,6 +499,14 @@ class PostData:
 			except: sn = 'missing simulation'
 			# we currently match legacy_spec_v2 but we could add a key to match a separate one
 			self.slice = Slice(kind='alternate',data=dict(slice_raw,sn=sn))
+		elif self.spec_version==3:
+			sn = self.specs['meta']['sn']
+			slice_raw = self.specs['slice']
+			self.slice = Slice(kind='alternate',data=dict(slice_raw,sn=sn))
+			self.calc = Calculation(name=self.specs['calc']['name'],
+				#! awkward to have an extra specs keyword below
+				calc_specs={'specs':self.specs['calc']['specs']})
+			#### import ipdb;ipdb.set_trace()
 		else: raise Exception('invalid spec version %s'%self.spec_version)
 		return
 
@@ -501,7 +539,7 @@ class PostDataLibrary:
 				# if this is a datspec file we find its pair and read the spec file
 				if namedat['dat_type']=='datspec':
 					basename = self.get_twin(name,('dat','spec'))
-					this_datspec = PostData(fn=basename,dn=self.where)
+					this_datspec = PostData(fn=basename,dn=self.where,style='read')
 					if this_datspec.valid: self.toc[basename] = this_datspec
 					#! handle invalid datspecs?
 					else: self.toc[basename] = {}
@@ -523,8 +561,8 @@ class PostDataLibrary:
 		# search posts for the correct calculations
 		candidates = [key for key,val in self.posts().items() 
 			# we match jobs by name (since specs can be the same accross calculations), specs, and slice
-			if ((job.calc.specs!={} and val.calc==job.calc) and val.calc.name==job.calc.name)
-			and val.slice==job.slice]
+			if ((job.calc.specs!={} and val.calc==job.calc) or job.calc.specs=={}) 
+			and val.calc.name==job.calc.name and val.slice==job.slice]
 		if len(candidates)>1: raise Exception('multiple matches for job %s'%job)
 		elif len(candidates)==0: 
 
@@ -892,7 +930,7 @@ class WorkSpace:
 		# call the header script with a flag for legacy execution
 		bash('./%s %s %s NO_AUTOPLOT'%(header_script,script_name,plotname))
 
-	def simplify_members_for_plotting(self):
+	def plot_prepare(self):
 		"""Rename internal variables for brevity in plot scripts."""
 		self.meta = self.metadata.meta
 		self.vars = self.metadata.variables
@@ -940,8 +978,59 @@ class WorkSpace:
 		if plotrun.routine==(): plotrun.routine = None
 		if plotspecs: raise Exception('unprocessed plotspecs %s'%plotspecs)
 		if kwargs_plot: raise Exception('unprocessed plotting kwargs %s'%kwargs_plot)
-		self.simplify_members_for_plotting()
+		self.plot_prepare()
 		plotrun.autoplot(out=out)
+
+	def prepare_compute(self,jobs):
+		"""
+		Prepare and simulate the calculations to prevent name collisions.
+
+		pseudocode
+			prepare and hold a list of result file names
+			propose new names based on calculations
+			queue up a bunch of spec files in the new format
+			write the spec files with dummy dat files
+			reread everything to make sure it all works and passes the compute test
+			then delete the data and rewrite it all
+		"""
+		#!? check for missing twins?
+		# assemble a list of result file names in order to generate new ones
+		post_fns = [os.path.basename(v.files['spec']) for k,v in self.post.posts().items()]
+		# track spec files for each basename
+		spec_toc = {}
+		for fn in post_fns:
+			basename = re.match('^(.+)\.n\d+\.spec$',fn).group(1)
+			if basename not in spec_toc: spec_toc[basename] = []
+			spec_toc[basename].append(fn)
+		for k,v in spec_toc.items(): spec_toc[k] = sorted(v)
+
+		#! temporary
+		raw_jobs = dict()
+		# loop over jobs and register filenames
+		for job in jobs:
+			#! style will be updated
+			basename = namer.basename(job,style=('standard','datspec'))
+			# prepare suffixes for new dat files
+			keys = [int(re.match('^%s\.n(\d+)\.spec$'%basename,key).group(1)) 
+				for key in spec_toc.get(basename,[]) if re.match('^%s'%basename,key)]
+			if keys and not sorted([int(i) for i in keys])==list(range(len(keys))):
+				raise Exception('non sequential keys found for data objects prefixed with %s'%basename)
+			# make the new filename
+			fn = '%s.n%d.spec'%(basename,len(keys))
+			if basename not in spec_toc: spec_toc[basename] = []
+			# save the filename so new files give unique spec file names
+			spec_toc[basename].append(fn)
+			# convert element slice into a new version three style
+			new_slice = Slice(kind='alternate',data=job.slice.data['val'])
+			# designing the new version three (v3) spec format here
+			sn = job.slice.data['sn']
+			spec_new = dict(
+				meta={'spec_version':3,'sn':job.slice.data['sn']},
+				slice=job.slice.data['val'],calc={'name':job.calc.name,'specs':job.calc.specs})
+			# create the new result file
+			job.result = PostData(fn=fn,dn=self.postdir,style='new',specs=spec_new)
+
+		import ipdb;ipdb.set_trace()
 
 	def prelim(self):
 		"""Preliminary materials for compute and plot."""
@@ -983,8 +1072,32 @@ class WorkSpace:
 		if queue_computes: 
 			status('there are %d incomplete jobs'%len(queue_computes),tag='status')
 			asciitree(dict(pending_calculations=list(set([i.calc.name for i in queue_computes]))))
-			import ipdb;ipdb.set_trace()
-			raise Exception('dev')
+			if 0: 
+				raw_input('continue?')
+				self.prepare_compute(queue_computes)
+			else: 
+				job = queue_computes[0]
+				keys = [key for key,val in self.post.posts().items() if val.calc.name==job.calc.name and val.slice==job.slice]
+				key = keys[0]
+				print(keys)
+				val = self.post.toc[key]
+				import ipdb;ipdb.set_trace()
+
+			#raise Exception('dev')
+			"""
+			debugging this:
+				job = queue_computes[0]
+				key = [key for key,val in self.post.posts().items() if val.calc.name==job.calc.name and val.slice==job.slice][0]
+				val = self.post.toc[key]
+				job.calc vs val.calc
+				key = 'v650.100000-600000-160.lipids.pbcmol.undulations.n1';val = self.post.toc[key]
+			*** current issue is that slice comes in as legacy_spec_v2
+			***** now way bigger problems because cal names are wrong ...
+
+			self.post.toc['v650.100000-600000-160.lipids.pbcmol.undulations.n1'].calc==job.calc
+			
+
+			"""
 
 	def plot(self):
 		"""
@@ -1014,11 +1127,6 @@ class WorkSpace:
 ### note that these are imported by omni/cli.py and exposed to makeface
 
 def compute(meta=None):
-	global work
-	if not work: 
-		work = WorkSpace(compute=True,meta_cursor=meta)
-
+	work = WorkSpace(compute=True,meta_cursor=meta)
 def plot(*args,**kwargs):
-	global work
-	if not work: 
-		work = WorkSpace(plot=True,plot_args=args,plot_kwargs=kwargs)
+	work = WorkSpace(plot=True,plot_args=args,plot_kwargs=kwargs)

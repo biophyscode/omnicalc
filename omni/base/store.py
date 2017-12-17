@@ -2,6 +2,7 @@
 
 """
 Storage functions. Require a workspace in globals so do an import/export.
+More generic data manipulations are found in datapack.
 """
 
 import os,sys,re,glob,json,collections,importlib
@@ -187,6 +188,7 @@ def alternate_module(**kwargs):
 
 def uniquify(array):
     """Get unique rows in an array."""
+    #! this is likely deprecated. see art_ptdins.py for a newer version and not that unique now accepts axis
     #---contiguous array trick
     alt = np.ascontiguousarray(array).view(
         np.dtype((np.void,array.dtype.itemsize*array.shape[1])))
@@ -225,3 +227,33 @@ def load(name,cwd=None,verbose=False,exclude_slice_source=False,filename=False):
 	if filename: data['filename'] = fn
 	rawdat.close()
 	return data
+
+def store(obj,name,path,attrs=None,print_types=False,verbose=True):
+	"""
+	Use h5py to store a dictionary of data.
+	"""
+	import h5py
+	#---! cannot do unicode in python 3. needs fixed
+	if type(obj) != dict: raise Exception('except: only dictionaries can be stored')
+	if os.path.isfile(path+'/'+name): raise Exception('except: file already exists: '+path+'/'+name)
+	path = os.path.abspath(os.path.expanduser(path))
+	if not os.path.isdir(path): os.mkdir(path)
+	fobj = h5py.File(path+'/'+name,'w')
+	for key in obj.keys(): 
+		if print_types: 
+			print('[WRITING] '+key+' type='+str(type(obj[key])))
+			print('[WRITING] '+key+' dtype='+str(obj[key].dtype))
+		#---python3 cannot do unicode so we double check the type
+		#---! the following might be wonky
+		if (type(obj[key])==np.ndarray and re.match('^str|^unicode',obj[key].dtype.name) 
+			and 'U' in obj[key].dtype.str):
+			obj[key] = obj[key].astype('S')
+		try: dset = fobj.create_dataset(key,data=obj[key])
+		except: 
+			#---multidimensional scipy ndarray must be promoted to a proper numpy list
+			try: dset = fobj.create_dataset(key,data=obj[key].tolist())
+			except: raise Exception("failed to write this object so it's probably not numpy"+
+				"\n"+key+' type='+str(type(obj[key]))+' dtype='+str(obj[key].dtype))
+	if attrs != None: fobj.create_dataset('meta',data=np.string_(json.dumps(attrs)))
+	if verbose: status('[WRITING] '+path+'/'+name)
+	fobj.close()

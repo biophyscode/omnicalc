@@ -287,3 +287,10 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False):
 			else: print(str(obj[key]))#print('unhandled tree object')
 	else: print(str(obj))#print('unhandled tree object')
 	if not recursed: print('\n')
+
+def json_type_fixer(series):
+	"""Cast integer strings as integers, recursively. We also fix 'None'."""
+	for k,v in series.items():
+		if type(v) == dict: json_type_fixer(v)
+		elif type(v)in str_types and v.isdigit(): series[k] = int(v)
+		elif type(v)in str_types and v=='None': series[k] = None

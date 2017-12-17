@@ -59,7 +59,7 @@ def replot():
 	# previously we checked autoplot flags from the plots metadata here
 	# ... however now the autoplotting is controlled in several places in the workspace and passed as a flag
 	if not use_autoplot:
-		work.simplify_members_for_plotting()		
+		work.plot_prepare()		
 		replot_old_school()
 		return
 

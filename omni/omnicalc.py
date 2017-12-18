@@ -14,8 +14,8 @@ from config import read_config,bash
 from datapack import json_type_fixer
 from base.tools import catalog,delve,str_or_list,str_types,status
 from base.hypothesis import hypothesis
-from datapack import asciitree,delveset
-from structs import NamingConvention,TrajectoryStructure,dictsub,NoisyOmnicalcObject
+from datapack import asciitree,delveset,dictsub
+from structs import NamingConvention,Calculation,TrajectoryStructure,NoisyOmnicalcObject
 from base.autoplotters import inject_supervised_plot_tools
 from base.store import load,store
 
@@ -171,37 +171,6 @@ class MetaData:
 		sns = []
 		for name in names: sns.extend(self.collections.get(name,[]))
 		return sorted(list(set(sns)))
-
-class Calculation(NoisyOmnicalcObject):
-	"""
-	A calculation, including settings.
-	"""
-	def __init__(self,**kwargs):
-		"""Construct a calculation object."""
-		self.name = kwargs.pop('name')
-		# the calculation specs includes slice/group information
-		# the settings or specs which uniquely describe the calculation are in a subdictionary
-		self.calc_specs = kwargs.pop('calc_specs')
-		self.specs = self.calc_specs.pop('specs',{})
-		#! save for later?
-		self.specs_raw = copy.deepcopy(self.specs)
-		#! remove simulation name and/or group from specs
-		# we save the stubs because they provide an alternate name for elements in a loop
-		self.stubs = kwargs.pop('stubs',None)
-		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
-		# check for completeness
-		if self.calc_specs.keys()>={'collections','slice_name'}:
-			raise Exception('this calculation (%s) is missing some keys: %s'%(self.name,self.calc_specs))
-		#! consolidate calls to the type fixer?
-		json_type_fixer(self.specs)
-
-	def __eq__(self,other):
-		"""See if calculations are equivalent."""
-		#! note that calculations are considered identical if they have the same specs
-		#! ... we disregard the calc_specs because they include collections, slice names (which might change)
-		#! ... and the group name. we expect simulation and group and other details to be handled on 
-		#! ... slice comparison
-		return self.specs==other.specs
 
 class ComputeJob:
 	def __repr__(self): return str(self.__dict__)
@@ -392,7 +361,12 @@ class Slice(TrajectoryStructure):
 	"""A class which holds trajectory data of many kinds."""
 	pass
 
-class PostData:
+class PostData(NoisyOmnicalcObject):
+
+	"""
+	Represent a calculation result.
+	"""
+
 	def __init__(self,**kwargs):
 		"""..."""
 		self.style = kwargs.pop('style')
@@ -423,15 +397,27 @@ class PostData:
 		self.spec_version = self.specs.get('meta',{}).get('spec_version',3)
 		# build the calculation
 		self.calc = Calculation(name=self.specs.get('calc',{}).get('name','MISSING CALC NAME'),
-			calc_specs=self.specs.get('calc',{}).get('specs','MISSING CALC SPECS'))
-
-		############################### 
-
-		# write an empty result file
-		store(obj={},name=re.sub('\.spec$','.dat',self.fn),path=self.dn,attrs={},verbose=True)
-		# write a dummy spec file and dat file
-		with open(os.path.join(self.dn,self.fn),'w') as fp: 
-			fp.write(json.dumps(self.specs))
+			#! awkward construction below
+			calc_specs={'specs':self.specs.get('calc',{}).get('specs','MISSING CALC SPECS')})
+		dat_fn = re.sub('\.spec$','.dat',self.fn)
+		self.files = dict(dat=os.path.join(self.dn,dat_fn),
+			spec=os.path.join(self.dn,self.fn))
+		for fn in self.files.values():
+			if os.path.isfile(fn): raise Exception('cannot preallocate filename %s'%fn)
+		# write an empty result and spec file before any computation to preempt file errors
+		try:
+			# the compute function will change the stle from new to read after rewriting the dat file
+			store(obj={},name=os.path.basename(self.files['dat']),path=self.dn,attrs={},verbose=True)
+		except: raise Exception('failed to prewrite file %s with PostData: %s'%(
+			self.files['dat'],self.__dict__))
+		try:
+			# write a dummy spec file
+			with open(self.files['spec'],'w') as fp: 
+				fp.write(json.dumps(self.specs))
+		except: raise Exception('failed to prewrite file %s with PostData: %s'%(
+			self.files['spec'],self.__dict__))
+		# hold the basename for entry into the PostDataLibrary
+		self.basename = re.sub('\.spec$','',self.fn)
 
 	def parse(self,**kwargs):
 		"""
@@ -463,7 +449,6 @@ class PostData:
 			calcname = self.specs['calc']['calc_name']
 			# only load calculation specs since slices will be compared independently
 			calc_specs = {'specs':self.specs['specs']}
-			#import ipdb;ipdb.set_trace()
 			# build a calculation
 			self.calc = Calculation(name=calcname,calc_specs=calc_specs)
 			# build a slice from the version 2 specification
@@ -557,76 +542,71 @@ class PostDataLibrary:
 
 	def search_results(self,job,debug=True):
 		"""Search the posts for a particular result."""
-		# search posts for the correct calculations
 		candidates = [key for key,val in self.posts().items() 
-			# we match jobs by name (since specs can be the same accross calculations), specs, and slice
-			if ((job.calc.specs!={} and val.calc==job.calc) or job.calc.specs=={}) 
-			and val.calc.name==job.calc.name and val.slice==job.slice]
-		if len(candidates)>1: raise Exception('multiple matches for job %s'%job)
-		elif len(candidates)==0: 
-
-			###
-			### LEGACY WARNING: the following is for legacy use, particularly a large PtdIns dataset
-			### debugging ptdins resulted in 847 fails, then 225, then 152, then 82, then 28 hence the stages
-			### note that this should all be farmed out to structs.py when final data structures are decided!
-
-			#! skip everything that follows without the special password!
-			if not self.director.get('legacy_specs',False): return
-
-			# special block to handle legacy specs which might have extra data in them
-			#! note that the new spec version 3 has to be able to handle the possibility that 
-			#! ... users will want to add more data to the calculation spec for later, to handle versioning
-			#! ... or other arbitrary parameters
-			possibles = [key for key,val in self.posts().items() 
-				if val.calc.name==job.calc.name and val.slice.data['sn']==job.slice.data['sn']]
-			# very strict requirements for returning a match. the match must be a (1) a superset of the 
-			# ... calculation and (2) the slice data must be a subset of the result slice and (3) we must
-			# ... match to a version 1 spec because that is the root of this slippage and (4) we need 
-			# ... to return a unique match
-			possibles_subsets = [key for key in possibles if dictsub(job.calc.specs,self.toc[key].specs)]
-			# try again with version restruction
-			if len(possibles_subsets)!=1:
-				possibles_subsets = [key for key in possibles 
-				if dictsub(job.calc.specs,self.toc[key].specs) 
-				and dictsub(job.slice.data['val'],self.toc[key].slice.data)]
-			# try again without group
-			if len(possibles_subsets)!=1:
-				possibles_subsets = [key for key in possibles 
-				if dictsub(job.calc.specs,self.toc[key].specs) 
-				and dictsub(dict([(i,j) for i,j in job.slice.data['val'].items() 
-					if i not in ['group','pbc']]),self.toc[key].slice.data)]
-			# try again with slice information
-			if len(possibles_subsets)!=1:
-				possibles_subsets = [key for key in possibles 
-				if dictsub(job.calc.specs,self.toc[key].specs) 
-				and dictsub(job.slice.data['val'],self.toc[key].slice.data) 
-				and self.toc[key].spec_version==1]
-			# the hydration calaculation from the ptdins project had specs in the wrong place
-			if len(possibles_subsets)!=1:
-				possibles_subsets = [key for key in possibles 
-				if dictsub(job.calc.specs,self.toc[key].specs['specs'])]
-			if len(possibles_subsets)==1: return possibles_subsets[0]
-			else: 
-				if debug:
-					try: ob = self.toc[possibles[0]]
-					except: pass
-					print('\n\n[DEBUG] check out possibles and ob to begin debugging')
-					import ipdb;ipdb.set_trace()
-				return None
+			# we find a match by matching the slice and calc, both of which have custom equivalence operators
+			if val.slice==job.slice and val.calc==job.calc]
+		if len(candidates)!=1: return False
 		else: return self.toc[candidates[0]]
 
-	#!!!!
-	def search_slices(self,**kwargs):
-		"""Find a specific slice."""
-		slices,results = self.slices(),[]
-		#---flatten kwargs
-		target = copy.deepcopy(kwargs)
-		target.update(**target.pop('spec',{}))
-		flats = dict([(slice_key,val.flat()) for slice_key,val in slices.items()])
-		results = [key for key in flats if flats[key]==target]
-		#---return none for slices that still need to be made
-		if not results: return []
-		return results
+		#! saving the following for legacy testing on PtdIns project
+		if False:
+			# search posts for the correct calculations
+			candidates = [key for key,val in self.posts().items() 
+				# we match jobs by name (since specs can be the same accross calculations), specs, and slice
+				if ((job.calc.specs!={} and val.calc==job.calc) or job.calc.specs=={}) 
+				and val.calc.name==job.calc.name and val.slice==job.slice]
+			if len(candidates)>1: raise Exception('multiple matches for job %s'%job)
+			elif len(candidates)==0: 
+
+				###
+				### LEGACY WARNING: the following is for legacy use, particularly a large PtdIns dataset
+				### debugging ptdins resulted in 847 fails, then 225, then 152, then 82, then 28 hence the stages
+				### note that this should all be farmed out to structs.py when final data structures are decided!
+
+				#! skip everything that follows without the special password!
+				if not self.director.get('legacy_specs',False): return
+
+				# special block to handle legacy specs which might have extra data in them
+				#! note that the new spec version 3 has to be able to handle the possibility that 
+				#! ... users will want to add more data to the calculation spec for later, to handle versioning
+				#! ... or other arbitrary parameters
+				possibles = [key for key,val in self.posts().items() 
+					if val.calc.name==job.calc.name and val.slice.data['sn']==job.slice.data['sn']]
+				# very strict requirements for returning a match. the match must be a (1) a superset of the 
+				# ... calculation and (2) the slice data must be a subset of the result slice and (3) we must
+				# ... match to a version 1 spec because that is the root of this slippage and (4) we need 
+				# ... to return a unique match
+				possibles_subsets = [key for key in possibles if dictsub(job.calc.specs,self.toc[key].specs)]
+				# try again with version restruction
+				if len(possibles_subsets)!=1:
+					possibles_subsets = [key for key in possibles 
+					if dictsub(job.calc.specs,self.toc[key].specs) 
+					and dictsub(job.slice.data['val'],self.toc[key].slice.data)]
+				# try again without group
+				if len(possibles_subsets)!=1:
+					possibles_subsets = [key for key in possibles 
+					if dictsub(job.calc.specs,self.toc[key].specs) 
+					and dictsub(dict([(i,j) for i,j in job.slice.data['val'].items() 
+						if i not in ['group','pbc']]),self.toc[key].slice.data)]
+				# try again with slice information
+				if len(possibles_subsets)!=1:
+					possibles_subsets = [key for key in possibles 
+					if dictsub(job.calc.specs,self.toc[key].specs) 
+					and dictsub(job.slice.data['val'],self.toc[key].slice.data) 
+					and self.toc[key].spec_version==1]
+				# the hydration calaculation from the ptdins project had specs in the wrong place
+				if len(possibles_subsets)!=1:
+					possibles_subsets = [key for key in possibles 
+					if dictsub(job.calc.specs,self.toc[key].specs['specs'])]
+				if len(possibles_subsets)==1: return possibles_subsets[0]
+				else: 
+					if debug:
+						try: ob = self.toc[possibles[0]]
+						except: pass
+						print('\n\n[DEBUG] check out possibles and ob to begin debugging')
+						import ipdb;ipdb.set_trace()
+					return None
+			else: return self.toc[candidates[0]]
 
 	#!!!!
 	def get_twin(self,name,pair):
@@ -701,10 +681,12 @@ class PlotSpec(dict):
 		self._get_cursor()
 	def _get_cursor(self):
 		# get plot spec or fall back to calculations
-		self.cursor = self.metadata.plots.get(self.plotname,self.metadata.calculations.get(self.plotname,None))
+		self.cursor = self.metadata.plots.get(self.plotname,
+			self.metadata.calculations.get(self.plotname,None))
 		if not self.cursor: raise Exception('failed to find plot or calculation "%s"'%self.plotname)
 	def sns(self):
-		return list(set(self.metadata.get_simulations_in_collection(self.cursor.get('collections'))))
+		return list(set(self.metadata.get_simulations_in_collection(
+			*str_or_list(self.cursor.get('collections',[])))))
 	def get_calcnames(self):
 		# get calculation names from a key in a plot object
 		if self.plotname in self.metadata.plots:
@@ -847,16 +829,29 @@ class WorkSpace:
 		"""
 		whittle_calc = kwargs.pop('whittle_calc',None)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
+		# make sure you have the right plotname
+		if plotname!=self.plotname:
+			#! ensure changes to the plotname do not change the simulations we require
+			#sns_previous,plotname_previous = list(self.sns()),str(plotname)
+			# the plotname is needed by other functions namely self.sns
+			self.plotname = plotname
+			# once we have a plotname we can generate a plotspec
+			self.plotspec = PlotSpec(metadata=self.metadata,plotname=self.plotname,calcs=self.calcs)
+			#if set(sns_previous)!=set(list(self.sns())):
+			#	raise Exception('changing from %s to %s caused simulation names to change from %s to %s'%(
+			#		plotname_previous,self.plotname,sns_previous,self.sns()))
 		if whittle_calc: raise Exception('dev')
 		# we always run the compute loop to make sure calculations are complete but also to get the jobs
+		# note that compute runs may be redundant if we call plotload more than once but it avoids repeats
 		self.compute()
 		sns = self.plotspec.sns()
 		# many plot functions use a deprecated work.plots[plotname]['specs'] call to get details about 
 		# ... the plots from the metadata. to support this feature we add the cursor from the plotspec
 		# ... object to the workspace. these calls must happen after plotload is called, but we prefer
 		# ... to wait until the plotspec is made. if this is a problem the plotspec should be made during
-		# ... plot_supervised. note  that we only supply specs via plotname but it will fall back to cals
-		self.plots = {self.plotname:self.plotspec.cursor}
+		# ... plot_supervised. note  that we only supply specs via plotname but it will fall back to calcs
+		if not hasattr(self,'plots'): self.plots = {}
+		if self.plotname not in self.plots: self.plots[self.plotname] = copy.deepcopy(self.plotspec.cursor)
 		# get a list of calculation names
 		calcnames = self.plotspec.get_calcnames()
 		# package the data for export to the plot environment
@@ -885,8 +880,11 @@ class WorkSpace:
 				if len(jobs)==0:
 					import ipdb;ipdb.set_trace()
 				if len(jobs)==0: 
-					raise Exception('dev. cannot find calculation %s for simulation %s'%(calcname,sn))
-				elif len(jobs)>1: raise Exception('too many matches')
+					raise Exception('DEVELOPMENT NOTE. EXPLAIN THIS BETTER'+
+						' cannot find calculation %s for simulation %s'%(calcname,sn))
+				elif len(jobs)>1: 
+					raise Exception(
+						'DEVELOPMENT NOTE. EXPLAIN THIS BETTER. your plot request is not specific enough')
 				else: job = jobs[0]
 				# add the data to the bundle
 				if calcname not in bundle['data']: bundle['data'][calcname] = {}
@@ -988,14 +986,6 @@ class WorkSpace:
 	def prepare_compute(self,jobs):
 		"""
 		Prepare and simulate the calculations to prevent name collisions.
-
-		pseudocode
-			prepare and hold a list of result file names
-			propose new names based on calculations
-			queue up a bunch of spec files in the new format
-			write the spec files with dummy dat files
-			reread everything to make sure it all works and passes the compute test
-			then delete the data and rewrite it all
 		"""
 		#!? check for missing twins?
 		# assemble a list of result file names in order to generate new ones
@@ -1007,9 +997,6 @@ class WorkSpace:
 			if basename not in spec_toc: spec_toc[basename] = []
 			spec_toc[basename].append(fn)
 		for k,v in spec_toc.items(): spec_toc[k] = sorted(v)
-
-		#! temporary
-		raw_jobs = dict()
 		# loop over jobs and register filenames
 		for job in jobs:
 			#! style will be updated
@@ -1034,8 +1021,12 @@ class WorkSpace:
 				slice=job.slice.data,calc={'name':job.calc.name,'specs':job.calc.specs})
 			# create the new result file
 			job.result = PostData(fn=fn,dn=self.postdir,style='new',specs=spec_new)
-
-		import ipdb;ipdb.set_trace()
+			if job.result.basename in self.post.toc:
+				raise Exception('created a new PostData object but %s exists'%job.result.basename)
+			# register the result with the postdat library so we can simulate the compute loop
+			else: self.post.toc[job.result.basename] = job.result
+		# after make new postdata objects we want to check for new computations
+		self.check_compute(debug=True)
 
 	def prelim(self):
 		"""Preliminary materials for compute and plot."""
@@ -1045,6 +1036,29 @@ class WorkSpace:
 		self.prepare_namer()
 		# prepare a calculations object
 		self.calcs = Calculations(specs=self.metadata)
+
+	def check_compute(self,debug=False):
+		"""
+		See if we need to run any calculations.
+		"""
+		# save completed jobs as results
+		self.results,self.queue_computes = [],[]
+		# join jobs with results
+		for job in self.jobs:
+			# jobs have slices in alternate/calculation_request form and they must be fleshed out
+			# +++ COMPARE job slice to slices in the metadata
+			slice_match = self.slices.search(job.slice)
+			if not slice_match: 
+				raise Exception('failed to find the requested slice in the metadata: %s'%job.slice)
+			# replace the job slice with the metadata slice if we found a match
+			else: job.slice = slice_match
+			# search for a result
+			job.result = self.post.search_results(job=job)
+			if not job.result: 
+				# the debug mode throws an exception to indicate that the preemptive compute failed
+				if debug: raise Exception('failed to simulate compute loop for job %s'%job)
+				self.queue_computes.append(job)
+			else: self.results.append(job)
 
 	def compute(self,**kwargs):
 		"""
@@ -1060,27 +1074,12 @@ class WorkSpace:
 		# +++ BUILD slicemeta object (only uses the OmnicalcDataStructure for cross)
 		self.slices = SliceMeta(raw=self.metadata.slices,
 			slice_structures=self.metadata.director.get('slice_structures',{}))
-		# save completed jobs as results
-		self.results,queue_computes = [],[]
-		# join jobs with results
-		for job in self.jobs:
-			# jobs have slices in alternate/calculation_request form and they must be fleshed out
-			# +++ COMPARE job slice to slices in the metadata
-			slice_match = self.slices.search(job.slice)
-			if not slice_match: 
-				import ipdb;ipdb.set_trace()
-				raise Exception('failed to find the requested slice in the metadata: %s'%job.slice)
-			# replace the job slice with the metadata slice if we found a match
-			else: job.slice = slice_match
-			# search for a result
-			job.result = self.post.search_results(job=job)
-			if not job.result: queue_computes.append(job)
-			else: self.results.append(job)
-		if queue_computes: 
-			status('there are %d incomplete jobs'%len(queue_computes),tag='status')
-			asciitree(dict(pending_calculations=list(set([i.calc.name for i in queue_computes]))))
-			self.prepare_compute(queue_computes)
-		import ipdb;ipdb.set_trace()
+		self.check_compute()
+		# if we have incomplete jobs then run them
+		if self.queue_computes: 
+			status('there are %d incomplete jobs'%len(self.queue_computes),tag='status')
+			asciitree(dict(pending_calculations=list(set([i.calc.name for i in self.queue_computes]))))
+			self.prepare_compute(self.queue_computes)
 
 	def plot(self):
 		"""
@@ -1110,6 +1109,8 @@ class WorkSpace:
 ### note that these are imported by omni/cli.py and exposed to makeface
 
 def compute(meta=None):
+	status('generating workspace for compute',tag='status')
 	work = WorkSpace(compute=True,meta_cursor=meta)
 def plot(*args,**kwargs):
+	status('generating workspace for plot',tag='status')
 	work = WorkSpace(plot=True,plot_args=args,plot_kwargs=kwargs)

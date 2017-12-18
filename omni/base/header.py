@@ -29,6 +29,7 @@ if len(sys.argv)>3:
 		if sys.argv[3]=='NO_AUTOPLOT': use_autoplot = False
 		else: raise Exception('invalid arguments %s'%sys.argv)
 # updated call to the workspace signals that we do not need to run the plot because we are already here
+status('preparing workspace inside plot header',tag='status')
 work = WorkSpace(plot=True,plot_args=(plotname,),plot_kwargs=dict(header_caller=True))
 #---prepare variables for export into the global namepsace of the script
 from base.autoplotters import inject_supervised_plot_tools

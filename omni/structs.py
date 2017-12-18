@@ -9,11 +9,7 @@ annotations for data structures: "+++(build|translate|compare)"
 import re,copy
 
 from base.tools import catalog
-from datapack import asciitree,delveset,delve,str_types
-
-def dictsub(subset,superset): 
-	"""See if one dictionary is contained in another."""
-	return all(item in superset.items() for item in subset.items())
+from datapack import asciitree,delveset,delve,str_types,dictsub,json_type_fixer
 
 class NoisyOmnicalcObject:
 	def __repr__(self):
@@ -163,8 +159,6 @@ class TrajectoryStructure(OmnicalcDataStructure):
 
 	"""
 	Abstract definition for "slices" i.e. trajectories in omnicalc.
-	Initialization is handled by subclasses.
-	dev: no typechecking yet,
 	"""
 
 	# abstract trajectory structure
@@ -199,10 +193,8 @@ class TrajectoryStructure(OmnicalcDataStructure):
 		('slice_request_named','calculation_request'):['slice_name','sn','group'],
 		('post_spec_v2','slice_request_named'):['sn','group','pbc','start','end','skip'],}
 
-	#def _eq_calculation_request_slice_request_named(self,calc_request,slice_request):
-	#	import ipdb;ipdb.set_trace()
-
 	if False:
+
 		# the core structures provide the best detail
 		_flexible_structure_request = {
 			# structure definition for a standard slice made by omnicalc
@@ -235,8 +227,6 @@ class TrajectoryStructure(OmnicalcDataStructure):
 				'sn':'string','dat_type':'string','slice_type':'string',
 				'short_name':'string','start':'number','end':'number','skip':'number',},}
 
-	if False:
-
 		def __repr__(self):
 			asciitree({self.__class__.__name__:self.__dict__})
 			return 'omnicalc %s object at %d'%(self.__class__.__name__,id(self))
@@ -255,6 +245,39 @@ class TrajectoryStructure(OmnicalcDataStructure):
 				ls.data.get('dat_type',None)=='gmx',ls.data.get('slice_type',None)=='standard',
 				dictsub(sl.data['val'],ls.data),sl.data['sn']==ls.data['sn']]
 			return all(conditions)
+
+class Calculation(NoisyOmnicalcObject):
+	"""
+	A calculation, including settings.
+	Note that this class is customized rather than derived from OmnicalcDataStructure
+	"""
+	def __init__(self,**kwargs):
+		"""Construct a calculation object."""
+		self.name = kwargs.pop('name')
+		# the calculation specs includes slice/group information
+		# the settings or specs which uniquely describe the calculation are in a subdictionary
+		self.calc_specs = kwargs.pop('calc_specs')
+		self.specs = self.calc_specs.pop('specs',{})
+		#! save for later?
+		self.specs_raw = copy.deepcopy(self.specs)
+		#! remove simulation name and/or group from specs
+		# we save the stubs because they provide an alternate name for elements in a loop
+		self.stubs = kwargs.pop('stubs',None)
+		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
+		# check for completeness
+		if self.calc_specs.keys()>={'collections','slice_name'}:
+			raise Exception('this calculation (%s) is missing some keys: %s'%(self.name,self.calc_specs))
+		#! consolidate calls to the type fixer?
+		json_type_fixer(self.specs)
+
+	def __eq__(self,other):
+		"""See if calculations are equivalent."""
+		#! note that calculations are considered identical if they have the same specs
+		#! ... we disregard the calc_specs because they include collections, slice names (which might change)
+		#! ... and the group name. we expect simulation and group and other details to be handled on 
+		#! ... slice comparison
+		return self.specs==other.specs
+
 
 #!!! RIPE FOR REFACTOR
 ######################

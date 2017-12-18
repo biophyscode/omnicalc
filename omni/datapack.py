@@ -290,6 +290,10 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False):
 	else: print(str(obj))#print('unhandled tree object')
 	if not recursed: print('\n')
 
+def dictsub(subset,superset): 
+	"""See if one dictionary is contained in another."""
+	return all(item in superset.items() for item in subset.items())
+
 def json_type_fixer(series):
 	"""Cast integer strings as integers, recursively. We also fix 'None'."""
 	for k,v in series.items():

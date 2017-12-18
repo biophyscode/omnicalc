@@ -381,7 +381,8 @@ class Calculations:
 				# loop over simulations
 				for sn in sns:
 					request_slice = dict(sn=sn,slice_name=slice_name,group=group_name)
-					sliced = Slice(kind='alternate',data=request_slice)
+					# +++ BUILD slice object
+					sliced = Slice(data=request_slice)
 					# join the slice and calculation in a job
 					jobs.append(ComputeJob(slice=sliced,calc=calc))
 		# the caller should save the result
@@ -389,14 +390,7 @@ class Calculations:
 
 class Slice(TrajectoryStructure):
 	"""A class which holds trajectory data of many kinds."""
-	def __init__(self,kind,data):
-		"""..."""
-		self.kind = kind
-		self.data = data
-		self.style = self.classify(self.data)
-	def __eq__(self,other):
-		"""Match slices."""
-		return self.test_equality(self,other)
+	pass
 
 class PostData:
 	def __init__(self,**kwargs):
@@ -423,16 +417,18 @@ class PostData:
 		# build a slice
 		slice_raw = self.specs.get('slice',{})
 		sn = self.specs.get('meta',{}).get('sn','MISSING SN')
-		self.slice = Slice(kind='alternate',data=dict(slice_raw,sn=sn))
+		# +++ BUILD slice object
+		self.slice = Slice(data=dict(slice_raw,sn=sn))
 		# get the specification version to mimic the parsed spec files
 		self.spec_version = self.specs.get('meta',{}).get('spec_version',3)
 		# build the calculation
 		self.calc = Calculation(name=self.specs.get('calc',{}).get('name','MISSING CALC NAME'),
 			calc_specs=self.specs.get('calc',{}).get('specs','MISSING CALC SPECS'))
 
+		############################### 
+
 		# write an empty result file
 		store(obj={},name=re.sub('\.spec$','.dat',self.fn),path=self.dn,attrs={},verbose=True)
-
 		# write a dummy spec file and dat file
 		with open(os.path.join(self.dn,self.fn),'w') as fp: 
 			fp.write(json.dumps(self.specs))
@@ -477,8 +473,9 @@ class PostData:
 				#! hacking the problem of getting simulation name from shortname
 				try: sn = dict([(j,i) for i,j in self.namer.sns_toc.items()])[slice_raw['short_name']]
 				except: sn = 'missing simulation'
-				self.slice = Slice(kind='alternate',data=dict(slice_raw,sn=sn))
-				#! we could check the postprocessing name to see if it matches its own slice data
+				# +++ BUILD slice object
+				self.slice = Slice(data=dict(slice_raw,sn=sn))
+				#! we could check the postprocessing name here to see if it matches its own slice data
 			else: raise Exception('dev')
 		elif self.spec_version==1:
 			# for version 1 spec files we have to get important information from the filename
@@ -498,15 +495,16 @@ class PostData:
 			try: sn = dict([(j,i) for i,j in self.namer.sns_toc.items()])[slice_raw['short_name']]
 			except: sn = 'missing simulation'
 			# we currently match legacy_spec_v2 but we could add a key to match a separate one
-			self.slice = Slice(kind='alternate',data=dict(slice_raw,sn=sn))
+			# +++ BUILD slice object
+			self.slice = Slice(data=dict(slice_raw,sn=sn))
 		elif self.spec_version==3:
 			sn = self.specs['meta']['sn']
 			slice_raw = self.specs['slice']
-			self.slice = Slice(kind='alternate',data=dict(slice_raw,sn=sn))
+			# +++ BUILD slice object
+			self.slice = Slice(data=dict(slice_raw,sn=sn))
 			self.calc = Calculation(name=self.specs['calc']['name'],
 				#! awkward to have an extra specs keyword below
 				calc_specs={'specs':self.specs['calc']['specs']})
-			#### import ipdb;ipdb.set_trace()
 		else: raise Exception('invalid spec version %s'%self.spec_version)
 		return
 
@@ -548,6 +546,7 @@ class PostDataLibrary:
 				else: 
 					# decided to pair gro/xtc because they are always made/used together
 					basename = self.get_twin(name,('xtc','gro'))
+					# +++ BUILD slice object
 					self.toc[basename] = 'MAKE SLICE'#Slice(name=basename,namedat=namedat)
 
 	def limbo(self): return dict([(key,val) for key,val in self.toc.items() if val=={}])
@@ -665,7 +664,12 @@ class SliceMeta(TrajectoryStructure):
 			slices_raw = self.cross(style=style,data=slices_spec)
 			# make a formal slice element out of the raw data
 			for key,val in slices_raw.items(): 
-				self.toc.append(Slice(kind='element',data=dict(key=key,val=val,sn=sn)))
+				#! discarding groups here!!!
+				if key[0]!='slices': continue
+				# +++ TRRANFORM a cross output into a slice
+				slice_transformed = dict(val,sn=sn,slice_name=key[1])
+				# +++ BUILD slice object
+				self.toc.append(Slice(slice_transformed))
 
 	def search(self,candidate):
 		"""Search the requested slices."""
@@ -1021,12 +1025,13 @@ class WorkSpace:
 			# save the filename so new files give unique spec file names
 			spec_toc[basename].append(fn)
 			# convert element slice into a new version three style
-			new_slice = Slice(kind='alternate',data=job.slice.data['val'])
+			# +++ BUILD slice object
+			new_slice = Slice(data=job.slice.data)
 			# designing the new version three (v3) spec format here
 			sn = job.slice.data['sn']
 			spec_new = dict(
 				meta={'spec_version':3,'sn':job.slice.data['sn']},
-				slice=job.slice.data['val'],calc={'name':job.calc.name,'specs':job.calc.specs})
+				slice=job.slice.data,calc={'name':job.calc.name,'specs':job.calc.specs})
 			# create the new result file
 			job.result = PostData(fn=fn,dn=self.postdir,style='new',specs=spec_new)
 
@@ -1052,6 +1057,7 @@ class WorkSpace:
 		# parse the post-processing data
 		self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director)
 		# formalize the slice requests
+		# +++ BUILD slicemeta object (only uses the OmnicalcDataStructure for cross)
 		self.slices = SliceMeta(raw=self.metadata.slices,
 			slice_structures=self.metadata.director.get('slice_structures',{}))
 		# save completed jobs as results
@@ -1059,6 +1065,7 @@ class WorkSpace:
 		# join jobs with results
 		for job in self.jobs:
 			# jobs have slices in alternate/calculation_request form and they must be fleshed out
+			# +++ COMPARE job slice to slices in the metadata
 			slice_match = self.slices.search(job.slice)
 			if not slice_match: 
 				import ipdb;ipdb.set_trace()
@@ -1072,32 +1079,8 @@ class WorkSpace:
 		if queue_computes: 
 			status('there are %d incomplete jobs'%len(queue_computes),tag='status')
 			asciitree(dict(pending_calculations=list(set([i.calc.name for i in queue_computes]))))
-			if 0: 
-				raw_input('continue?')
-				self.prepare_compute(queue_computes)
-			else: 
-				job = queue_computes[0]
-				keys = [key for key,val in self.post.posts().items() if val.calc.name==job.calc.name and val.slice==job.slice]
-				key = keys[0]
-				print(keys)
-				val = self.post.toc[key]
-				import ipdb;ipdb.set_trace()
-
-			#raise Exception('dev')
-			"""
-			debugging this:
-				job = queue_computes[0]
-				key = [key for key,val in self.post.posts().items() if val.calc.name==job.calc.name and val.slice==job.slice][0]
-				val = self.post.toc[key]
-				job.calc vs val.calc
-				key = 'v650.100000-600000-160.lipids.pbcmol.undulations.n1';val = self.post.toc[key]
-			*** current issue is that slice comes in as legacy_spec_v2
-			***** now way bigger problems because cal names are wrong ...
-
-			self.post.toc['v650.100000-600000-160.lipids.pbcmol.undulations.n1'].calc==job.calc
-			
-
-			"""
+			self.prepare_compute(queue_computes)
+		import ipdb;ipdb.set_trace()
 
 	def plot(self):
 		"""

@@ -9,7 +9,7 @@ annotations for data structures: "+++(build|translate|compare)"
 import re,copy
 
 from base.tools import catalog
-from datapack import asciitree,delveset,delve
+from datapack import asciitree,delveset,delve,str_types
 
 def dictsub(subset,superset): 
 	"""See if one dictionary is contained in another."""
@@ -21,7 +21,7 @@ class NoisyOmnicalcObject:
 		asciitree({self.__class__.__name__:self.__dict__})
 		return 'omnicalc %s object at %d'%(self.__class__.__name__,id(self))
 
-class OmnicalcDataStructure:
+class OmnicalcDataStructure(NoisyOmnicalcObject):
 
 	"""
 	Parent class for flexible data structures.
@@ -39,25 +39,62 @@ class OmnicalcDataStructure:
 		"""Use a list to cross objects."""
 		def __init__(self,name): self.name = name
 
-	def classify(self,subject,strict=False):
+	def __init__(self,data):
+		"""
+		Uniform constructor for all data types.
+		"""
+		self.data = data
+		self.style = self.classify(self.data)
+		if self.style not in ['calculation_request','post_spec_v2','slice_request_named']:
+			import ipdb;ipdb.set_trace()
+
+	types_map = {'string':str_types,'number':[int,float],'bool':[bool,None]}
+	def type_checker(self,v,t): 
+		# lists restruct is to specific options
+		if type(t)==list: return v in t
+		elif t in self.types_map: return type(v) in self.types_map[t]
+		else: raise Exception('failed to type-check %s'%t)
+	def _routes_typecheck(self,template,routes):
+		template_to_type = dict([(tuple(i),j) for i,j in template])
+		match_types = [self.type_checker(v,template_to_type[tuple(r)]) for r,v in routes]
+		return all(match_types)
+	def _routes_equality(self,template,routes,check_types=False):
+		template_routes,template_types = zip(*template)
+		routes_routes,routes_types = zip(*routes)
+		match_routes = set([tuple(j) for j in routes_routes])==set([tuple(j) for j in template_routes])
+		if not check_types: return match_routes
+		elif not match_routes: return False
+		else: return match_routes and self._routes_typecheck(template,routes)
+	def _routes_subset(self,template,routes,check_types=False):
+		template_routes,template_types = zip(*template)
+		match_routes = all([r in template_routes for r,v in routes])
+		if not check_types: return match_routes
+		elif not match_routes: return False
+		else: return match_routes and self._routes_typecheck(template,routes)
+
+	def classify(self,subject):
 		"""Identify a structure type using flextypes above."""
 		# chart the subject
 		routes = list(catalog(subject))
 		candidates = []
 		# get the relevant structures
-		structs = getattr(self,'_flexible_structure_%s'%self.kind)
+		structs = self._structures
 		# compare each structure to the subject
-		for key,val in structs.items():
-			template = list(catalog(val))
-			# make sure that all routes match the datastructure
-			# strict mode ensures the structures match exactly
-			if ((not strict and all([r in zip(*template)[0] for r,v in routes]))or (strict and 
-				set([tuple(j) for j in zip(*routes)[0]])==set([tuple(j) for j in zip(*template)[0]]))): 
+		for key,struct in structs.items():
+			strict_this = struct.get('meta',{}).get('strict',False)
+			check_types = struct.get('meta',{}).get('check_types',True)
+			template = list(catalog(struct['struct']))
+			# make sure that all routes match the data structure
+			if strict_this and self._routes_equality(template,routes,check_types=check_types):
 				candidates.append(key)
-		# retry in strict mode if we get too many matches
-		if len(candidates)>1 and not strict: return self.classify(subject,strict=True)
-		elif len(candidates)>1 and strict: raise Exception('matched multiple data structures to %s'%subject)
+			elif not strict_this and self._routes_subset(template,routes,check_types=check_types):
+				candidates.append(key)
+		#! removed a strict keyword that applied to all classifications and ran after multiple 
+		#! ... matches were made in order to find a more specific one. this was too much inference!
+		if len(candidates)>1: 
+			raise Exception('matched multiple data structures to %s'%subject)
 		elif len(candidates)==0: 
+			import ipdb;ipdb.set_trace()
 			raise Exception('failed to classify %s in %s'%(subject,self))
 		else: return candidates[0]
 
@@ -66,7 +103,7 @@ class OmnicalcDataStructure:
 		# chart the subject
 		routes = list(catalog(data))
 		# get the relevant structure and expand it
-		structure = getattr(self,'_flexible_structure_%s'%self.kind)[style]
+		structure = self._structures[style]['struct']
 		template = list(catalog(structure))
 		# hold the results and crosses
 		toc,crosses = {},[]
@@ -102,22 +139,25 @@ class OmnicalcDataStructure:
 				delveset(toc[key],*tuple(list(subpath[:-1])+[rename]),value=val)
 		return toc
 
-	def test_equality(self,one,other,loud=False):
-		"""
-		Compare slices with flexible data structures.
-		Set loud to figure out where you need to add comparisons.
-		"""
-		orderings = [(one,other),(other,one)]
-		comps = ['_compare_%s_to_%s'%(a.style,b.style) for a,b in orderings]
-		if all([hasattr(self,c) for c in comps]): raise Exception('redundant _compare_... functions!')
-		compkeys = [cc for cc,c in enumerate(comps) if hasattr(self,c)]
-		if len(compkeys)==2: raise Exception('redundant comparisons are available %s'%comps)
-		# if we cannot compare the types they they are definitely not equivalent
-		elif len(compkeys)==0: 
-			if loud: print('[WARNING] cannot find comparison between: %s vs %s'%(one.style,other.style))
-			return False
-		# note that the argument order matters
-		else: return getattr(self,comps[compkeys[0]])(*orderings[compkeys[0]])
+	def __eq__(self,other):
+		"""Supervise comparisons."""
+		if self.style==other.style: return self.data==other.data
+		# all comparisons happen with special functions instead of the usual __eq__
+		#! more elegant way to handle comparison orderings? perhaps a dictionary or something?
+		orderings = [(self,other),(other,self)]
+		function_names = ['_eq_%s_%s'%(a.style,b.style) for a,b in orderings]
+		#! no protection against contradicting equivalence relations or functions
+		for name,(first,second) in zip(function_names,orderings):
+			if hasattr(self,name): return getattr(self,name)(a,b)
+		if hasattr(self,'_equivalence'):
+			for first,second in orderings:
+				if (first.style,second.style) in self._equivalence:
+					return all([first.data[key]==second.data[key] 
+						for key in self._equivalence[(first.style,second.style)]])
+		print(self)
+		print(other)
+		raise Exception('see structures above. '
+			'cannot find a comparison function or equivalence relation for %s,%s'%(self.style,other.style))
 
 class TrajectoryStructure(OmnicalcDataStructure):
 
@@ -127,85 +167,97 @@ class TrajectoryStructure(OmnicalcDataStructure):
 	dev: no typechecking yet,
 	"""
 
-	# the core structures provide the best detail
-	_flexible_structure_request = {
-		# structure definition for a standard slice made by omnicalc
-		'standard_gromacs':{
-			'slices':{OmnicalcDataStructure.StructureKey('slice_name'):{
-				'pbc':'string','groups':OmnicalcDataStructure.KeyCombo('group'),
-				'start':'number','end':'number','skip':'number'}},
-			'groups':{OmnicalcDataStructure.StructureKey('group_name'):'string'}},}
+	# abstract trajectory structure
+	_structures = {
+		# calculations which request a slice and a group
+		'calculation_request':{
+			'struct':{'sn':'string','group':'string','slice_name':'string'},
+			'meta':{'strict':True}},
+		'post_spec_v2':{
+			'struct':{
+				'group':'string','sn':'string',
+				'dat_type':['gmx'],
+				'slice_type':['standard'],
+				'short_name':'string','pbc':'string',
+				'start':'number','end':'number','skip':'number'},
+			'meta':{'strict':True,'check_types':True}},
+		'slices_request':{
+			# cannot be strict and cannot check types for this style
+			'meta':{'strict':False,'check_types':False},
+			'struct':{
+				'slices':{OmnicalcDataStructure.StructureKey('slice_name'):{
+					'pbc':'string','groups':OmnicalcDataStructure.KeyCombo('group'),
+					'start':'number','end':'number','skip':'number'}},
+				'groups':{OmnicalcDataStructure.StructureKey('group_name'):'string'}}},
+		'slice_request_named':{
+			'meta':{'strict':True,'check_types':True},
+			'struct':{
+				'sn':'string','group':'string','slice_name':'string','pbc':'string',
+				'start':'number','end':'number','skip':'number'}},}
 
-	# the elements are individual components which may be derived from more than one request
-	_flexible_structure_element = {
-		'slice':{'key':'tuple','sn':'string',
-			'val':{'start':'number','end':'number','skip':'number','group':'string','pbc':'string'}},
-		'group':{'key':'tuple','val':'string','sn':'string'},}
+	_equivalence = {
+		('slice_request_named','calculation_request'):['slice_name','sn','group'],
+		('post_spec_v2','slice_request_named'):['sn','group','pbc','start','end','skip'],}
 
-	# alternate structures are used for parsing legacy data
-	_flexible_structure_alternate = {
-		'calculation_request':{'sn':'string','group':'string','slice_name':'string'},
-		#! had to do something to distinguish spec_v3 via inference but could we be explicit ?!?
-		'spec_v3':{
-			'group':'string','sn':'string',
-			'pbc':'string','start':'number','end':'number','skip':'number',},
-		'legacy_spec_v2':{
-			'group':'string','sn':'string',
-			#! whittle dat_type and slice_type?
-			'dat_type':'string','slice_type':'string',
-			'short_name':'string','pbc':'string',
-			'start':'number','end':'number','skip':'number',},
-		'legacy_spec_v1_no_group':{
-			'sn':'string','dat_type':'string','slice_type':'string',
-			'short_name':'string','start':'number','end':'number','skip':'number',},}
+	#def _eq_calculation_request_slice_request_named(self,calc_request,slice_request):
+	#	import ipdb;ipdb.set_trace()
 
-	def __repr__(self):
-		asciitree({self.__class__.__name__:self.__dict__})
-		return 'omnicalc %s object at %d'%(self.__class__.__name__,id(self))
+	if False:
+		# the core structures provide the best detail
+		_flexible_structure_request = {
+			# structure definition for a standard slice made by omnicalc
+			'standard_gromacs':{
+				'slices':{OmnicalcDataStructure.StructureKey('slice_name'):{
+					'pbc':'string','groups':OmnicalcDataStructure.KeyCombo('group'),
+					'start':'number','end':'number','skip':'number'}},
+				'groups':{OmnicalcDataStructure.StructureKey('group_name'):'string'}},}
 
-	def _compare_calculation_request_to_legacy_spec_v2(self,cr,ls):
-		"""Match a calculation request to a legacy spec file (v2)."""
-		#! generalize this? should this be in a function or structure?
-		###### abandoned!!!!!!!!
-		conditions = [cr.data['group']==ls.data['group'],]
-		import ipdb;ipdb.set_trace()
-		return all(conditions)
+		# the elements are individual components which may be derived from more than one request
+		_flexible_structure_element = {
+			'slice':{'key':'tuple','sn':'string',
+				'val':{'start':'number','end':'number','skip':'number','group':'string','pbc':'string'}},
+			'group':{'key':'tuple','val':'string','sn':'string'},}
 
-	def _compare_calculation_request_to_slice(self,cr,sl):
-		conditions = [
-			#! knowledge of the keys required here
-			sl.data['key'][0]=='slices',cr.data['slice_name']==sl.data['key'][1],
-			cr.data['sn']==sl.data['sn'],
-			cr.data['group']==sl.data['val']['group'],]
-		return all(conditions)
+		# alternate structures are used for parsing legacy data
+		_flexible_structure_alternate = {
+			'calculation_request':{'sn':'string','group':'string','slice_name':'string'},
+			#! had to do something to distinguish spec_v3 via inference but could we be explicit ?!?
+			'spec_v3':{
+				'group':'string','sn':'string',
+				'pbc':'string','start':'number','end':'number','skip':'number',},
+			'legacy_spec_v2':{
+				'group':'string','sn':'string',
+				#! whittle dat_type and slice_type?
+				'dat_type':'string','slice_type':'string',
+				'short_name':'string','pbc':'string',
+				'start':'number','end':'number','skip':'number',},
+			'legacy_spec_v1_no_group':{
+				'sn':'string','dat_type':'string','slice_type':'string',
+				'short_name':'string','start':'number','end':'number','skip':'number',},}
 
-	def _compare_legacy_spec_v2_to_slice(self,ls,sl):
-		conditions = [
-			# the slice type is a gromacs standard so we make sure the legacy spec agrees
-			ls.data.get('dat_type',None)=='gmx',ls.data.get('slice_type',None)=='standard',
-			dictsub(sl.data['val'],ls.data),sl.data['sn']==ls.data['sn']]
-		return all(conditions)
+	if False:
 
+		def __repr__(self):
+			asciitree({self.__class__.__name__:self.__dict__})
+			return 'omnicalc %s object at %d'%(self.__class__.__name__,id(self))
 
-"""
-prototyping a new spec data structure
-	for standard standard gromacs data
-		has the usual name from the slice
-		slice is written by the TS below OR a struct above?
-		data structure is
-			slice
-				stuff from the raw data
-				what about dat type and slice type? or should this go in metadata?
-					... do not want crosstalk
-			calculation
-				calc_name
-				specs
-			metadata (optionals)
-				short name
-				spec version
-later replace the namingconvention or fold it in somehow?
-"""
+		def _compare_calculation_request_to_slice(self,cr,sl):
+			conditions = [
+				#! knowledge of the keys required here
+				sl.data['key'][0]=='slices',cr.data['slice_name']==sl.data['key'][1],
+				cr.data['sn']==sl.data['sn'],
+				cr.data['group']==sl.data['val']['group'],]
+			return all(conditions)
 
+		def _compare_legacy_spec_v2_to_slice(self,ls,sl):
+			conditions = [
+				# the slice type is a gromacs standard so we make sure the legacy spec agrees
+				ls.data.get('dat_type',None)=='gmx',ls.data.get('slice_type',None)=='standard',
+				dictsub(sl.data['val'],ls.data),sl.data['sn']==ls.data['sn']]
+			return all(conditions)
+
+#!!! RIPE FOR REFACTOR
+######################
 class NamingConvention:
 	"""
 	Organize the naming conventions for omnicalc.
@@ -282,6 +334,5 @@ class NamingConvention:
 		#! spotname here. also need to formalize the name_reqs
 		#! it would also be good to move sn up somewhere standard? some kind of get function on the slice ob?
 		basename = self.parser[style]['d2n']%dict(calc_name=job.calc.name,suffix='dat',
-			short_name=self.short_namer(job.slice.data['sn'],None),**job.slice.data['val'])
+			short_name=self.short_namer(job.slice.data['sn'],None),**job.slice.data)
 		return basename
-

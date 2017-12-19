@@ -403,7 +403,7 @@ class PostData(NoisyOmnicalcObject):
 		self.files = dict(dat=os.path.join(self.dn,dat_fn),
 			spec=os.path.join(self.dn,self.fn))
 		for fn in self.files.values():
-			if os.path.isfile(fn): raise Exception('cannot preallocate filename %s'%fn)
+			if os.path.isfile(fn): raise Exception('cannot preallocate filename %s because it exists'%fn)
 		# write an empty result and spec file before any computation to preempt file errors
 		try:
 			# the compute function will change the stle from new to read after rewriting the dat file
@@ -421,7 +421,8 @@ class PostData(NoisyOmnicalcObject):
 
 	def parse(self,**kwargs):
 		"""
-		Read a spec file into a result object
+		Read a spec file into a result object.
+		This function handles the classification of specs and their transformation into Slice and Calculation
 		"""
 		fn,dn = kwargs.pop('fn'),kwargs.pop('dn'),
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
@@ -432,8 +433,7 @@ class PostData(NoisyOmnicalcObject):
 		json_type_fixer(self.specs)
 		self.namedat = self.namer.interpret_name(fn+'.spec')
 		self.spec_version = None
-		#! DEVELOPMENT NOTE: the following sequence classifies and converts spec files to post
-		#! ... could we redesign the omnicalc data structure to handle these conversions?
+		# +++ COMPARE keys on incoming specs to see which kind of transformations will be needed
 		if set(self.specs.keys())=={'calc','meta','slice'}: self.spec_version = 3
 		# first we determine the version
 		elif all(['slice' in self.specs,'specs' in self.specs,
@@ -443,13 +443,13 @@ class PostData(NoisyOmnicalcObject):
 		# ... particularly when using incoming data not generated with omnicalc. however since the calculation
 		# ... specs in a version 1 spec file could be anything, we have to check all other versions first
 		else: self.spec_version = 1
-		# construct a calculation from a version 2 specification
+		# +++ BUILD a slice and calculation object for the incoming post
 		if self.spec_version==2:
 			# unpack this specification
 			calcname = self.specs['calc']['calc_name']
 			# only load calculation specs since slices will be compared independently
 			calc_specs = {'specs':self.specs['specs']}
-			# build a calculation
+			# +++ BUILD a calculation
 			self.calc = Calculation(name=calcname,calc_specs=calc_specs)
 			# build a slice from the version 2 specification
 			slice_raw = self.specs['slice']
@@ -466,6 +466,7 @@ class PostData(NoisyOmnicalcObject):
 			# for version 1 spec files we have to get important information from the filename
 			calcname = self.namedat['body']['calc_name']
 			calc_specs = {'specs':self.specs}
+			# +++ BUILD a calculation
 			self.calc = Calculation(name=calcname,calc_specs=calc_specs)
 			# constructing slice_raw to mimic the result from a version 2 spec
 			slice_raw = dict([(k,self.namedat['body'][k]) for k in 
@@ -487,6 +488,7 @@ class PostData(NoisyOmnicalcObject):
 			slice_raw = self.specs['slice']
 			# +++ BUILD slice object
 			self.slice = Slice(data=dict(slice_raw,sn=sn))
+			# +++ BUILD a calculation
 			self.calc = Calculation(name=self.specs['calc']['name'],
 				#! awkward to have an extra specs keyword below
 				calc_specs={'specs':self.specs['calc']['specs']})
@@ -502,7 +504,9 @@ class PostDataLibrary:
 	def __init__(self,**kwargs):
 		"""Parse a post-processed data directory."""
 		global namer
+		self.namer = namer
 		self.where = kwargs.pop('where')
+		strict_sns = kwargs.pop('strict_sns',False)
 		# we have a copy of the director in case there are special instructions there
 		self.director = kwargs.pop('director',{})
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
@@ -515,7 +519,7 @@ class PostDataLibrary:
 			name = self.stable.pop()
 			status(name,tag='import',i=nfiles-len(self.stable)-1,looplen=nfiles,bar_width=10,width=65)
 			# interpret the name
-			namedat = namer.interpret_name(name)
+			namedat = self.namer.interpret_name(name)
 			# this puts the slice in limbo. we ignore stray files in post spot
 			if not namedat: self.toc[name] = {}
 			else:
@@ -530,9 +534,22 @@ class PostDataLibrary:
 				#! alternate slice types (e.g. gro/trr) would go here
 				else: 
 					# decided to pair gro/xtc because they are always made/used together
+					#! should we make this systematic? check for other trajectory types?
 					basename = self.get_twin(name,('xtc','gro'))
 					# +++ BUILD slice object
-					self.toc[basename] = 'MAKE SLICE'#Slice(name=basename,namedat=namedat)
+					json_type_fixer(namedat)
+					#! +++ DEV name the namedat more uniform?
+					short_name = namedat['body']['short_name']
+					try: sn = self.namer.sns_toc_r[short_name]
+					except: 
+						if strict_sns:
+							raise Exception(
+							'failed to do the reverse name lookup for a simulation with alias "%s". '%
+							short_name+'you can add the full name to any collection and retry.')
+						# allow shortnames
+						else: sn = short_name
+					self.toc[basename] = Slice(data=dict(namedat,sn=sn,
+						basename=basename,suffixes=['xtc','gro']))
 
 	def limbo(self): return dict([(key,val) for key,val in self.toc.items() if val=={}])
 	def slices(self): return dict([(key,val) for key,val in self.toc.items() 
@@ -559,7 +576,6 @@ class PostDataLibrary:
 			else: return False
 		else: return self.toc[candidates[0]]
 
-	#!!!!
 	def get_twin(self,name,pair):
 		"""
 		Many slices files have natural twins e.g. dat/spec and gro/xtc.
@@ -568,7 +584,7 @@ class PostDataLibrary:
 		this_suffix = re.match('^.+\.(%s)$'%'|'.join(pair),name).group(1)
 		basename = re.sub('\.(%s)$'%'|'.join(pair),'',name)
 		twin = basename+'.%s'%dict([pair,pair[::-1]])[this_suffix]
-		#---omnicalc *never* deletes files so we ask the user to clean up on errors
+		# omnicalc *never* deletes files so we ask the user to clean up on errors
 		if twin not in self.stable: raise Exception('cannot find the twin %s of %s ... '%(pair,name)+
 			'this is typically due to a past failure to write these files together. '+
 			'we recommend deleting the existing file (and fix the upstream error) to continue.')
@@ -609,17 +625,6 @@ class SliceMeta(TrajectoryStructure):
 		elif len(matches)==0: return None
 		else: return matches[0]
 
-	# deprecated because we make the slice immediately
-	if False:
-		def calculation_to_request(self,**kwargs):
-			#! minor hack to match a calculation slice request to a slice request in SliceMeta
-			#! ... this will be replaced later
-			import ipdb;ipdb.set_trace()
-			index, = [ii for ii,i in enumerate(self.toc) if 
-				kwargs['slice_name']==i.raw['key'][1] and 'slices'==i.raw['key'][0] and
-				kwargs['sn']==i.raw['sn'] and kwargs['group']==i.raw['val']['group']]
-			return self.toc[index]
-
 class PlotSpec(dict):
 	"""Manage inferences about what to plot."""
 	def __init__(self,metadata,plotname,calcs):
@@ -639,12 +644,15 @@ class PlotSpec(dict):
 		return list(set(self.metadata.get_simulations_in_collection(
 			*str_or_list(self.cursor.get('collections',[])))))
 	def get_calcnames(self):
+		raise Exception('MOVED')
 		# get calculation names from a key in a plot object
 		if self.plotname in self.metadata.plots:
 			calcs_spec = self.metadata.plots[self.plotname]
 			calcs = calcs_spec.get('calculation',calcs_spec.get('calculations',None))
 			if not calcs: 
 				raise Exception('plot %s in the metadata is missing the calculation(s) key'%self.plotname)
+
+			#! this block tries to find calculations. it should be merged fetch_upstream
 			# the calculations key in a plot object can be a string, list, or dict
 			if type(calcs) in str_types: self.calcnames = [calcs]
 			elif type(calcs)==list: self.calcnames = calcs
@@ -653,20 +661,17 @@ class PlotSpec(dict):
 				target_calculations = []
 				# search for each of the calculations and return the specific instance instead of the name
 				for key,val in calcs.items():
-
 					candidates = self.calcs.toc[key]
 					#! example one-level search 
 					possibles = [c for c in candidates
 						if val==dict([(i,j) for i,j in c.specs.items() if i!='upstream'])]
 					if len(possibles)==1: target_calculations.append(possibles[0])
-					else:
-						print('needs more searching')
-						import ipdb;ipdb.set_trace()
-						raise Exception('dev')
+					else: raise Exception('dev')
 				self.calcnames = target_calculations
 			else: raise Exception(
 				'unclear calculation object in the plot data for %s: %s'%(self.plotname,calcs))
 			return self.calcnames
+
 		# if no plot object we fall back to calculations
 		elif self.plotname in self.metadata.calculations:
 			# if the plotname is not in plots we can only assume it refers to a single calculation
@@ -745,6 +750,7 @@ class WorkSpace:
 		spotname = None
 		self.namer.sns_toc = dict([(sn,self.namer.short_namer(sn,None)) 
 			for sn in self.simulation_names()])
+		self.namer.sns_toc_r = dict([(v,k) for k,v in self.namer.sns_toc.items()])
 
 	def read_config(self):
 		"""Read the config and set paths."""
@@ -775,6 +781,69 @@ class WorkSpace:
 		# by the time you use sns you should already have a plotspec generated in plotload
 		return self.plotspec.sns()
 
+	def calculation_linker(self,calcs):
+		"""
+		Get upstream calculation specifications. Complements fetch_upstream_calculation.
+		"""
+		# this function consolidates previous PlotSpec.get_calculation which was used to figure out
+		# ... which calculations to load. now the plotload function handles the method for inferring the 
+		# ... calculations from either plots or calculations metadata and this function actually
+		# ... searches upstream for calculations
+		# the calculations come directly from metadata and can have one of several formats
+		#! note that we could replace the calculations with a proper OmnicalcDataStructure format
+		if type(calcs) in str_types: calcnames = [calcs]
+		elif type(calcs)==list: calcnames = calcs
+		# use a dictionary to specify 
+		elif type(calcs)==dict: 
+			target_calculations = []
+			# search for each of the calculations and return the specific instance instead of the name
+			for key,val in calcs.items():
+				candidates = self.metadata.calcs.toc[key]
+				#! example one-level search 
+				possibles = [c for c in candidates
+					if val==dict([(i,j) for i,j in c.specs.items() if i!='upstream'])]
+				if len(possibles)==1: target_calculations.append(possibles[0])
+				else: raise Exception('dev')
+			calcnames = target_calculations
+		else: raise Exception('failure to find upstream calculations')
+		return calcnames
+
+	def fetch_upstream_calculation(self,sn,calculation):
+		"""
+		Originally designed in plotload, this function gets upstream calculations.
+		"""
+		#! originally written in the main loop of plotload. proposed moving it with get_calcnames
+		#! ... however moving it here to a separate function means we can do lookups for the compute loop
+		#! this method presently has no dictionary checking and only uses simulation name and calculation
+		if type(calculation) in str_types:
+			jobs = [r for r in self.jobs 
+				#! will all slices have a sn?
+				if r.slice.data['sn']==sn and r.calc.name==calculation]
+			calcname = calculation
+		# retrieve the calculation by instance
+		elif calculation.__class__.__name__=='Calculation':
+			candidates = [job for job in self.jobs 
+				if job.calc==calculation and job.slice.data['sn']==sn]
+			#! any kind of multiplexing will break this
+			if len(candidates)!=1: raise Exception('dev')
+			else: jobs = candidates
+			calcname = calculation.name
+		else: raise Exception('failed to match the calculation')
+		#! end of the calculation matching
+		if len(jobs)==0:
+			import ipdb;ipdb.set_trace()
+		if len(jobs)==0: 
+			raise Exception('DEVELOPMENT NOTE. EXPLAIN THIS BETTER'+
+				' cannot find calculation %s for simulation %s'%(calcname,sn))
+		elif len(jobs)>1: 
+			raise Exception(
+				'DEVELOPMENT NOTE. EXPLAIN THIS BETTER. your plot request is not specific enough')
+		else: job = jobs[0]
+		# load the data
+		fn = job.result.files['dat']
+		data = load(os.path.basename(fn),cwd=os.path.dirname(fn))
+		return calcname,data,job
+
 	def plotload(self,plotname,**kwargs):
 		"""
 		Export completed calculations to a plot environment.
@@ -795,7 +864,7 @@ class WorkSpace:
 		if whittle_calc: raise Exception('dev')
 		# we always run the compute loop to make sure calculations are complete but also to get the jobs
 		# note that compute runs may be redundant if we call plotload more than once but it avoids repeats
-		self.compute()
+		self.compute(automatic=False)
 		sns = self.plotspec.sns()
 		# many plot functions use a deprecated work.plots[plotname]['specs'] call to get details about 
 		# ... the plots from the metadata. to support this feature we add the cursor from the plotspec
@@ -803,46 +872,36 @@ class WorkSpace:
 		# ... to wait until the plotspec is made. if this is a problem the plotspec should be made during
 		# ... plot_supervised. note  that we only supply specs via plotname but it will fall back to calcs
 		if not hasattr(self,'plots'): self.plots = {}
+		# save plot details at the top level in the workspace
 		if self.plotname not in self.plots: self.plots[self.plotname] = copy.deepcopy(self.plotspec.cursor)
-		# get a list of calculation names
-		calcnames = self.plotspec.get_calcnames()
+		# get a list of calculation names which specify an upstream calculation with a number of formats
+		# the following block gets calculation requests according to a method previously found in 
+		# ... PlotSpec.get_calcnames but which was moved here with the majority of the inference handled
+		# ... in a separate function called calculation linker
+		# if the plotname is in the plots metadata then we use its calculation key to look up upstream calcs		
+		if self.plotname in self.metadata.plots:
+			calcs_spec = self.metadata.plots[self.plotname]
+			calcs = calcs_spec.get('calculation',calcs_spec.get('calculations',None))
+			if not calcs: 
+				raise Exception('plot %s in the metadata is missing the calculation(s) key'%self.plotname)
+			calcnames = self.calculation_linker(calcs)
+		# if the plotname is not in the plot metadata
+		elif self.plotname in self.metadata.calculations:
+			# if the plotname is not in plots we can only assume it refers to a single calculation
+			calcnames = [self.plotname]
+			return self.calcnames
+		else: raise Exception(('requesting calculation names for a plot called "%s" however this key '+
+			'cannot be found in either the plots or calculations section of the metadata')%self.plotname)
+		# end of calculation interpretation	
 		# package the data for export to the plot environment
 		bundle = dict([(k,PlotLoaded(calcnames=calcnames,sns=sns)) for k in ['data','calc']])
+		import ipdb;ipdb.set_trace()
 		# search for results
 		for sn in sns:
 			for calculation in calcnames:
-				#! the following result section should be moved to a function. perhaps up with get_calcnames?
-				# calculation names which are strings are easy to look up
-				#! this method has no dictionary checking and only uses simulation name and calculation
-				if type(calculation) in str_types:
-					jobs = [r for r in self.jobs 
-						#! will all slices have a sn?
-						if r.slice.data['sn']==sn and r.calc.name==calculation]
-					calcname = calculation
-				# retrieve the calculation by instance
-				elif calculation.__class__.__name__=='Calculation':
-					candidates = [job for job in self.jobs 
-						if job.calc==calculation and job.slice.data['sn']==sn]
-					#! any kind of multiplexing will break this
-					if len(candidates)!=1: raise Exception('dev')
-					else: jobs = candidates
-					calcname = calculation.name
-				else: raise Exception('failed to match the calculation')
-				#! end of the calculation matching
-				if len(jobs)==0:
-					import ipdb;ipdb.set_trace()
-				if len(jobs)==0: 
-					raise Exception('DEVELOPMENT NOTE. EXPLAIN THIS BETTER'+
-						' cannot find calculation %s for simulation %s'%(calcname,sn))
-				elif len(jobs)>1: 
-					raise Exception(
-						'DEVELOPMENT NOTE. EXPLAIN THIS BETTER. your plot request is not specific enough')
-				else: job = jobs[0]
+				calcname,data,job = self.fetch_upstream_calculation(sn,calculation)
 				# add the data to the bundle
 				if calcname not in bundle['data']: bundle['data'][calcname] = {}
-				# load the data
-				fn = job.result.files['dat']
-				data = load(os.path.basename(fn),cwd=os.path.dirname(fn))
 				bundle['data'][calcname][sn] = {'data':data}
 			# add the calculation specs to the bundle without dividing by simulation
 			#! current format is designed for plotload_version 1 and backwards compatibility
@@ -893,7 +952,7 @@ class WorkSpace:
 		"""
 		Supervised plot execution.
 		This largely mimics omni/base/header.py.
-		"""
+		"""	
 		#---plotspecs include args/kwargs coming in from the command line so users can make choices there
 		plotspecs = kwargs.pop('plotspecs',{})
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
@@ -949,6 +1008,13 @@ class WorkSpace:
 			if basename not in spec_toc: spec_toc[basename] = []
 			spec_toc[basename].append(fn)
 		for k,v in spec_toc.items(): spec_toc[k] = sorted(v)
+		# acquire slices
+		for job in jobs:
+			# find the trajectory slice
+			keys = [key for key,val in self.post.slices().items() if val==job.slice]
+			if len(keys)!=1: raise Exception('failed to find slice. DEVELOPMENT REQUIRED.')
+			else: job.slice_upstream = self.post.toc[keys[0]]
+		self.pending = []
 		# loop over jobs and register filenames
 		for job in jobs:
 			#! style will be updated
@@ -963,20 +1029,21 @@ class WorkSpace:
 			if basename not in spec_toc: spec_toc[basename] = []
 			# save the filename so new files give unique spec file names
 			spec_toc[basename].append(fn)
-			# convert element slice into a new version three style
-			# +++ BUILD slice object
-			new_slice = Slice(data=job.slice.data)
+			#! +++ BUILD slice object this slice went nowhere: new_slice = Slice(data=job.slice.data)
 			# designing the new version three (v3) spec format here
 			sn = job.slice.data['sn']
 			spec_new = dict(
 				meta={'spec_version':3,'sn':job.slice.data['sn']},
 				slice=job.slice.data,calc={'name':job.calc.name,'specs':job.calc.specs})
 			# create the new result file
+			print('making %s'%fn)
 			job.result = PostData(fn=fn,dn=self.postdir,style='new',specs=spec_new)
+			print('done')
 			if job.result.basename in self.post.toc:
 				raise Exception('created a new PostData object but %s exists'%job.result.basename)
 			# register the result with the postdat library so we can simulate the compute loop
 			else: self.post.toc[job.result.basename] = job.result
+			self.pending.append(job)
 		# after make new postdata objects we want to check for new computations
 		self.check_compute(debug=True)
 
@@ -1012,36 +1079,130 @@ class WorkSpace:
 				self.queue_computes.append(job)
 			else: self.results.append(job)
 
-	def run_compute(self,jobs):
+	def attach_standard_tools(self,mod):
+		"""
+		Send standard tools to the calculation functions.
+		"""
+		#---! under development
+		#---MASTER LISTING OF STANDARD TOOLS
+		#---MDAnalysis
+		import MDAnalysis
+		mod.MDAnalysis = MDAnalysis
+		#---looping tools
+		from base.tools import status,framelooper
+		from base.store import alternate_module,uniquify
+		mod.alternate_module = alternate_module
+		mod.uniquify = uniquify
+		mod.status = status
+		mod.framelooper = framelooper
+		#---parallel processing
+		from joblib import Parallel,delayed
+		from joblib.pool import has_shareable_memory
+		mod.Parallel = Parallel
+		mod.delayed = delayed
+		mod.has_shareable_memory = has_shareable_memory
+
+	def get_calculation_function(self,calcname):
+		"""
+		Search the calcs subdirectory for a calculation function.
+		Note that this lookup function enforces the naming rule which is hard-coded: namely, that all 
+		calculations must be in a function in a script which each use the calculation name.
+		"""
+		script_name = self.find_script(calcname)
+		#---! needs python3
+		sys.path.insert(0,os.path.dirname(script_name))
+		mod = __import__(re.sub('\.py$','',os.path.basename(script_name)),locals(),globals())
+		#---attach standard tools
+		self.attach_standard_tools(mod)
+		if not hasattr(mod,calcname): raise Exception(('performing calculation "%s" and we found '+
+			'%s but it does not contain a function named %s')%(calcname,script_name,calcname))
+		return getattr(mod,calcname)
+
+	def run_compute(self):
 		"""
 		Run jobs and save to preemptive dat files.
 		"""
-		import ipdb;ipdb.set_trace()
+		for jnum,job in enumerate(self.pending):
+			#! carefully print the result otherwise it double prints slice, calc
+			asciitree(dict(calculation={
+				'result':dict([(k,job.result.__dict__[k]) for k in ['files','spec_version','specs']]),
+				'slice_request':job.slice.__dict__,'calc':job.calc.__dict__,
+				'slice':job.slice_upstream.__dict__,}))
+			status('running calculation %d/%d'%(jnum+1,len(self.pending)),tag='compute')
+			function = self.get_calculation_function(job.calc.name)
+			# prepare the arguments
+			# +++ BUILD arguments structure as the compute function would expect
+			#! it would be nice to formalize this or make it less gromacs-specific? perhaps by using a mode?
+			outgoing = dict(workspace=self,sn=job.slice_upstream.data['sn'],calc=dict(specs=job.calc.specs))
+			#! unpack files. this is specific to the GRO/XTC format and needs a conditional!
+			#! post directory is hard-coded here
+			struct_file = os.path.join(self.postdir,'%s.%s'%(job.slice_upstream.data['basename'],'gro'))
+			traj_file = os.path.join(self.postdir,'%s.%s'%(job.slice_upstream.data['basename'],'xtc'))
+			outgoing = dict(grofile=struct_file,trajfile=traj_file,**outgoing)
+
+			calcnames = self.calculation_linker(job.calc.specs.get('upstream',{}))
+			import ipdb;ipdb.set_trace()
+
+			if False:
+				#! this block tries to find calculations. it duplicates get_calcnames in PlotSpec
+				calcs = job.calc.specs.get('upstream',{})
+				# the calculations key in a plot object can be a string, list, or dict
+				if type(calcs) in str_types: calcnames = [calcs]
+				elif type(calcs)==list: calcnames = calcs
+				# use a dictionary to specify 
+				elif type(calcs)==dict: 
+					target_calculations = []
+					# search for each of the calculations and return the specific instance instead of the name
+					for key,val in calcs.items():
+						candidates = self.metadata.calcs.toc[key]
+						#! example one-level search 
+						possibles = [c for c in candidates
+							if val==dict([(i,j) for i,j in c.specs.items() if i!='upstream'])]
+						if len(possibles)==1: target_calculations.append(possibles[0])
+						else: raise Exception('dev')
+					calcnames = target_calculations
+				else: raise Exception('dev')
+				#! end block that gets calculation specs
+
+			# get upstream calculations
+			upstream = {}
+			for calculation in calcnames:
+				sn = job.slice.data['sn']
+				calcname,data,job = self.fetch_upstream_calculation(sn,calculation)
+				upstream[calcname] = data
+			outgoing.update(upstream=upstream)
+			# call the function
+			result,attrs = function(**outgoing)
+			import ipdb;ipdb.set_trace()
 
 	def compute(self,**kwargs):
 		"""
 		Run a calculation. This is the main loop, and precedes the plot loop.
 		"""
+		automatic = kwargs.pop('automatic',True)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		self.prelim()
 		# prepare jobs from these calculations
 		self.jobs = self.calcs.prepare_jobs()
-		# parse the post-processing data
-		self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director)
+		# parse the post-processing data only once (o/w multiple imports on plotload which calls compute)
+		if not hasattr(self,'post'):
+			self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director)
 		# formalize the slice requests
 		# +++ BUILD slicemeta object (only uses the OmnicalcDataStructure for cross)
 		self.slices = SliceMeta(raw=self.metadata.slices,
 			slice_structures=self.metadata.director.get('slice_structures',{}))
 		self.check_compute()
 		# if we have incomplete jobs then run them
-		if self.queue_computes: 
+		if self.queue_computes and not automatic:
+			raise Exception('there are pending compute jobs. try `make compute` before plotting')
+		if self.queue_computes and automatic: 
 			status('there are %d incomplete jobs'%len(self.queue_computes),tag='status')
 			asciitree(dict(pending_calculations=list(set([i.calc.name for i in self.queue_computes]))))
 			if self.debug:
 				import ipdb;ipdb.set_trace()
 			else: 
 				self.prepare_compute(self.queue_computes)
-				self.run_compute(self.queue_computes)
+				self.run_compute()
 
 	def plot(self):
 		"""

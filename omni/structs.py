@@ -40,7 +40,7 @@ class OmnicalcDataStructure(NoisyOmnicalcObject):
 		self.data = data
 		self.style = self.classify(self.data)
 
-	types_map = {'string':str_types,'number':[int,float],'bool':[bool,None]}
+	types_map = {'string':str_types,'number':[int,float],'bool':[bool,None],'list':[list]}
 	def type_checker(self,v,t): 
 		# lists restruct is to specific options
 		if type(t)==list: return v in t
@@ -137,7 +137,7 @@ class OmnicalcDataStructure(NoisyOmnicalcObject):
 		# all comparisons happen with special functions instead of the usual __eq__
 		#! more elegant way to handle comparison orderings? perhaps a dictionary or something?
 		orderings = [(self,other),(other,self)]
-		function_names = ['_eq_%s_%s'%(a.style,b.style) for a,b in orderings]
+		function_names = ['_eq_%s_to_%s'%(a.style,b.style) for a,b in orderings]
 		#! no protection against contradicting equivalence relations or functions
 		for name,(first,second) in zip(function_names,orderings):
 			if hasattr(self,name): return getattr(self,name)(a,b)
@@ -188,12 +188,25 @@ class TrajectoryStructure(OmnicalcDataStructure):
 			'meta':{'strict':True,'check_types':True},
 			'struct':{
 				'sn':'string','group':'string','slice_name':'string','pbc':'string',
-				'start':'number','end':'number','skip':'number'}},}
+				'start':'number','end':'number','skip':'number'}},
+		'gromacs_slice':{
+			'meta':{'strict':True,'check_types':True},
+			'struct':{
+				'sn':'string',
+				'body':{'short_name':'string','pbc':'string','group':'string',
+				'start':'number','end':'number','skip':'number'},
+				'suffixes':'list','basename':'string',
+				'dat_type':['gmx'],'slice_type':['standard']}},}
 
 	_equivalence = {
 		('slice_request_named','calculation_request'):['slice_name','sn','group'],
 		('post_spec_v2','slice_request_named'):['sn','group','pbc','start','end','skip'],
 		('post_spec_v2_basic','slice_request_named'):['sn','start','end','skip'],}
+
+	def _eq_gromacs_slice_to_slice_request_named(self,a,b):
+		checks = ([a.data[k]==b.data['body'][k] for k in ['start','end','skip','pbc','group']]+
+			[a.data['sn']==b.data['sn']])
+		return all(checks)
 
 	if False:
 
@@ -248,7 +261,13 @@ class TrajectoryStructure(OmnicalcDataStructure):
 				dictsub(sl.data['val'],ls.data),sl.data['sn']==ls.data['sn']]
 			return all(conditions)
 
-class Calculation(NoisyOmnicalcObject):
+class Calculation:
+	def __init__(self,**kwargs):
+		"""Construct a calculation object."""
+		self.name = kwargs.pop('name')
+		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
+
+class CalculationOLD(NoisyOmnicalcObject):
 	"""
 	A calculation, including settings.
 	Note that this class is customized rather than derived from OmnicalcDataStructure

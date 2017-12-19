@@ -2,8 +2,6 @@
 
 """
 OMNICALC DATA STRUCTURES
-~~~ "nothing (everything) is arbitrary"
-annotations for data structures: "+++(build|translate|compare)"
 """
 
 import re,copy
@@ -41,8 +39,6 @@ class OmnicalcDataStructure(NoisyOmnicalcObject):
 		"""
 		self.data = data
 		self.style = self.classify(self.data)
-		if self.style not in ['calculation_request','post_spec_v2','slice_request_named']:
-			import ipdb;ipdb.set_trace()
 
 	types_map = {'string':str_types,'number':[int,float],'bool':[bool,None]}
 	def type_checker(self,v,t): 
@@ -169,10 +165,15 @@ class TrajectoryStructure(OmnicalcDataStructure):
 			'meta':{'strict':True}},
 		'post_spec_v2':{
 			'struct':{
-				'group':'string','sn':'string',
-				'dat_type':['gmx'],
-				'slice_type':['standard'],
-				'short_name':'string','pbc':'string',
+				'sn':'string','short_name':'string',
+				'dat_type':['gmx'],'slice_type':['standard'],
+				'group':'string','pbc':'string',
+				'start':'number','end':'number','skip':'number'},
+			'meta':{'strict':True,'check_types':True}},
+		'post_spec_v2_basic':{
+			'struct':{
+				'sn':'string','short_name':'string',
+				'dat_type':['gmx'],'slice_type':['standard'],
 				'start':'number','end':'number','skip':'number'},
 			'meta':{'strict':True,'check_types':True}},
 		'slices_request':{
@@ -191,7 +192,8 @@ class TrajectoryStructure(OmnicalcDataStructure):
 
 	_equivalence = {
 		('slice_request_named','calculation_request'):['slice_name','sn','group'],
-		('post_spec_v2','slice_request_named'):['sn','group','pbc','start','end','skip'],}
+		('post_spec_v2','slice_request_named'):['sn','group','pbc','start','end','skip'],
+		('post_spec_v2_basic','slice_request_named'):['sn','start','end','skip'],}
 
 	if False:
 

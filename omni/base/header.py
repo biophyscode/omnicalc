@@ -11,6 +11,7 @@ import os,sys,re
 for i in ['omni','calcs']:
 	if i not in sys.path: sys.path.insert(0,i)
 from omnicalc import WorkSpace
+from base.tools import status
 
 #---flag for IPython notebook use
 is_live = False

@@ -20,7 +20,7 @@ from base.autoplotters import inject_supervised_plot_tools
 from base.store import load,store
 
 global namer
-# namer via globals instead of passing
+# the namer is used throughout
 namer = None
 
 class WorkSpaceState:
@@ -545,68 +545,19 @@ class PostDataLibrary:
 		candidates = [key for key,val in self.posts().items() 
 			# we find a match by matching the slice and calc, both of which have custom equivalence operators
 			if val.slice==job.slice and val.calc==job.calc]
-		if len(candidates)!=1: return False
-		else: return self.toc[candidates[0]]
-
-		#! saving the following for legacy testing on PtdIns project
-		if False:
-			# search posts for the correct calculations
+		if len(candidates)!=1:
+			# second attempt searches for a unique job with calc specs that are a superset of 
+			# ... the calc specs in the request. this maintains backwards compatibility with old data
+			# ... which appended extra stuff to the specs before writing. the current method
+			# ... eliminates this and relegates extra so-called specs to the dat file itself to 
+			# ... avoid interfering with job construction. this dictsub test and better slice matching
+			# ... eliminated several (at least five) additional comparisons
 			candidates = [key for key,val in self.posts().items() 
-				# we match jobs by name (since specs can be the same accross calculations), specs, and slice
-				if ((job.calc.specs!={} and val.calc==job.calc) or job.calc.specs=={}) 
-				and val.calc.name==job.calc.name and val.slice==job.slice]
-			if len(candidates)>1: raise Exception('multiple matches for job %s'%job)
-			elif len(candidates)==0: 
-
-				###
-				### LEGACY WARNING: the following is for legacy use, particularly a large PtdIns dataset
-				### debugging ptdins resulted in 847 fails, then 225, then 152, then 82, then 28 hence the stages
-				### note that this should all be farmed out to structs.py when final data structures are decided!
-
-				#! skip everything that follows without the special password!
-				if not self.director.get('legacy_specs',False): return
-
-				# special block to handle legacy specs which might have extra data in them
-				#! note that the new spec version 3 has to be able to handle the possibility that 
-				#! ... users will want to add more data to the calculation spec for later, to handle versioning
-				#! ... or other arbitrary parameters
-				possibles = [key for key,val in self.posts().items() 
-					if val.calc.name==job.calc.name and val.slice.data['sn']==job.slice.data['sn']]
-				# very strict requirements for returning a match. the match must be a (1) a superset of the 
-				# ... calculation and (2) the slice data must be a subset of the result slice and (3) we must
-				# ... match to a version 1 spec because that is the root of this slippage and (4) we need 
-				# ... to return a unique match
-				possibles_subsets = [key for key in possibles if dictsub(job.calc.specs,self.toc[key].specs)]
-				# try again with version restruction
-				if len(possibles_subsets)!=1:
-					possibles_subsets = [key for key in possibles 
-					if dictsub(job.calc.specs,self.toc[key].specs) 
-					and dictsub(job.slice.data['val'],self.toc[key].slice.data)]
-				# try again without group
-				if len(possibles_subsets)!=1:
-					possibles_subsets = [key for key in possibles 
-					if dictsub(job.calc.specs,self.toc[key].specs) 
-					and dictsub(dict([(i,j) for i,j in job.slice.data['val'].items() 
-						if i not in ['group','pbc']]),self.toc[key].slice.data)]
-				# try again with slice information
-				if len(possibles_subsets)!=1:
-					possibles_subsets = [key for key in possibles 
-					if dictsub(job.calc.specs,self.toc[key].specs) 
-					and dictsub(job.slice.data['val'],self.toc[key].slice.data) 
-					and self.toc[key].spec_version==1]
-				# the hydration calaculation from the ptdins project had specs in the wrong place
-				if len(possibles_subsets)!=1:
-					possibles_subsets = [key for key in possibles 
-					if dictsub(job.calc.specs,self.toc[key].specs['specs'])]
-				if len(possibles_subsets)==1: return possibles_subsets[0]
-				else: 
-					if debug:
-						try: ob = self.toc[possibles[0]]
-						except: pass
-						print('\n\n[DEBUG] check out possibles and ob to begin debugging')
-						import ipdb;ipdb.set_trace()
-					return None
-			else: return self.toc[candidates[0]]
+				if val.slice==job.slice and val.calc.name==job.calc.name 
+				and dictsub(job.calc.specs,val.calc.specs)]
+			if len(candidates)==1: return candidates[0]
+			else: return False
+		else: return self.toc[candidates[0]]
 
 	#!!!!
 	def get_twin(self,name,pair):
@@ -752,6 +703,7 @@ class WorkSpace:
 		# remove arguments for plotting
 		self.plot_args = kwargs.pop('plot_args',())
 		self.plot_kwargs = kwargs.pop('plot_kwargs',{})
+		self.debug = kwargs.pop('debug',False)
 		# determine the state (kwargs is passed by reference so we clear it)
 		self.state = WorkSpaceState(kwargs)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
@@ -1079,7 +1031,9 @@ class WorkSpace:
 		if self.queue_computes: 
 			status('there are %d incomplete jobs'%len(self.queue_computes),tag='status')
 			asciitree(dict(pending_calculations=list(set([i.calc.name for i in self.queue_computes]))))
-			self.prepare_compute(self.queue_computes)
+			if self.debug:
+				import ipdb;ipdb.set_trace()
+			else: self.prepare_compute(self.queue_computes)
 
 	def plot(self):
 		"""
@@ -1108,9 +1062,9 @@ class WorkSpace:
 ### INTERFACE FUNCTIONS
 ### note that these are imported by omni/cli.py and exposed to makeface
 
-def compute(meta=None):
+def compute(debug=False,meta=None):
 	status('generating workspace for compute',tag='status')
-	work = WorkSpace(compute=True,meta_cursor=meta)
+	work = WorkSpace(compute=True,meta_cursor=meta,debug=debug)
 def plot(*args,**kwargs):
 	status('generating workspace for plot',tag='status')
 	work = WorkSpace(plot=True,plot_args=args,plot_kwargs=kwargs)

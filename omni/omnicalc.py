@@ -1060,6 +1060,12 @@ class WorkSpace:
 				self.queue_computes.append(job)
 			else: self.results.append(job)
 
+	def run_compute(self,jobs):
+		"""
+		Run jobs and save to preemptive dat files.
+		"""
+		import ipdb;ipdb.set_trace()
+
 	def compute(self,**kwargs):
 		"""
 		Run a calculation. This is the main loop, and precedes the plot loop.
@@ -1080,6 +1086,7 @@ class WorkSpace:
 			status('there are %d incomplete jobs'%len(self.queue_computes),tag='status')
 			asciitree(dict(pending_calculations=list(set([i.calc.name for i in self.queue_computes]))))
 			self.prepare_compute(self.queue_computes)
+			self.run_compute(self.queue_computes)
 
 	def plot(self):
 		"""

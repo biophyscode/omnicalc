@@ -265,7 +265,29 @@ class Calculation:
 	def __init__(self,**kwargs):
 		"""Construct a calculation object."""
 		self.name = kwargs.pop('name')
+		#! note that we forgo the OmnicalcDataStructure here for more fine-grained control
+		# the top-level calculation specs mirrors the text of the calculation request
+		calc_specs = kwargs.pop('specs',{})
+		# construct a raw calculation object
+		self.raw = dict(
+			uptype=calc_specs.pop('uptype','post'),
+			group_name=calc_specs.pop('group',None),
+			slice_name=calc_specs.pop('slice_name',None),
+			collections=calc_specs.pop('collections',None))
+		# hold the specs separately
+		self.specs = calc_specs.pop('specs',{})
+		if calc_specs: raise Exception('unprocessed inputs to the calculation: %s'%calc_specs)
+		# copy any upstream references for later
+		self.upstream = copy.deepcopy(self.specs.get('upstream',{}))
+		# save the stubs for later lookups
+		self.stubs = kwargs.pop('stubs',[])
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
+	def __eq__(self,other):
+		#! note that calculations are considered identical if they have the same specs
+		#! ... we disregard the calc_specs because they include collections, slice names (which might change)
+		#! ... and the group name. we expect simulation and group and other details to be handled on 
+		#! ... slice comparison
+		return self.specs==other.specs and self.name==other.name
 
 class CalculationOLD(NoisyOmnicalcObject):
 	"""

@@ -294,6 +294,14 @@ def dictsub(subset,superset):
 	"""See if one dictionary is contained in another."""
 	return all(item in superset.items() for item in subset.items())
 
+def dictsub_strict(subset,superset): 
+	"""See if one dictionary is contained in another."""
+	return all(item in superset.items() for item in subset.items())
+
+def dictsub_sparse(small,big): 
+	"""See if the routes in one dictionary are contained in another (hence less strict than dictsub)."""
+	return all([(r,v) in catalog(big) for r,v in catalog(small)])
+
 def json_type_fixer(series):
 	"""Cast integer strings as integers, recursively. We also fix 'None'."""
 	for k,v in series.items():

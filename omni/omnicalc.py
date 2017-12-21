@@ -313,8 +313,14 @@ class Calculations:
 			# unroll each calculation and store the stubs because they map from the keyword used in the 
 			# ... parameter sweeps triggered by "loop" and the full specs
 			expanded_calcs,expanded_stubs = self.unroll_loops(calc,return_stubs=True)
-			self.toc[calcname] = [Calculation(name=calcname,specs=spec,stubs=stub)
-				for spec,stub in zip(expanded_calcs,expanded_stubs)]
+			added_calcs = []
+			for spec,stub in zip(expanded_calcs,expanded_stubs):
+				# we have to be careful with a None in a list from YAML so we fix types here 
+				# ... otherwise omnicalc will try to recompute because 'None' fails to match None
+				json_type_fixer(spec)
+				calc_this = Calculation(name=calcname,specs=spec,stubs=stub)
+				added_calcs.append(calc_this)
+			self.toc[calcname] = added_calcs
 
 	def prepare_jobs(self,**kwargs):
 		"""
@@ -575,6 +581,7 @@ class PostDataLibrary:
 				if val.slice==job.slice and val.calc.name==job.calc.name 
 				and dictsub(job.calc.specs,val.calc.specs)]
 			if len(candidates)==1: return candidates[0]
+			# this is the obvious place to debug if you think that omnicalc is trying to rerun completed jobs
 			else: return False
 		else: return self.toc[candidates[0]]
 
@@ -899,7 +906,18 @@ class WorkSpace:
 		if not hasattr(self,'plots'): self.plots = {}
 		# save plot details at the top level in the workspace because some scripts expect it
 		if self.plotname not in self.plots: 
-			self.plots[self.plotname] = copy.deepcopy(self.plotspec.request_calc)
+			# carefully reformulate the original plots as the scripts would expect to see them
+			#! make a more flexible data structure for the future?
+			self.plots.update(**dict([(key,{'specs':val}) 
+				for key,val in copy.deepcopy(self.plotspec.request_calc).items()]))
+			#!!! DEVELOPMENT NOTE. how should we populate work.plots
+			#! currrently set to override with specs in the plot section
+			if self.plotname in self.metadata.plots and 'specs' in self.metadata.plots[self.plotname]:
+				#! conservative
+				if self.plotname not in self.plots: self.plots[self.plotname] = {}
+				#! conservative
+				if 'specs' not in self.plots[self.plotname]: self.plots[self.plotname]['specs'] = {}
+				self.plots[self.plotname]['specs'].update(**self.metadata.plots[self.plotname]['specs'])
 		# convert upstream calculation requests into proper calculations
 		upstream_requests = self.collect_upstream_calculations(self.plotspec.request_calc)
 		calcnames = upstream_requests.keys()

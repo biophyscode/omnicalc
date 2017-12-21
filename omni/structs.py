@@ -200,9 +200,10 @@ class TrajectoryStructure(OmnicalcDataStructure):
 				'body':{'short_name':'string','pbc':'string','group':'string',
 				'start':'number','end':'number','skip':'number'},
 				'suffixes':'list','basename':'string',
-				'dat_type':['gmx'],'slice_type':['standard']}},}
+				#! deprecated 'dat_type':['gmx'],'slice_type':['standard'],
+				'name_style':['standard_gmx']}},}
 
-	_unequal = [{'calculation_request','gromacs_group'}]
+	_unequal = [{'calculation_request','gromacs_group'},{'slice_request_named','gromacs_group'}]
 	_equivalence = {
 		('slice_request_named','calculation_request'):['slice_name','sn','group'],
 		('post_spec_v2','slice_request_named'):['sn','group','pbc','start','end','skip'],
@@ -212,59 +213,6 @@ class TrajectoryStructure(OmnicalcDataStructure):
 		checks = ([a.data[k]==b.data['body'][k] for k in ['start','end','skip','pbc','group']]+
 			[a.data['sn']==b.data['sn']])
 		return all(checks)
-
-	if False:
-
-		# the core structures provide the best detail
-		_flexible_structure_request = {
-			# structure definition for a standard slice made by omnicalc
-			'standard_gromacs':{
-				'slices':{OmnicalcDataStructure.StructureKey('slice_name'):{
-					'pbc':'string','groups':OmnicalcDataStructure.KeyCombo('group'),
-					'start':'number','end':'number','skip':'number'}},
-				'groups':{OmnicalcDataStructure.StructureKey('group_name'):'string'}},}
-
-		# the elements are individual components which may be derived from more than one request
-		_flexible_structure_element = {
-			'slice':{'key':'tuple','sn':'string',
-				'val':{'start':'number','end':'number','skip':'number','group':'string','pbc':'string'}},
-			'group':{'key':'tuple','val':'string','sn':'string'},}
-
-		# alternate structures are used for parsing legacy data
-		_flexible_structure_alternate = {
-			'calculation_request':{'sn':'string','group':'string','slice_name':'string'},
-			#! had to do something to distinguish spec_v3 via inference but could we be explicit ?!?
-			'spec_v3':{
-				'group':'string','sn':'string',
-				'pbc':'string','start':'number','end':'number','skip':'number',},
-			'legacy_spec_v2':{
-				'group':'string','sn':'string',
-				#! whittle dat_type and slice_type?
-				'dat_type':'string','slice_type':'string',
-				'short_name':'string','pbc':'string',
-				'start':'number','end':'number','skip':'number',},
-			'legacy_spec_v1_no_group':{
-				'sn':'string','dat_type':'string','slice_type':'string',
-				'short_name':'string','start':'number','end':'number','skip':'number',},}
-
-		def __repr__(self):
-			asciitree({self.__class__.__name__:self.__dict__})
-			return 'omnicalc %s object at %d'%(self.__class__.__name__,id(self))
-
-		def _compare_calculation_request_to_slice(self,cr,sl):
-			conditions = [
-				#! knowledge of the keys required here
-				sl.data['key'][0]=='slices',cr.data['slice_name']==sl.data['key'][1],
-				cr.data['sn']==sl.data['sn'],
-				cr.data['group']==sl.data['val']['group'],]
-			return all(conditions)
-
-		def _compare_legacy_spec_v2_to_slice(self,ls,sl):
-			conditions = [
-				# the slice type is a gromacs standard so we make sure the legacy spec agrees
-				ls.data.get('dat_type',None)=='gmx',ls.data.get('slice_type',None)=='standard',
-				dictsub(sl.data['val'],ls.data),sl.data['sn']==ls.data['sn']]
-			return all(conditions)
 
 class Calculation(NoisyOmnicalcObject):
 	def __init__(self,**kwargs):
@@ -281,11 +229,14 @@ class Calculation(NoisyOmnicalcObject):
 			collections=calc_specs.pop('collections',None))
 		# hold the specs separately
 		self.specs = calc_specs.pop('specs',{})
+		self.name_style = calc_specs.pop('name_style',None)
+		# we protect against extra unprocessed data in the calculations here
 		if calc_specs: raise Exception('unprocessed inputs to the calculation: %s'%calc_specs)
 		# copy any upstream references for later
 		self.upstream = copy.deepcopy(self.specs.get('upstream',{}))
 		# save the stubs for later lookups
 		self.stubs = kwargs.pop('stubs',[])
+		# some jobs have specific requests for a naming scheme
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 	def __eq__(self,other):
 		#! note that calculations are considered identical if they have the same specs
@@ -334,13 +285,25 @@ class NamingConvention:
 	common_types = {'wild':r'[A-Za-z0-9\-_]','float':r'\d+(?:(?:\.\d+))?',
 		'gmx_suffixes':'(?:gro|xtc)'}
 	# all n2d types in omni_namer get standard types
+	# note that we previously used a dat_type,slice_type couple to describe these but that has been removed
+	# previous options included ('standard','gmx'), ('standard','datspec'), ('standard_obvious','datspec')
+	# ... and ('raw','datspec')
 	parser = dict([
-		(('standard','gmx'),{
+		# standard GMX slices include a suffix and a PBC mode and a group name
+		('standard_gmx',{
 			'd2n':r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.%(suffix)s',
 			'n2d':'^(?P<short_name>%(wild)s+)\.'+
 				'(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
 				'(?P<group>%(wild)s+)\.pbc(?P<pbc>%(wild)s+)\.%(gmx_suffixes)s$',}),
-		(('standard','datspec'),{
+		# datspec with only the simulation alias, times, and calculation name
+		('standard_datspec',{
+			# we append the dat/spec suffix and the nnum later
+			'd2n':r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(calc_name)s',
+			'n2d':'^(?P<short_name>%(wild)s+)\.'+
+				'(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
+				'(?P<calc_name>%(wild)s+)\.n(?P<nnum>\d+)\.(dat|spec)$',}),
+		# datspec name which retains the PBC and group from the standard_gmx slice
+		('standard_datspec_pbc_group',{
 			# we append the dat/spec suffix and the nnum later
 			'd2n':r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.'+
 				r'pbc%(pbc)s.%(calc_name)s',
@@ -348,17 +311,13 @@ class NamingConvention:
 				'(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
 				'(?P<group>%(wild)s+)\.pbc(?P<pbc>%(wild)s+)\.(?P<calc_name>%(wild)s+)'+
 				'\.n(?P<nnum>\d+)\.(dat|spec)$',}),
-		(('standard_obvious','datspec'),{
-			# we append the dat/spec suffix and the nnum later
-			'd2n':r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(calc_name)s',
-			'n2d':'^(?P<short_name>%(wild)s+)\.'+
-				'(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
-				'(?P<calc_name>%(wild)s+)\.n(?P<nnum>\d+)\.(dat|spec)$',}),
-		(('raw','datspec'),{
+		#??? unused
+		('raw_datspec',{
 			# we append the dat/spec suffix and the nnum later
 			#! should this include the number?
 			'd2n':r'%(short_name)s.%(calc_name)s',
-			'n2d':'^(?P<short_name>%(wild)s+)\.(?P<calc_name>%(wild)s+)\.n(?P<nnum>\d+)\.(dat|spec)$',}),])
+			'n2d':'^(?P<short_name>%(wild)s+)\.(?P<calc_name>%(wild)s+)\.n(?P<nnum>\d+)\.(dat|spec)$',}),
+		])
 
 class NameManager(NamingConvention):
 	"""
@@ -397,32 +356,41 @@ class NameManager(NamingConvention):
 	def interpret_name(self,name):
 		"""Given a post-processing data file name, extract data and infer the version."""
 		matches = []
-		for (slice_type,dat_type),namespec in self.parser.items():
+		for name_key,namespec in self.parser.items():
 			if re.match(namespec['n2d']%self.common_types,name):
-				matches.append((slice_type,dat_type))
-		#---anything that fails to match goes into limbo of some kind
+				matches.append(name_key)
+		# anything that fails to match goes into limbo of some kind
 		if not matches: return None
 		elif len(matches)>1: raise Exception('multiple filename interpretations: %s'%matches)
-		slice_type,dat_type = matches[0]
-		data = re.match(self.parser[(slice_type,dat_type)]['n2d']%self.common_types,name).groupdict()
-		return {'slice_type':slice_type,'dat_type':dat_type,'body':data}
+		else: name_style = matches[0]
+		data = re.match(self.parser[name_style]['n2d']%self.common_types,name).groupdict()
+		return {'name_style':name_style,'body':data}
 
 	def alias(self,sn):
 		"""Combine a spotname lookup and short-name alias in one function."""
 		spotname = self.get_spotname(sn)
 		return self.short_namer(sn,spotname)
 
-	def basename(self):
-		"""Name this slice."""
-		#---! hard-coded VERSION 2 here because this is only called for new spec files
-		slice_type = self.job.slice.flat()['slice_type']
-		#---standard slice type gets the standard naming
-		parser_key = {'standard':('standard','datspec'),
-			'readymade_namd':('raw','datspec'),
-			'readymade_gmx':('raw','datspec'),
-			'readymade_meso_v1':('raw','datspec')}.get(slice_type,None)
-		if not parser_key: raise Exception('unclear parser key')
-		basename = self.parser[parser_key]['d2n']%dict(
-			calc_name=self.job.calc.name,**self.job.slice.flat())
-		#---note that the basename does not have the nN number yet (nnum)
-		return basename
+	def basename(self,**kwargs):
+		"""
+		Name this slice.
+		This function has a critical role in preparing job specs for the namer functions. 
+		It would be useful to make this more automatic.
+		"""
+		job = kwargs.pop('job',None)
+		name_style = kwargs.pop('name_style',None)
+		if not name_style: raise Exception('basename needs a name_style')
+		if not job: raise Exception('basename needs a job')
+		if name_style not in self.parser: raise Exception('cannot find style in the parser: %s'%name_style)
+		# +++TRANSFORM a job into a name
+		if name_style=='standard_datspec':
+			request = dict([(k,job.slice.data[k]) for k in ['start','end','skip']])
+			request.update(short_name=self.names_short[job.slice.data['sn']],calc_name=job.calc.name)
+		elif name_style=='standard_datspec_pbc_group':
+			request = dict([(k,job.slice.data[k]) for k in ['start','end','skip','group','pbc']])
+			request.update(short_name=self.names_short[job.slice.data['sn']],calc_name=job.calc.name)
+		elif name_style=='standard_gmx':
+			request = dict([(k,job.slice.data[k]) for k in ['start','end','skip','group','pbc']])
+			request.update(short_name=self.names_short[job.slice.data['sn']])
+		else: raise Exception('cannot pepare data for the namer for name_style %s'%name_style)
+		return self.parser[name_style]['d2n']%request

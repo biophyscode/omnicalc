@@ -470,7 +470,7 @@ class PostData(NoisyOmnicalcObject):
 				# +++ BUILD slice object
 				self.slice = Slice(data=dict(slice_raw,sn=sn))
 				#! we could check the postprocessing name here to see if it matches its own slice data
-			else: raise Exception('dev')
+			else: raise Exception('cannot classify this version 2 spec file: %s'%slice_raw)
 		elif self.spec_version==1:
 			# for version 1 spec files we have to get important information from the filename
 			calcname = self.namedat['body']['calc_name']
@@ -484,7 +484,7 @@ class PostData(NoisyOmnicalcObject):
 			if group!=None: slice_raw['group'] = group
 			pbc = self.namedat['body'].get('pbc',None)
 			if pbc!=None: slice_raw['pbc'] = pbc
-			slice_raw.update(dat_type='gmx',slice_type='standard')
+			slice_raw.update(name_style='standard_gmx')
 			json_type_fixer(slice_raw)
 			# get the long simulation name from the table
 			sn = self.namer.names_long[slice_raw['short_name']]
@@ -532,15 +532,15 @@ class PostDataLibrary:
 			if not namedat: self.toc[name] = {}
 			else:
 				# if this is a datspec file we find its pair and read the spec file
-				if namedat['dat_type']=='datspec':
+				# +++ COMPARE namedat to two possible name_style values from the NameManager
+				if namedat['name_style'] in ['standard_datspec','standard_datspec_pbc_group']:
 					basename = self.get_twin(name,('dat','spec'))
 					this_datspec = PostData(fn=basename,dn=self.where,style='read')
 					if this_datspec.valid: self.toc[basename] = this_datspec
 					#! handle invalid datspecs?
 					else: self.toc[basename] = {}
-				# everything else must be a slice
-				#! alternate slice types (e.g. gro/trr) would go here
-				else: 
+				# if this is a standard gromacs file we check twins and register it as a slice
+				elif namedat['name_style']=='standard_gmx':
 					# decided to pair gro/xtc because they are always made/used together
 					#! should we make this systematic? check for other trajectory types?
 					basename = self.get_twin(name,('xtc','gro'))
@@ -558,6 +558,8 @@ class PostDataLibrary:
 						else: sn = short_name
 					self.toc[basename] = Slice(data=dict(namedat,sn=sn,
 						basename=basename,suffixes=['xtc','gro']))
+				#! alternate slice types (e.g. gro/trr) would go here
+				else: raise Exception('PostDataLibrary cannot parse post data %s'%namedat)
 
 	def limbo(self): return dict([(key,val) for key,val in self.toc.items() if val=={}])
 	def slices(self): return dict([(key,val) for key,val in self.toc.items() 
@@ -630,9 +632,7 @@ class SliceMeta(TrajectoryStructure):
 					# +++ TRANSFORM a cross output into a group
 					group_transformed = dict(selection=val,sn=sn,group_name=key[1])
 					self.toc.append(Group(group_transformed))
-				else: 
-					import ipdb;ipdb.set_trace()
-					raise Exception('dev')
+				else: raise Exception('expecting a group or slice but instead received %s'%{key:val})
 
 	def search(self,candidate):
 		"""Search the requested slices."""
@@ -865,10 +865,7 @@ class WorkSpace:
 		# +++ COMPARE a barebones calculation with the jobs list
 		candidates = [jc for jc in self.jobs 
 			if jc.calc==request and jc.slice.data['sn']==sn]
-		if len(candidates)==1: 
-			job_up = candidates[0]
-			fn = job_up.result.files['dat']
-			return job_up
+		if len(candidates)==1: return candidates[0]
 		else: 
 			raise Exception(('cannot find an upstream job which computes '
 				'"%s" for simulation "%s" with specs: %s')%(
@@ -1109,10 +1106,17 @@ class WorkSpace:
 			# tack the upstream jobs on for later
 			job.upstream = upstream
 		# loop over jobs and register filenames
+		self.pending = []
 		for job in jobs:
 			#! style will be updated from standard/datspec later on
 			#! intervene here to name i.e. "undulations" with the group and pbc since that is unnecessary
-			basename = namer.basename(job,style=('standard','datspec'))
+			# by default we do not pass PBC or group name to the datspec anymore; this was standard in 
+			# ... version 1,2 spec files. set name_style: standard_datspec_pbc_group in the calculation
+			# ... if you want to force the full name. otherwise all post-data omits this. all downstream
+			# ... calculations also omit the PBC and group by default anyway.
+			name_style = job.calc.name_style
+			basename = self.namer.basename(job=job,
+				name_style='standard_datspec' if not name_style else name_style)
 			# prepare suffixes for new dat files
 			keys = [int(re.match('^%s\.n(\d+)\.spec$'%basename,key).group(1)) 
 				for key in spec_toc.get(basename,[]) if re.match('^%s'%basename,key)]
@@ -1253,6 +1257,16 @@ class WorkSpace:
 			job.result.style = 'read'
 			del upstream
 
+	def fail_report(self):
+		"""
+		Tell the user which files were incomplete.
+		"""
+		asciitree(dict(incomplete_jobs=dict([('job %d: %s'%(jj+1,j.style),j.files) 
+			for jj,j in enumerate([i.result for i in self.pending 
+				if i.result.__dict__['style'] in ['computing','new']])])))
+		status('compute loop failure means there many be preallocated files listed above. '
+			'omnicalc never deletes files so you should delete them to continue',tag='error')
+
 	def compute(self,**kwargs):
 		"""
 		Run a calculation. This is the main loop, and precedes the plot loop.
@@ -1294,7 +1308,13 @@ class WorkSpace:
 				sys.exit(1)
 			else: 
 				self.prepare_compute(self.queue_computes)
-				self.run_compute()
+				try: self.run_compute()
+				except KeyboardInterrupt:
+					self.fail_report()
+					status('exiting',tag='interrupt')
+				except Exception as e:
+					self.rail_report()
+					raise Exception('exception during compute: %s'%str(e))
 
 	def plot(self):
 		"""

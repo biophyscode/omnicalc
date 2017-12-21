@@ -42,8 +42,10 @@ def make_slice_gromacs(**kwargs):
 	#---create the group
 	if spec_in['group']:
 		if spec_in['group']!=kwargs['group_name']:
-			raise Exception('group_name %s does not match the slice group %s'%(spec_in['group'],kwargs['group_name']))
-		spec_group = dict(sn=kwargs['sn'],group=spec_in['group'],select=kwargs['group_selection'],simkey=spec['outkey'])
+			raise Exception('group_name %s does not match the slice group %s'%(
+				spec_in['group'],kwargs['group_name']))
+		spec_group = dict(sn=kwargs['sn'],group=spec_in['group'],
+			select=kwargs['group_selection'],simkey=spec['outkey'])
 		#import ipdb;ipdb.set_trace()
 		#---get the latest starting structure
 		#spec['tpr_keyfinder']('EGFR_active_L747P_MD_2', ('s', '01', 'protein'), '0001')
@@ -298,8 +300,10 @@ def slice_trajectory(**kwargs):
 		keys,t0 = source
 		sn = keys[0]
 		#---get tpr exist use the previous one (or fail on first source)
-		try: tpr = tpr_keyfinder(*keys,strict=False)
+		try: 
+			tpr = tpr_keyfinder(*keys,strict=False)
 		except: 
+			import ipdb;ipdb.set_trace()
 			raise Exception('development error. could not locate a TPR: %s'%kwargs)
 		#---assume cursor points to the trajectory we want
 		try: 

@@ -4,7 +4,7 @@
 OMNICALC DATA STRUCTURES
 """
 
-import re,copy
+import os,sys,re,copy,glob
 
 from base.tools import catalog
 from datapack import asciitree,delveset,delve,str_types,dictsub,json_type_fixer
@@ -13,7 +13,7 @@ class NoisyOmnicalcObject:
 	def __repr__(self):
 		"""Readable debugging."""
 		asciitree({self.__class__.__name__:self.__dict__})
-		return 'omnicalc %s object at %d'%(self.__class__.__name__,id(self))
+		return '[STATUS] omnicalc %s object at %d'%(self.__class__.__name__,id(self))
 
 class OmnicalcDataStructure(NoisyOmnicalcObject):
 
@@ -141,6 +141,7 @@ class OmnicalcDataStructure(NoisyOmnicalcObject):
 		#! no protection against contradicting equivalence relations or functions
 		for name,(first,second) in zip(function_names,orderings):
 			if hasattr(self,name): return getattr(self,name)(a,b)
+		if hasattr(self,'_unequal') and set([self.style,other.style]) in self._unequal: return False
 		if hasattr(self,'_equivalence'):
 			for first,second in orderings:
 				if (first.style,second.style) in self._equivalence:
@@ -189,6 +190,9 @@ class TrajectoryStructure(OmnicalcDataStructure):
 			'struct':{
 				'sn':'string','group':'string','slice_name':'string','pbc':'string',
 				'start':'number','end':'number','skip':'number'}},
+		'gromacs_group':{
+			'meta':{'strict':True,'check_types':True},
+			'struct':{'group_name':'string','selection':'string','sn':'string'}},
 		'gromacs_slice':{
 			'meta':{'strict':True,'check_types':True},
 			'struct':{
@@ -198,6 +202,7 @@ class TrajectoryStructure(OmnicalcDataStructure):
 				'suffixes':'list','basename':'string',
 				'dat_type':['gmx'],'slice_type':['standard']}},}
 
+	_unequal = [{'calculation_request','gromacs_group'}]
 	_equivalence = {
 		('slice_request_named','calculation_request'):['slice_name','sn','group'],
 		('post_spec_v2','slice_request_named'):['sn','group','pbc','start','end','skip'],
@@ -321,18 +326,15 @@ class CalculationOLD(NoisyOmnicalcObject):
 		#! ... slice comparison
 		return self.specs==other.specs
 
-
-#!!! RIPE FOR REFACTOR
-######################
 class NamingConvention:
 	"""
-	Organize the naming conventions for omnicalc.
-	Several classes below inherit this to have easy access to the namers.
+	Create a file-naming cnvention.
 	"""
-	# all n2d types in omni_namer get standard types
+	# name the types in the parser
 	common_types = {'wild':r'[A-Za-z0-9\-_]','float':r'\d+(?:(?:\.\d+))?',
 		'gmx_suffixes':'(?:gro|xtc)'}
-	omni_namer = [
+	# all n2d types in omni_namer get standard types
+	parser = dict([
 		(('standard','gmx'),{
 			'd2n':r'%(short_name)s.%(start)s-%(end)s-%(skip)s.%(group)s.pbc%(pbc)s.%(suffix)s',
 			'n2d':'^(?P<short_name>%(wild)s+)\.'+
@@ -356,27 +358,41 @@ class NamingConvention:
 			# we append the dat/spec suffix and the nnum later
 			#! should this include the number?
 			'd2n':r'%(short_name)s.%(calc_name)s',
-			'n2d':'^(?P<short_name>%(wild)s+)\.(?P<calc_name>%(wild)s+)\.n(?P<nnum>\d+)\.(dat|spec)$',}),]
-	# keys required in a slice in the meta file for a particular umbrella naming convention
-	omni_slicer_namer = {
-		'standard':{'slice_keys':['groups','slices']},
-		'readymade_namd':{'slice_keys':['readymade_namd']},
-		'readymade_gmx':{'slice_keys':['readymade_gmx']},
-		'readymade_meso_v1':{'slice_keys':['readymade_meso_v1']},}
-	# alternate view of the namer
-	parser = dict(omni_namer)
+			'n2d':'^(?P<short_name>%(wild)s+)\.(?P<calc_name>%(wild)s+)\.n(?P<nnum>\d+)\.(dat|spec)$',}),])
 
+class NameManager(NamingConvention):
+	"""
+	Manage file name creation and interpretation.
+	"""
 	def __init__(self,**kwargs):
-		"""Turn a set of specs into a namer."""
-		self.work = kwargs.get('work',None)
 		self.short_namer = kwargs.pop('short_namer',None)
-		self.short_names = kwargs.pop('short_names',None)
-		# since the short_namer is the default if no explicit names we provide the identity function
-		if not self.short_namer: self.short_namer = lambda sn,spot=None: sn
-		elif type(self.short_namer)!=str: 
-			raise Exception('meta short_namer parameter must be a string: %s'%self.short_namer)
-		# compile the lambda function which comes in as a string
+		if not self.short_namer: self.short_namer = lambda sn,spot:sn
 		else: self.short_namer = eval(self.short_namer)
+		self.spots = kwargs.pop('spots',{})
+		# if no spots are defined then we have no way of using a spotname in any naming scheme
+		# ... hence we save them as None here and require that names in post are unique
+		if not self.spots: self.spotnames = {}
+		# if we have spots then we note the simulation locations in order to hold their spots
+		#! note minor redundancy with ParsedRawData but we avoid that because it is slow, requires spots
+		else:
+			self.spotnames = {}
+			for spot,details in self.spots.items():
+				dn_top = os.path.join(details['route_to_data'],details['spot_directory'])
+				dns = [os.path.basename(dn) 
+					for dn in glob.glob(os.path.join(dn_top,'*')) if os.path.isdir(dn)]
+				dns_match = [dn for dn in dns if re.match(details['regexes']['top'],dn)]
+				for dn in dns_match:
+					if dn not in self.spotnames: self.spotnames[dn] = [spot]
+					else: self.spotnames[dn].append(spot)
+		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
+
+	def get_spotname(self,sn):
+		"""Return a spot name in case simulations with the same name come from identical spots."""
+		# failure to identify a spot gives a generic result so users can see when they need to add spot info
+		spotnames = self.spotnames.get(sn,['spotname'])
+		if len(spotnames)!=1: 
+			raise Exception('DEV. need to decided between spotnames for simulation %s: %s'%(sn,spotnames))
+		else: return spotnames[0]
 
 	def interpret_name(self,name):
 		"""Given a post-processing data file name, extract data and infer the version."""
@@ -391,14 +407,22 @@ class NamingConvention:
 		data = re.match(self.parser[(slice_type,dat_type)]['n2d']%self.common_types,name).groupdict()
 		return {'slice_type':slice_type,'dat_type':dat_type,'body':data}
 
-	def basename(self,job,style):
-		"""
-		Name a piece of data according to our rules.
-		"""
-		# map slice style to the right namer
-		#! note that we should replace the couplets above because they are redundant and match this to below
-		#! spotname here. also need to formalize the name_reqs
-		#! it would also be good to move sn up somewhere standard? some kind of get function on the slice ob?
-		basename = self.parser[style]['d2n']%dict(calc_name=job.calc.name,suffix='dat',
-			short_name=self.short_namer(job.slice.data['sn'],None),**job.slice.data)
+	def alias(self,sn):
+		"""Combine a spotname lookup and short-name alias in one function."""
+		spotname = self.get_spotname(sn)
+		return self.short_namer(sn,spotname)
+
+	def basename(self):
+		"""Name this slice."""
+		#---! hard-coded VERSION 2 here because this is only called for new spec files
+		slice_type = self.job.slice.flat()['slice_type']
+		#---standard slice type gets the standard naming
+		parser_key = {'standard':('standard','datspec'),
+			'readymade_namd':('raw','datspec'),
+			'readymade_gmx':('raw','datspec'),
+			'readymade_meso_v1':('raw','datspec')}.get(slice_type,None)
+		if not parser_key: raise Exception('unclear parser key')
+		basename = self.parser[parser_key]['d2n']%dict(
+			calc_name=self.job.calc.name,**self.job.slice.flat())
+		#---note that the basename does not have the nN number yet (nnum)
 		return basename

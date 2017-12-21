@@ -15,7 +15,7 @@ from datapack import json_type_fixer
 from base.tools import catalog,delve,str_or_list,str_types,status
 from base.hypothesis import hypothesis
 from datapack import asciitree,delveset,dictsub,dictsub_sparse
-from structs import NamingConvention,Calculation,TrajectoryStructure,NoisyOmnicalcObject
+from structs import NameManager,Calculation,TrajectoryStructure,NoisyOmnicalcObject
 from base.autoplotters import inject_supervised_plot_tools
 from base.store import load,store
 
@@ -361,6 +361,10 @@ class Slice(TrajectoryStructure):
 	"""A class which holds trajectory data of many kinds."""
 	pass
 
+class Group(TrajectoryStructure):
+	"""A class which holds a group specification for a slice."""
+	pass
+
 class PostData(NoisyOmnicalcObject):
 
 	"""
@@ -455,9 +459,8 @@ class PostData(NoisyOmnicalcObject):
 			slice_raw = self.specs['slice']
 			json_type_fixer(slice_raw)
 			if slice_raw.get('dat_type',None)=='gmx' and slice_raw.get('slice_type',None)=='standard':
-				#! hacking the problem of getting simulation name from shortname
-				try: sn = dict([(j,i) for i,j in self.namer.sns_toc.items()])[slice_raw['short_name']]
-				except: sn = 'missing simulation'
+				# get the long simulation name from the table
+				sn = self.namer.names_long[slice_raw['short_name']]
 				# +++ BUILD slice object
 				self.slice = Slice(data=dict(slice_raw,sn=sn))
 				#! we could check the postprocessing name here to see if it matches its own slice data
@@ -477,9 +480,8 @@ class PostData(NoisyOmnicalcObject):
 			if pbc!=None: slice_raw['pbc'] = pbc
 			slice_raw.update(dat_type='gmx',slice_type='standard')
 			json_type_fixer(slice_raw)
-			#! hacking the problem of getting simulation name from shortname
-			try: sn = dict([(j,i) for i,j in self.namer.sns_toc.items()])[slice_raw['short_name']]
-			except: sn = 'missing simulation'
+			# get the long simulation name from the table
+			sn = self.namer.names_long[slice_raw['short_name']]
 			# we currently match legacy_spec_v2 but we could add a key to match a separate one
 			# +++ BUILD slice object
 			self.slice = Slice(data=dict(slice_raw,sn=sn))
@@ -540,7 +542,7 @@ class PostDataLibrary:
 					json_type_fixer(namedat)
 					#! +++ DEV name the namedat more uniform?
 					short_name = namedat['body']['short_name']
-					try: sn = self.namer.sns_toc_r[short_name]
+					try: sn = self.namer.names_long[short_name]
 					except: 
 						if strict_sns:
 							raise Exception(
@@ -611,12 +613,19 @@ class SliceMeta(TrajectoryStructure):
 			slices_raw = self.cross(style=style,data=slices_spec)
 			# make a formal slice element out of the raw data
 			for key,val in slices_raw.items(): 
-				#! discarding groups here!!!
-				if key[0]!='slices': continue
-				# +++ TRRANFORM a cross output into a slice
-				slice_transformed = dict(val,sn=sn,slice_name=key[1])
-				# +++ BUILD slice object
-				self.toc.append(Slice(slice_transformed))
+				# register different types with the toc
+				if key[0]=='slices':
+					# +++ TRRANFORM a cross output into a slice
+					slice_transformed = dict(val,sn=sn,slice_name=key[1])
+					# +++ BUILD slice object
+					self.toc.append(Slice(slice_transformed))
+				elif key[0]=='groups':
+					# +++ TRANSFORM a cross output into a group
+					group_transformed = dict(selection=val,sn=sn,group_name=key[1])
+					self.toc.append(Group(group_transformed))
+				else: 
+					import ipdb;ipdb.set_trace()
+					raise Exception('dev')
 
 	def search(self,candidate):
 		"""Search the requested slices."""
@@ -723,6 +732,7 @@ class WorkSpace:
 		self.plot_args = kwargs.pop('plot_args',())
 		self.plot_kwargs = kwargs.pop('plot_kwargs',{})
 		self.debug = kwargs.pop('debug',False)
+		self.debug_slices = kwargs.pop('debug_slices',False)
 		# determine the state (kwargs is passed by reference so we clear it)
 		self.state = WorkSpaceState(kwargs)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
@@ -750,21 +760,28 @@ class WorkSpace:
 		self.short_namer = self.metadata.meta.get('short_namer',None)
 		if self.short_namer==None:
 			nspots = self.config.get('spots',{})
-			#---if no "master" short_namer in the meta and multiple spots we force the user to make one
+			# if no "master" short_namer in the meta and multiple spots we force the user to make one
 			if len(nspots)>1: raise Exception('create a namer which is compatible with all of your spots '+
 				'(%s) and save it to "short_namer" in meta dictionary in the YAML file. '%nspots.keys()+
 				'this is an uncommon use-case which lets you use multiple spots without naming collisions.')
 			elif len(nspots)==0: self.short_namer = None
-			#---if you have one spot we infer the namer from the omnicalc config.py
+			# if you have one spot we infer the namer from the omnicalc config.py
 			else: self.short_namer = self.config.get('spots',{}).values()[0]['namer']	
 		global namer
-		namer = self.namer = NamingConvention(short_namer=self.short_namer)
-		# populate a table of all simulation names for emergency use
-		#! spotname is none for now
-		spotname = None
-		self.namer.sns_toc = dict([(sn,self.namer.short_namer(sn,None)) 
-			for sn in self.simulation_names()])
-		self.namer.sns_toc_r = dict([(v,k) for k,v in self.namer.sns_toc.items()])
+		# prepare the namer, used in several places in omnicalc.py
+		namer = self.namer = NameManager(short_namer=self.short_namer,spots=self.config.get('spots',{}))
+
+		#####! is this necessary?
+		# prepare lookup tables for other functions to map short names back to full names
+		self.namer.names_short,self.namer.names_long = {},{}
+		for sn in self.simulation_names():
+			# get the spot name
+			spotname = self.namer.get_spotname(sn)
+			short_name = self.namer.short_namer(sn,spotname)
+			if short_name in self.namer.names_long: raise Exception('short name collision: %s'%short_name)
+			# the short names are handy aliases for dealing with unwielding sns in the metadata
+			self.namer.names_short[sn] = short_name
+			self.namer.names_long[short_name] = sn
 
 	def read_config(self):
 		"""Read the config and set paths."""
@@ -870,6 +887,7 @@ class WorkSpace:
 		if whittle_calc: raise Exception('dev')
 		# we always run the compute loop to make sure calculations are complete but also to get the jobs
 		# note that compute runs may be redundant if we call plotload more than once but it avoids repeats
+		#! skip can be dangerous
 		self.compute(automatic=False)
 		sns = self.plotspec.sns()
 		if not sns: raise Exception('cannot get simulations for plot %s'%self.plotname)
@@ -987,6 +1005,48 @@ class WorkSpace:
 		self.plot_prepare()
 		plotrun.autoplot(out=out)
 
+	def make_slices(self,jobs):
+		"""
+		Make slices
+		"""
+		# only parse simulation data if we need to make slices
+		from base.parser import ParsedRawData
+		self.source = ParsedRawData(spots=self.config.get('spots',{}))
+		from base.slicer import make_slice_gromacs,edrcheck
+		# cache important parts of the slice
+		slices_new = []
+		for jnum,job in enumerate(jobs):
+			# prepare slice information for the slicer
+			#! note that the make_slice_gromacs function is legacy and hence requires careful inputs
+			#! ... otherwise naming errors
+			slice_spec = {'spec':dict([(k,job.slice.data[k]) 
+				for k in ['sn','start','end','skip','group','pbc']])}
+			sn = slice_spec['spec']['sn']
+			slice_spec['sn'] = sn
+			slice_spec['sequence'] = self.source.get_timeseries(sn)
+			slice_spec['sn_prefixed'] = self.namer.alias(sn)
+			spotname = self.namer.get_spotname(sn)
+			#! hard-coded trajectory format below
+			slice_spec['tpr_keyfinder'] = self.source.keyfinder((spotname,'tpr'))
+			slice_spec['traj_keyfinder'] = self.source.keyfinder((spotname,'xtc'))
+			slice_spec['gro_keyfinder'] = self.source.keyfinder((spotname,'structure'))
+			slice_spec['group_name'] = job.slice.data['group']
+			# +++COMPARE find the right group to get the selection for the slicer
+			#! note that we do not need to actually use the NDX file on disk, but this might be a good idea
+			candidates = [val for val in self.slices.toc 
+				if val.style=='gromacs_group' and val.data['sn']==sn 
+				and val.data['group_name']==slice_spec['group_name']]
+			if len(candidates)!=1: 
+				raise Exception('failed to find group %s for simulation %s in the SliceMeta')
+			else: slice_spec['group_selection'] = candidates[0].data['selection']
+			slice_spec['last_structure'] = self.source.get_last(sn,'structure')
+			slices_new.append(slice_spec)
+		# make the slices
+		for jnum,(job,slice_spec) in enumerate(zip(jobs,slices_new)):
+			print(job.slice)
+			status('making slice %d/%d'%(jnum+1,len(jobs)),tag='slice')
+			make_slice_gromacs(postdir=self.postdir,**slice_spec)
+
 	def prepare_compute(self,jobs):
 		"""
 		Prepare and simulate the calculations to prevent name collisions.
@@ -1002,12 +1062,22 @@ class WorkSpace:
 			spec_toc[basename].append(fn)
 		for k,v in spec_toc.items(): spec_toc[k] = sorted(v)
 		# acquire slices
+		jobs_require_slices = []
 		for job in jobs:
 			# find the trajectory slice
 			keys = [key for key,val in self.post.slices().items() if val==job.slice]
-			if len(keys)!=1: raise Exception('failed to find slice. DEVELOPMENT REQUIRED.')
+			if len(keys)!=1: jobs_require_slices.append(job)
 			else: job.slice_upstream = self.post.toc[keys[0]]
-		self.pending = []
+		# if we need to make slices we will return
+		if jobs_require_slices: 
+			if self.debug_slices:
+				status('welcome to the debugger. check out self.queue_computes and jobs_require_slices '
+					'to see pending calculations. exit and rerun to continue.',
+					tag='debug')
+				import ipdb
+				ipdb.set_trace()
+				sys.exit(1)
+			self.make_slices(jobs_require_slices)
 		# acquire upstream data without loading it yet
 		for job in jobs:
 			# convert the upstream calculation requests into proper calculations
@@ -1019,7 +1089,8 @@ class WorkSpace:
 			job.upstream = upstream
 		# loop over jobs and register filenames
 		for job in jobs:
-			#! style will be updated
+			#! style will be updated from standard/datspec later on
+			#! intervene here to name i.e. "undulations" with the group and pbc since that is unnecessary
 			basename = namer.basename(job,style=('standard','datspec'))
 			# prepare suffixes for new dat files
 			keys = [int(re.match('^%s\.n(\d+)\.spec$'%basename,key).group(1)) 
@@ -1166,6 +1237,7 @@ class WorkSpace:
 		Run a calculation. This is the main loop, and precedes the plot loop.
 		"""
 		automatic = kwargs.pop('automatic',True)
+		skip = kwargs.pop('skip',False)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		self.prelim()
 		# prepare jobs from these calculations
@@ -1181,15 +1253,20 @@ class WorkSpace:
 		# if we have incomplete jobs then run them
 		if self.queue_computes and not automatic:
 			raise Exception('there are pending compute jobs. try `make compute` before plotting')
-		if self.queue_computes and automatic: 
+		elif self.queue_computes and skip:
+			status('skipping pending computatations in case you are plotting swiftly',tag='warning')
+			return
+		elif self.queue_computes and automatic: 
 			status('there are %d incomplete jobs'%len(self.queue_computes),tag='status')
 			asciitree(dict(pending_calculations=list(set([i.calc.name for i in self.queue_computes]))))
 			# halt the process and drop into the debugger in order to check out the jobs
 			if self.debug:
-				status('welcome to the debugger. check out self.queue_computes to see pending calculations',
+				status('welcome to the debugger. check out self.queue_computes to see pending calculations. '
+					'exit and rerun to continue.',
 					tag='debug')
-				#! add confirm step here?
-				import ipdb;ipdb.set_trace()
+				import ipdb
+				ipdb.set_trace()
+				sys.exit(1)
 			else: 
 				self.prepare_compute(self.queue_computes)
 				self.run_compute()
@@ -1220,9 +1297,10 @@ class WorkSpace:
 ### INTERFACE FUNCTIONS
 ### note that these are imported by omni/cli.py and exposed to makeface
 
-def compute(debug=False,meta=None):
+def compute(debug=False,debug_slices=False,meta=None):
 	status('generating workspace for compute',tag='status')
-	work = WorkSpace(compute=True,meta_cursor=meta,debug=debug)
+	work = WorkSpace(compute=True,meta_cursor=meta,debug=debug,debug_slices=debug_slices)
 def plot(*args,**kwargs):
 	status('generating workspace for plot',tag='status')
 	work = WorkSpace(plot=True,plot_args=args,plot_kwargs=kwargs)
+ 

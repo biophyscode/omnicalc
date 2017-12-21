@@ -1314,7 +1314,7 @@ class WorkSpace:
 					self.fail_report()
 					status('exiting',tag='interrupt')
 				except Exception as e:
-					self.rail_report()
+					self.fail_report()
 					raise Exception('exception during compute: %s'%str(e))
 
 	def plot(self):

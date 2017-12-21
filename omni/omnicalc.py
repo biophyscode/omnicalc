@@ -738,8 +738,9 @@ class WorkSpace:
 		# remove arguments for plotting
 		self.plot_args = kwargs.pop('plot_args',())
 		self.plot_kwargs = kwargs.pop('plot_kwargs',{})
+		debug_flags = [False,'slices','compute']
 		self.debug = kwargs.pop('debug',False)
-		self.debug_slices = kwargs.pop('debug_slices',False)
+		if self.debug not in debug_flags: raise Exception('debug argument must be in %s'%debug_flags)
 		# determine the state (kwargs is passed by reference so we clear it)
 		self.state = WorkSpaceState(kwargs)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
@@ -1085,7 +1086,7 @@ class WorkSpace:
 			else: job.slice_upstream = self.post.toc[keys[0]]
 		# if we need to make slices we will return
 		if jobs_require_slices: 
-			if self.debug_slices:
+			if self.debug=='slices':
 				status('welcome to the debugger. check out self.queue_computes and jobs_require_slices '
 					'to see pending calculations. exit and rerun to continue.',
 					tag='debug')
@@ -1299,7 +1300,7 @@ class WorkSpace:
 				self.queue_computes),tag='status')
 			asciitree(dict(pending_calculations=list(set([i.calc.name for i in self.queue_computes]))))
 			# halt the process and drop into the debugger in order to check out the jobs
-			if self.debug:
+			if self.debug=='compute':
 				status('welcome to the debugger. check out self.queue_computes to see pending calculations. '
 					'exit and rerun to continue.',
 					tag='debug')
@@ -1344,7 +1345,7 @@ class WorkSpace:
 
 def compute(debug=False,debug_slices=False,meta=None):
 	status('generating workspace for compute',tag='status')
-	work = WorkSpace(compute=True,meta_cursor=meta,debug=debug,debug_slices=debug_slices)
+	work = WorkSpace(compute=True,meta_cursor=meta,debug=debug)
 def plot(*args,**kwargs):
 	status('generating workspace for plot',tag='status')
 	work = WorkSpace(plot=True,plot_args=args,plot_kwargs=kwargs)

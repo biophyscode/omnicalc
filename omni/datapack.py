@@ -226,7 +226,7 @@ def delveset(o,*k,**kwargs):
 		if k[0] not in o: o[k[0]] = {}
 		delveset(o[k[0]],*k[1:],value=value)
 
-def asciitree(obj,depth=0,wide=2,last=[],recursed=False):
+def asciitree(obj,depth=0,wide=2,last=[],recursed=False,string=False):
 	"""
 	Print a dictionary as a tree to the terminal.
 	Includes some simuluxe-specific quirks.

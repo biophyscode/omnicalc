@@ -13,7 +13,7 @@ class NoisyOmnicalcObject:
 	def __repr__(self):
 		"""Readable debugging."""
 		asciitree({self.__class__.__name__:self.__dict__})
-		return '[STATUS] omnicalc %s object at %d'%(self.__class__.__name__,id(self))
+		return '<%s instance at 0x%x>'%(self.__class__.__name__,id(self))
 
 class OmnicalcDataStructure(NoisyOmnicalcObject):
 
@@ -266,7 +266,7 @@ class TrajectoryStructure(OmnicalcDataStructure):
 				dictsub(sl.data['val'],ls.data),sl.data['sn']==ls.data['sn']]
 			return all(conditions)
 
-class Calculation:
+class Calculation(NoisyOmnicalcObject):
 	def __init__(self,**kwargs):
 		"""Construct a calculation object."""
 		self.name = kwargs.pop('name')

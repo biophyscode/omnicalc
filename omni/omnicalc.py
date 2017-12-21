@@ -1077,6 +1077,9 @@ class WorkSpace:
 				import ipdb
 				ipdb.set_trace()
 				sys.exit(1)
+			asciitree(dict(pending_slices=dict([('pending slice %d'%(jj+1),j.slice.__dict__) 
+				for jj,j in enumerate(jobs_require_slices)])))
+			status('pending jobs require %d slices (see above)'%len(jobs_require_slices),tag='status')
 			self.make_slices(jobs_require_slices)
 		# acquire upstream data without loading it yet
 		for job in jobs:
@@ -1257,7 +1260,11 @@ class WorkSpace:
 			status('skipping pending computatations in case you are plotting swiftly',tag='warning')
 			return
 		elif self.queue_computes and automatic: 
-			status('there are %d incomplete jobs'%len(self.queue_computes),tag='status')
+			asciitree(dict(pending_jobs=dict([('pending job %d'%(jj+1),
+				dict(calculation=j.calc.__dict__,slice=j.slice.__dict__)) 
+				for jj,j in enumerate(self.queue_computes)])))
+			status('there are %d incomplete jobs (see above)'%len(
+				self.queue_computes),tag='status')
 			asciitree(dict(pending_calculations=list(set([i.calc.name for i in self.queue_computes]))))
 			# halt the process and drop into the debugger in order to check out the jobs
 			if self.debug:

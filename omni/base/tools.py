@@ -59,7 +59,7 @@ def str_or_list(incoming):
 	else: return incoming
 
 def status(string,i=0,looplen=None,bar_character=None,width=None,spacer='.',
-	bar_width=25,tag='',start=None,pad=None,refresh=True):
+	bar_width=25,tag='status',start=None,pad=None,refresh=True):
 	"""
 	Show a status bar and counter for a fixed-length operation.
 	Taken from AUTOMACS to work in python 2 and 3.

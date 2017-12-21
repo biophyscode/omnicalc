@@ -16,6 +16,7 @@ function processes all incoming experiment settings into a nested dictionary whi
 """
 
 import os,sys,re,json
+import collections
 
 #---import magic
 sys.path.insert(0,os.path.dirname(os.path.relpath(os.path.abspath(__file__),os.getcwd())))
@@ -247,10 +248,11 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False,string=False):
 		''.join([(vertic if d not in last else ' ')+' '*wide for d in range(1,depth)])
 		)+c+horizo*wide) for (k,c) in [('mid',corner),('end',corner_end)]])
 	spacer = spacer_both['mid']
+	dict_types = [dict,collections.OrderedDict]
 	if type(obj) in [float,int,bool]+str_types:
 		if depth == 0: print(spacer+str(obj)+'\n'+horizo*len(obj))
 		else: print(spacer+str(obj))
-	elif type(obj) == dict and all([type(i) in str_types+[float,int,bool] 
+	elif type(obj) in dict_types and all([type(i) in str_types+[float,int,bool] 
 		for i in obj.values()]) and depth==0:
 		asciitree({'HASH':obj},depth=1,recursed=True)
 	elif type(obj) in [list,tuple]:
@@ -262,7 +264,7 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False,string=False):
 					last=last+([depth] if ind==len(obj)-1 else []),
 					recursed=True)
 			else: print(str(item))
-	elif type(obj) == dict and obj != {}:
+	elif type(obj) in dict_types and obj != {}:
 		for ind,key in enumerate(obj.keys()):
 			spacer_this = spacer_both['end'] if ind==len(obj)-1 else spacer
 			if type(obj[key]) in str_types+[float,int,bool]: print(spacer_this+str(key)+' = '+str(obj[key]))
@@ -272,7 +274,10 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False,string=False):
 				print(spacer_this+key+' = '+str(obj[key]))
 			#---special: skip lists if blank dictionaries
 			elif type(obj[key])==list and all([i=={} for i in obj[key]]):
-				print(spacer_this+key+' = (empty)')
+				print(spacer_this+key+' = %s'%obj[key])
+			#---special: prevent None from newline
+			elif type(obj[key])==type(None):
+				print(spacer_this+key+' = None')
 			elif obj[key] != {}:
 				#---fancy border for top level
 				if depth == 0:
@@ -284,8 +289,8 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False,string=False):
 				asciitree(obj[key],depth=depth+1,
 					last=last+([depth] if ind==len(obj)-1 else []),
 					recursed=True)
-			elif (type(obj[key])==list and obj[key]==[]) or (type(obj[key])==dict and obj[key]=={}):
-				print(spacer_this+str(key)+' = (empty)')
+			elif (type(obj[key])==list and obj[key]==[]) or (type(obj[key]) in dict_types and obj[key]=={}):
+				print(spacer_this+str(key)+' = %s'%obj[key])
 			else: print(str(obj[key]))#print('unhandled tree object')
 	else: print(str(obj))#print('unhandled tree object')
 	if not recursed: print('\n')

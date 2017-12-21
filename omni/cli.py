@@ -7,7 +7,7 @@ Omnicalc command-line interface.
 #---expose interface functions from omnicalc.py as well
 # refactor: __all__ = ['locate','set_config','nuke','setup','compute','plot','pipeline','clone_calcs','look','blank_meta','audit_plots']
 
-__all__ = ['locate','set_config','nuke','setup','clone_calcs','blank_meta',
+__all__ = ['locate','set_config','nuke','setup','clone_calcs','blank_meta','audit',
 	#---interface functions from omnicalc
 	'compute','plot']
 
@@ -76,3 +76,13 @@ def blank_meta(make_template=True):
 	if make_template:
 		if not os.path.isfile('calcs/specs/meta.yaml'):
 			with open('calcs/specs/meta.yaml','w') as fp: fp.write(calcs_template)
+
+def audit(source='calcs/auditor.py'):
+	"""
+	Command-line interface to an auditor for tracking the status of different calculations.
+	"""
+	if not os.path.isfile(source): raise Exception('requires source code at %s'%source)
+	else: 
+		from makeface import import_remote
+		auditor = import_remote(source)
+		auditor['CalcsAuditor']()

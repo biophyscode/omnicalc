@@ -18,6 +18,7 @@ from datapack import asciitree,delveset,dictsub,dictsub_sparse
 from structs import NameManager,Calculation,TrajectoryStructure,NoisyOmnicalcObject
 from base.autoplotters import inject_supervised_plot_tools
 from base.store import load,store
+from makeface import tracebacker
 
 global namer
 # the namer is used throughout
@@ -417,7 +418,7 @@ class PostData(NoisyOmnicalcObject):
 		# write an empty result and spec file before any computation to preempt file errors
 		try:
 			# the compute function will change the stle from new to read after rewriting the dat file
-			store(obj={},name=os.path.basename(self.files['dat']),path=self.dn,attrs={},verbose=False)
+			store(obj={'error':'error'},name=os.path.basename(self.files['dat']),path=self.dn,attrs={},verbose=False)
 		except: raise Exception('failed to prewrite file %s with PostData: %s'%(
 			self.files['dat'],self.__dict__))
 		try:
@@ -930,6 +931,9 @@ class WorkSpace:
 				job = self.connect_upstream_calculation(request=request,sn=sn)
 				fn = job.result.files['dat']
 				data = load(os.path.basename(fn),cwd=os.path.dirname(fn))
+				if data.get('error',False)=='error':
+					raise Exception('calculation failed. clear the dat/spec files corresponding '
+						'to %s and recompute'%fn)
 				bundle['data'][calcname][sn] = {'data':data}
 			bundle['calc'][calcname] = {'calcs':{'specs':job.calc.specs}}
 		# data are returned according to a versioning system
@@ -972,8 +976,11 @@ class WorkSpace:
 
 	def plot_prepare(self):
 		"""Rename internal variables for brevity in plot scripts."""
-		self.meta = self.metadata.meta
-		self.vars = self.metadata.variables
+		# note that plotload also attaches work.plot
+		# we use the existence of vars to check if we already prepared
+		if not hasattr(self,'vars'):
+			self.meta = self.metadata.meta
+			self.vars = self.metadata.variables
 
 	def plot_supervised(self,plotname,**kwargs):
 		"""
@@ -1097,6 +1104,14 @@ class WorkSpace:
 				for jj,j in enumerate(jobs_require_slices)])))
 			status('pending jobs require %d slices (see above)'%len(jobs_require_slices),tag='status')
 			self.make_slices(jobs_require_slices)
+			# after loading slices we have to re-parse the postdata
+			self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director)
+			# match the upstream slices here
+			for job in jobs:
+				# find the trajectory slice
+				keys = [key for key,val in self.post.slices().items() if val==job.slice]
+				if len(keys)!=1: raise Exception('failed to make and identify slices. development error')
+				else: job.slice_upstream = self.post.toc[keys[0]]
 		# acquire upstream data without loading it yet
 		for job in jobs:
 			# convert the upstream calculation requests into proper calculations
@@ -1166,7 +1181,7 @@ class WorkSpace:
 			# +++ COMPARE job slice to slices in the metadata
 			slice_match = self.slices.search(job.slice)
 			if not slice_match: 
-				raise Exception('failed to find the requested slice in the metadata: %s'%job.slice)
+				raise Exception('failed to find the requested slice in the metadata: %s'%job.slice.__dict__)
 			# replace the job slice with the metadata slice if we found a match
 			else: job.slice = slice_match
 			# search for a result
@@ -1247,6 +1262,8 @@ class WorkSpace:
 				data = load(os.path.basename(fn),cwd=os.path.dirname(fn))
 				upstream[key] = data
 			outgoing.update(upstream=upstream)
+			# we run plot_prepare because some calculation scripts require it
+			self.plot_prepare()
 			# call the function
 			result,attrs = function(**outgoing)
 			# we remove the blank dat file before continuing. one of very few delete commands
@@ -1309,13 +1326,14 @@ class WorkSpace:
 				sys.exit(1)
 			else: 
 				self.prepare_compute(self.queue_computes)
-				try: self.run_compute()
-				except KeyboardInterrupt:
-					self.fail_report()
-					status('exiting',tag='interrupt')
-				except Exception as e:
-					self.fail_report()
-					raise Exception('exception during compute: %s'%str(e))
+				self.run_compute()
+				#except KeyboardInterrupt:
+				#	self.fail_report()
+				#	status('exiting',tag='interrupt')
+				#except Exception as e:
+				#	self.fail_report()
+				#	tracebacker(e)
+				#	raise Exception('exception during compute: %s'%str(e))
 
 	def plot(self):
 		"""

@@ -393,7 +393,11 @@ class PostData(NoisyOmnicalcObject):
 		self.namer = namer
 		if self.style=='read': 
 			if self.specs: raise Exception('cannot parse a spec file if you already sent specs')
-			self.parse(fn=self.fn,dn=self.dn)
+			try: self.parse(fn=self.fn,dn=self.dn)
+			#! hiding parse errors here because the code is tested on legacy data and namer lookup failures
+			#! ... occur if the user does not account for old data in the collections metadata
+			#! ... hence we ignore parsing errors. DEVELOPMENT NOTE: turn this off to test/fix the parse
+			except: self.valid = False
 		elif self.style=='new': self.construct()
 		else: raise Exception('invalid style %s'%self.style)
 
@@ -419,8 +423,9 @@ class PostData(NoisyOmnicalcObject):
 			if os.path.isfile(fn): raise Exception('cannot preallocate filename %s because it exists'%fn)
 		# write an empty result and spec file before any computation to preempt file errors
 		try:
-			# the compute function will change the stle from new to read after rewriting the dat file
-			store(obj={'error':'error'},name=os.path.basename(self.files['dat']),path=self.dn,attrs={},verbose=False)
+			# the compute function will change the style from new to read after rewriting the dat file
+			store(obj={'error':'error'},name=os.path.basename(self.files['dat']),
+				path=self.dn,attrs={},verbose=False)
 		except: raise Exception('failed to prewrite file %s with PostData: %s'%(
 			self.files['dat'],self.__dict__))
 		try:
@@ -538,7 +543,14 @@ class PostDataLibrary:
 				# +++ COMPARE namedat to two possible name_style values from the NameManager
 				if namedat['name_style'] in ['standard_datspec','standard_datspec_pbc_group']:
 					basename = self.get_twin(name,('dat','spec'))
+					#try: 
 					this_datspec = PostData(fn=basename,dn=self.where,style='read')
+					#! note that there are many ways that PostData can fail but a common one is a failure
+					#! ... to do reverse name lookups. basically any failure to read the spec dumps it into
+					#! ... limbo and the user is expected to go find it and debug things. this exception
+					#! ... was necessary to prevent errors parsing old simulation results that are not in
+					#! ... the collections metadata and hence is essnetial 
+					#except: self.toc[name] = {}
 					if this_datspec.valid: self.toc[basename] = this_datspec
 					#! handle invalid datspecs?
 					else: self.toc[basename] = {}

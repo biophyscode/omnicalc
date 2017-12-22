@@ -90,7 +90,9 @@ def picturedat(savename,directory='./',bank=False):
 	directory = os.path.join(directory,'')
 	if not bank: 
 		if os.path.isfile(directory+savename): 
-			return json.loads(Image.open(directory+savename).info['meta'])
+			try: return json.loads(Image.open(directory+savename).info['meta'])
+			except: raise Exception('failed to load metadata from (possibly corrupted) image %s'%(
+				directory+savename))
 		else: return
 	else:
 		dicts = {}

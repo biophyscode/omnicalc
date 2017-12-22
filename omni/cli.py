@@ -5,16 +5,13 @@ Omnicalc command-line interface.
 """
 
 #---expose interface functions from omnicalc.py as well
-# refactor: __all__ = ['locate','set_config','nuke','setup','compute','plot','pipeline','clone_calcs','look','blank_meta','audit_plots']
-
 __all__ = ['locate','set_config','nuke','setup','clone_calcs','blank_meta','audit',
 	#---interface functions from omnicalc
-	'compute','plot']
+	'compute','plot','look']
 
 import os,sys,re
 from config import read_config,write_config,is_terminal_command,bash,abspath,set_config
-# refactor: from omnicalc import compute,plot,pipeline,look,WorkSpace,audit_plots
-from omnicalc import compute,plot # refactor: ,pipeline,look,WorkSpace,audit_plots
+from omnicalc import compute,plot,look
 
 default_config = {'commands': ['omni/cli.py'],'commands_aliases': [('set','set_config')]}
 

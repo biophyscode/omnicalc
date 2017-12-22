@@ -326,7 +326,15 @@ class NameManager(NamingConvention):
 	def __init__(self,**kwargs):
 		self.short_namer = kwargs.pop('short_namer',None)
 		if not self.short_namer: self.short_namer = lambda sn,spot:sn
-		else: self.short_namer = eval(self.short_namer)
+		else: 
+			short_namer = eval(self.short_namer)
+			def careful_naming():
+				def short_namer_careful(*args,**kwargs):
+					try: return short_namer(*args,**kwargs)
+					except: raise Exception(
+						'alias function (the short_namer) failed on args %s, kwargs %s'%(args,kwargs))
+				return short_namer_careful
+			self.short_namer = careful_naming()
 		self.spots = kwargs.pop('spots',{})
 		# if no spots are defined then we have no way of using a spotname in any naming scheme
 		# ... hence we save them as None here and require that names in post are unique

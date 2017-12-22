@@ -185,7 +185,9 @@ def edrcheck(fn,debug=False):
 	!!! Perhaps store the EDR data in a more comprehensive format.
 	"""
 	global gmxpaths
-	if gmxpaths==None: gmxpaths = get_gmx_paths()
+	if gmxpaths==None: 
+		print('\n[STATUS] getting gromacs paths')
+		gmxpaths = get_gmx_paths()
 	start,end = None,None
 	cmd = gmxpaths['gmxcheck']+' -e %s'%fn
 	p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stdin=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)

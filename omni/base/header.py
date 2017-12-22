@@ -90,9 +90,10 @@ def replot():
 		#---run the loader function which should conditionally referesh data (i.e. only as needed)
 		status('running the loader function "%s" from "%s"'%(
 			plotrun.loader_name,os.path.basename(script)),tag='load')
-		import ipdb;ipdb.set_trace()
 		#---if the loader is a function we run it otherwise it defaults to None
 		if plotrun.loader!=None: plotrun.loader()
+		#---legacy workspace members
+		work.plot_prepare()
 		#---run any plots in the routine
 		plotrun.autoplot()
 		#---in case the user has prototyped code in an if-main section we run the script once more

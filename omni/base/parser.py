@@ -39,8 +39,8 @@ class ParsedRawData:
 				self.spots[spot]['divy_keys'] = self.divy_keys(spot)
 		#---run the treeparser on each spot
 		for snum,(spotname,spot) in enumerate(self.spots.items()):
-			status('running the treeparser '+('%s,%s'%spotname).rjust(20,'.'),
-				i=snum,looplen=len(self.spots),tag='parse')
+			status('running the treeparser: %s,%s'%spotname,
+				i=snum,looplen=len(self.spots),tag='parse',width=65)
  			self.treeparser(spotname,**spot)
 
 	def divy_keys(self,spot):

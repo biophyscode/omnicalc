@@ -28,10 +28,12 @@ class WorkSpaceState:
 	def __init__(self,kwargs):
 		self.compute = kwargs.pop('compute',False)
 		self.plot = kwargs.pop('plot',False)
+		self.look = kwargs.pop('look',False)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		# the main compute loop is decided here
 		if self.compute and not self.plot: self.execution_name = 'compute'
 		elif self.plot and not self.compute: self.execution_name = 'plot'
+		elif self.look and not self.compute: self.execution_name = 'look'
 		else: 
 			msg = ('The WorkSpaceState cannot determine the correct state. '
 				'Something has gone horribly wrong or development is incomplete.')
@@ -645,6 +647,7 @@ class SliceMeta(TrajectoryStructure):
 class PlotSpec(dict):
 	"""Manage inferences about what to plot."""
 	def __init__(self,metadata,plotname,calcs):
+		#! no arguments protection here because we are subclassing a dict
 		# point to the calculations
 		self.calcs = calcs
 		# point to the metadata
@@ -879,17 +882,18 @@ class WorkSpace:
 		"""
 		whittle_calc = kwargs.pop('whittle_calc',None)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
+		# plotspec is first instantiated by Workspace.plot and it is important to replace it after
+		# ... running plotload so that items like Workspace.sns() still return the correct result
+		plotname_cursor = str(self.plotname)
 		# make sure you have the right plotname
 		if plotname!=self.plotname:
 			#! ensure changes to the plotname do not change the simulations we require
-			#sns_previous,plotname_previous = list(self.sns()),str(plotname)
+			#! ... note that this might not be necessary since we might want to change simulations
+			#! ... for example when plotting membrane heights with and without protein hulls from
 			# the plotname is needed by other functions namely self.sns
 			self.plotname = plotname
 			# update the plotspec if the plotname changes. this also updates the upstream pointers
 			self.plotspec = PlotSpec(metadata=self.metadata,plotname=self.plotname,calcs=self.calcs)
-			#if set(sns_previous)!=set(list(self.sns())):
-			#	raise Exception('changing from %s to %s caused simulation names to change from %s to %s'%(
-			#		plotname_previous,self.plotname,sns_previous,self.sns()))
 		if whittle_calc: raise Exception('dev')
 		# we always run the compute loop to make sure calculations are complete but also to get the jobs
 		# note that compute runs may be redundant if we call plotload more than once but it avoids repeats
@@ -949,8 +953,10 @@ class WorkSpace:
 		#! alternate plotload returns can be managed here with a global plotload_version from the director
 		#! ... or a plot-specific plotload_version set in the plot metadata
 		else: raise Exception('invalid plotload_version: %s'%plotload_version)
+		# since we may run plotload several times we always return to the original plot specificaiton
+		self.plotspec = PlotSpec(metadata=self.metadata,plotname=plotname_cursor,calcs=self.calcs)
 
-	def plot_legacy(self,plotname,meta=None):
+	def plot_legacy(self,plotname,meta=None,autoplot=False):
 		"""Legacy plotting mode."""
 		plots = self.metadata.plots
 		#---we hard-code the plot script naming convention here
@@ -972,7 +978,7 @@ class WorkSpace:
 		header_script = 'omni/base/header.py'
 		meta_out = ' '.join(meta) if type(meta)==list else ('null' if not meta else meta)
 		# call the header script with a flag for legacy execution
-		bash('./%s %s %s NO_AUTOPLOT'%(header_script,script_name,plotname))
+		bash('./%s %s %s%s'%(header_script,script_name,plotname,'' if autoplot else ' NO_AUTOPLOT'))
 
 	def plot_prepare(self):
 		"""Rename internal variables for brevity in plot scripts."""
@@ -1062,7 +1068,11 @@ class WorkSpace:
 			if len(candidates)!=1: 
 				raise Exception('failed to find group %s for simulation %s in the SliceMeta')
 			else: slice_spec['group_selection'] = candidates[0].data['selection']
-			slice_spec['last_structure'] = self.source.get_last(sn,'structure')
+			try: slice_spec['last_structure'] = self.source.get_last(sn,'structure')
+			except: raise Exception(('failed to get a starting structure for %s. this is a common '
+				'problem when you restart a simulation and do not have any structure files matching the '
+				'structure regex. we recommend converting a stray CPT file to match the structure regex for '
+				'this spot in order to continue.')%sn)
 			slices_new.append(slice_spec)
 		# make the slices
 		for jnum,(job,slice_spec) in enumerate(zip(jobs,slices_new)):
@@ -1276,14 +1286,55 @@ class WorkSpace:
 			del upstream
 
 	def fail_report(self):
-		"""
-		Tell the user which files were incomplete.
-		"""
+		"""Tell the user which files were incomplete."""
+		#! this function is deprecated in favor of standard error reporting with warnings in blank dat files
 		asciitree(dict(incomplete_jobs=dict([('job %d: %s'%(jj+1,j.style),j.files) 
 			for jj,j in enumerate([i.result for i in self.pending 
 				if i.result.__dict__['style'] in ['computing','new']])])))
 		status('compute loop failure means there many be preallocated files listed above. '
 			'omnicalc never deletes files so you should delete them to continue',tag='error')
+
+	###
+	### EXECUTION MODES
+	###
+
+	def look(self,**kwargs):
+		"""Inspect something."""
+		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
+		look_specs = self.state.look
+		args = look_specs.pop('args')
+		kwargs = look_specs.pop('kwargs')
+		if look_specs: raise Exception('unprocessed kwargs %s'%look_specs)
+		if set(kwargs.keys())<={'write_json'} and args==('times',): 
+			import collections
+			from base.parser import ParsedRawData
+			self.source = ParsedRawData(spots=self.config.get('spots',{}))
+			view_od = [(k,v) for spotname in [k for k in self.source.spots 
+				if k[1]=='edr'] for k,v in self.source.toc[spotname].items()]
+			# for survey purposes we tryto access all simulations
+			sns = []
+			for spotname in [k for k in self.source.spots if k[1]=='edr']:
+				for key in self.source.toc[spotname].keys(): sns.append(key)
+			# populate the toc with timeseries
+			for ss,sn in enumerate(sns): 
+				status('reading EDR to collect times: %s'%sn,
+					i=ss,looplen=len(sns),tag='read',width=65)
+				self.source.get_timeseries(sn)
+			# print for the user
+			if not kwargs.get('write_json',False): 
+				view = dict([(name,[
+					(('%s%s-%s'%k+' part%s:'%i).ljust(25,'.')+'%s%s'%(
+					str(round(j['start'],2)  if j['start'] else '???').rjust(12,'.'),
+					str(round(j['stop'],2) if j['stop'] else '???').rjust(12,'.'))) 
+					for k,v in obj.items() for i,j in v.items()]) for name,obj in view_od])
+				asciitree(dict(simulations=collections.OrderedDict([(k,view[k]) 
+					for k in sorted(view.keys())])))
+			# systematic view
+			else: 
+				view = [(sn,[('%s%s-%s'%stepname,[(i,j) for i,j in step.items()]) 
+					for stepname,step in details.items()]) for sn,details in view_od]
+				print('time_table = %s'%json.dumps(view))
+		else: raise Exception('invalid call to look with args %s and kwargs %s'%(args,kwargs))
 
 	def compute(self,**kwargs):
 		"""
@@ -1325,15 +1376,9 @@ class WorkSpace:
 				ipdb.set_trace()
 				sys.exit(1)
 			else: 
+				# removed interrupt and error handling in favor of warnings in blank dat files caught by plot
 				self.prepare_compute(self.queue_computes)
 				self.run_compute()
-				#except KeyboardInterrupt:
-				#	self.fail_report()
-				#	status('exiting',tag='interrupt')
-				#except Exception as e:
-				#	self.fail_report()
-				#	tracebacker(e)
-				#	raise Exception('exception during compute: %s'%str(e))
 
 	def plot(self):
 		"""
@@ -1351,11 +1396,14 @@ class WorkSpace:
 		# the following code actually runs the plot via legacy or auto plot
 		# ... however it is only necessary to prepare the workspace if we are already in the header
 		if not self.plot_kwargs.get('header_caller',False):
+			do_autoplot = self.plotspec.get('autoplot',self.metadata.director.get('autoplot',False))
 			# check plotspec for the autoplot flag otherwise get the default from director
-			if self.plotspec.get('autoplot',self.metadata.director.get('autoplot',False)):
+			# trailing arguments to plot indicate functions we want to run and trigger a non-interactive mode
+			if do_autoplot and len(args)>0:
 				self.plot_supervised(plotname=plotname,plotspecs=dict(args=args,kwargs=self.plot_kwargs))
-			# call a separate function for plotting "legacy" plot scripts directly i.e. without autoplot
-			else: self.plot_legacy(self.plotname)
+			# call a separate function for plotting "legacy" plot scripts and interactive autoplot
+			# note that this conditional allows you to run autoplot with the header into interactive mode
+			else: self.plot_legacy(self.plotname,autoplot=do_autoplot)
 
 ###
 ### INTERFACE FUNCTIONS
@@ -1367,4 +1415,5 @@ def compute(debug=False,debug_slices=False,meta=None):
 def plot(*args,**kwargs):
 	status('generating workspace for plot',tag='status')
 	work = WorkSpace(plot=True,plot_args=args,plot_kwargs=kwargs)
- 
+def look(*args,**kwargs):
+	work = WorkSpace(look=dict(args=args,kwargs=kwargs))

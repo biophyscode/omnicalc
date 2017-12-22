@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os,sys,re
+import os,sys,re,collections
 from base.tools import status
 
 """
@@ -176,6 +176,17 @@ def inject_supervised_plot_tools(out,mode='supervised'):
 			return 'instance'
 		else: return 'variable'
 	key_catalog = dict([(key,key_types(out[key])) for key in out])
-	asciitree(dict(plot_environment=dict([
-		(name,dict([(key,str(out[key])) for key in sorted(out) if key_catalog[key]==name]))
-		for name in ['variable','function','instance']])))
+	report = collections.OrderedDict()
+	for name in ['variable','function','instance']:
+		report[name] = collections.OrderedDict()
+		items = [(key,out[key]) for key in sorted(out) if key_catalog[key]==name]
+		for key,val in items: 
+			if val.__class__.__name__=='module': 
+				report[name][key] = '<module \'%s\'>'%val.__name__
+			elif val.__class__.__name__=='function': 
+				report[name][key] = '<function \'%s\'>'%val.__name__
+			else:
+				if val.__class__.__module__ in ['omnicalc','PlotSupervisor']: report[name][key] = str(val)
+				elif key in ['str_types']: report[name][key] = str(val)
+				else: report[name][key] = val
+	asciitree(dict({'plot_environment':report}))

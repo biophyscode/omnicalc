@@ -186,7 +186,8 @@ def inject_supervised_plot_tools(out,mode='supervised'):
 			elif val.__class__.__name__=='function': 
 				report[name][key] = '<function \'%s\'>'%val.__name__
 			else:
-				if val.__class__.__module__ in ['omnicalc','PlotSupervisor']: report[name][key] = str(val)
+				if val.__class__.__module__ in ['omnicalc','base.autoplotters']: 
+					report[name][key] = str(val)
 				elif key in ['str_types']: report[name][key] = str(val)
 				else: report[name][key] = val
 	asciitree(dict({'plot_environment':report}))

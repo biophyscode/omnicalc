@@ -886,7 +886,7 @@ class WorkSpace:
 		# ... running plotload so that items like Workspace.sns() still return the correct result
 		plotname_cursor = str(self.plotname)
 		# make sure you have the right plotname
-		if plotname!=self.plotname:
+		if plotname!=plotname_cursor:
 			#! ensure changes to the plotname do not change the simulations we require
 			#! ... note that this might not be necessary since we might want to change simulations
 			#! ... for example when plotting membrane heights with and without protein hulls from
@@ -949,12 +949,13 @@ class WorkSpace:
 			if len(calcnames)==1 and len(bundle['data'])==1 and len(bundle['calc'])==1:
 				bundle['data'] = bundle['data'].values()[0]
 				bundle['calc'] = bundle['calc'].values()[0]
-			return bundle['data'],bundle['calc']
+			outgoing = bundle['data'],bundle['calc']
 		#! alternate plotload returns can be managed here with a global plotload_version from the director
 		#! ... or a plot-specific plotload_version set in the plot metadata
 		else: raise Exception('invalid plotload_version: %s'%plotload_version)
 		# since we may run plotload several times we always return to the original plot specificaiton
 		self.plotspec = PlotSpec(metadata=self.metadata,plotname=plotname_cursor,calcs=self.calcs)
+		return outgoing
 
 	def plot_legacy(self,plotname,meta=None,autoplot=False):
 		"""Legacy plotting mode."""

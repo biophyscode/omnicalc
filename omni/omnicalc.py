@@ -727,7 +727,7 @@ class WorkSpace:
 		# remove arguments for plotting
 		self.plot_args = kwargs.pop('plot_args',())
 		self.plot_kwargs = kwargs.pop('plot_kwargs',{})
-		debug_flags = [False,'slices','compute']
+		debug_flags = [False,'slices','compute','stale']
 		self.debug = kwargs.pop('debug',False)
 		if self.debug not in debug_flags: raise Exception('debug argument must be in %s'%debug_flags)
 		# determine the state (kwargs is passed by reference so we clear it)
@@ -1363,10 +1363,14 @@ class WorkSpace:
 				import ipdb
 				ipdb.set_trace()
 				sys.exit(1)
+			elif self.debug=='stale':
+				raise Exception('cannot check for stale jobs when there are pending calculations')
 			else: 
 				# removed interrupt and error handling in favor of warnings in blank dat files caught by plot
 				self.prepare_compute(self.queue_computes)
 				self.run_compute()
+		# no compute jobs
+		else: pass
 
 	def plot(self):
 		"""
@@ -1397,12 +1401,39 @@ class WorkSpace:
 ### INTERFACE FUNCTIONS
 ### note that these are imported by omni/cli.py and exposed to makeface
 
-def compute(debug=False,debug_slices=False,meta=None):
-	status('generating workspace for compute',tag='status')
-	work = WorkSpace(compute=True,meta_cursor=meta,debug=debug)
+def compute(debug=False,debug_slices=False,meta=None,back=False):
+	if back: 
+		from base.tools import backrun
+		backrun(command='make compute',log='log-compute')
+	else:
+		status('generating workspace for compute',tag='status')
+		work = WorkSpace(compute=True,meta_cursor=meta,debug=debug)
 def plot(*args,**kwargs):
 	status('generating workspace for plot',tag='status')
 	work = WorkSpace(plot=True,plot_args=args,plot_kwargs=kwargs)
 def go(*args,**kwargs): plot(*args,**kwargs)
 def look(*args,**kwargs):
 	work = WorkSpace(look=dict(args=args,kwargs=kwargs))
+def clear_stale(meta=None):
+	"""Check for stale jobs."""
+	work = WorkSpace(compute=True,meta_cursor=meta,debug='stale')
+	fn_sizes = dict([((v.files['dat'],v.files['spec']),os.path.getsize(v.files['dat'])) 
+		for k,v in work.post.posts().items()])
+	targets = [(dat_fn,spec_fn) for (dat_fn,spec_fn),size in fn_sizes.items() if size<=10**4]
+	stales = []
+	for dat_fn,spec_fn in targets:
+		data = load(os.path.basename(dat_fn),cwd=os.path.dirname(dat_fn))
+		if data.get('error',False)=='error': 
+			# one of very few places where we delete files because we are sure they are gabage
+			# ... the other place being the dat file deletion before writing the final file
+			status('removing stale dat file %s'%dat_fn)
+			try: os.remove(dat_fn)
+			except: status('failed to delete %s'%dat_fn,tag='warning')
+			status('removing stale spec file %s'%spec_fn)
+			try: os.remove(spec_fn)
+			except: status('failed to delete %s'%spec_fn,tag='warning')
+		stales.append(dat_fn)
+	if stales:
+		asciitree({'cleaned files':sorted(stales)})
+		status('you can continue with `make compute` now. '
+			'we cleaned up stale dat files and corresponding spec files listed above')

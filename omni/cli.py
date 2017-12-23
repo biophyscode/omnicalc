@@ -7,11 +7,11 @@ Omnicalc command-line interface.
 #---expose interface functions from omnicalc.py as well
 __all__ = ['locate','set_config','nuke','setup','clone_calcs','blank_meta','audit','go',
 	#---interface functions from omnicalc
-	'compute','plot','look']
+	'compute','plot','look','clear_stale']
 
 import os,sys,re
 from config import read_config,write_config,is_terminal_command,bash,abspath,set_config
-from omnicalc import compute,plot,look,go
+from omnicalc import compute,plot,look,go,clear_stale
 
 default_config = {'commands': ['omni/cli.py'],'commands_aliases': [('set','set_config')]}
 
@@ -74,7 +74,7 @@ def blank_meta(make_template=True):
 		if not os.path.isfile('calcs/specs/meta.yaml'):
 			with open('calcs/specs/meta.yaml','w') as fp: fp.write(calcs_template)
 
-def audit(source='calcs/auditor.py'):
+def audit(debug=False,source='calcs/auditor.py'):
 	"""
 	Command-line interface to an auditor for tracking the status of different calculations.
 	"""
@@ -82,4 +82,4 @@ def audit(source='calcs/auditor.py'):
 	else: 
 		from makeface import import_remote
 		auditor = import_remote(source)
-		auditor['CalcsAuditor']()
+		auditor['CalcsAuditor'](debug=debug)

@@ -79,8 +79,9 @@ def status(string,i=0,looplen=None,bar_character=None,width=None,spacer='.',
 	if not looplen:
 		if not logfile: sys.stdout.write(string+'\n')
 		else: sys.stdout.write(string+'\n')
+	elif looplen and logfile and i==0: sys.stdout.write('[STATUS] running a loop ')
 	#---suppress progress bar in the log file except on the last item
-	elif looplen and logfile and i < looplen-1: pass
+	elif looplen and logfile and i>0 and i<looplen-1: sys.stdout.write('.')
 	else:
 		if start != None:
 			esttime = (time.time()-start)/(float(i+1)/looplen)
@@ -115,3 +116,31 @@ def gopher(spec,module_name='module',variable_name='function'):
 	target = mod.__dict__.get(spec[variable_name],None)
 	if not target: raise Exception('add %s and %s to the specs'%(module_name,variable_name))
 	return target
+
+def backrun(command=None,cwd='.',log='log-back'):
+    """
+    Run a command in the background and generate a kill switch.
+
+    Parameters
+    ----------
+    command : string
+        A terminal command used to execute the script in the background e.g. ``./script-protein.py``. You
+        can also use other targets in the command e.g. ``make back command="make metarun <name>"``.
+    """
+    cmd = "nohup %s > %s 2>&1 &"%(command,log)
+    print('[STATUS] running the background via "%s"'%cmd)
+    job = subprocess.Popen(cmd,shell=True,cwd=cwd,preexec_fn=os.setsid)
+    ask = subprocess.Popen('ps xao pid,ppid,pgid,sid,comm',
+        shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    com = ask.communicate()
+    if sys.version_info>=(3,0): ret = '\n'.join([j.decode() for j in com])
+    else: ret = '\n'.join(com)
+    if sys.version_info>=(3,0):
+        pgid = next(int(i.split()[2]) for i in ret.splitlines() if re.match('^\s*%d\s'%job.pid,i))
+    else: pgid = next(int(i.split()[2]) for i in ret.splitlines() if re.match('^\s*%d\s'%job.pid,i))
+    kill_script = 'script-stop-job.sh'
+    term_command = 'pkill -TERM -g %d'%pgid
+    with open(kill_script,'w') as fp: fp.write(term_command+'\n')
+    os.chmod(kill_script,0o744)
+    print('[STATUS] if you want to terminate the job, run "%s" or "./%s"'%(term_command,kill_script))
+    job.communicate()

@@ -327,12 +327,22 @@ class NameManager(NamingConvention):
 		self.short_namer = kwargs.pop('short_namer',None)
 		if not self.short_namer: self.short_namer = lambda sn,spot:sn
 		else: 
-			short_namer = eval(self.short_namer)
+			# allow lambda or functions
+			try: short_namer = eval(self.short_namer)
+			except: 
+				try:
+					extract_short_namer = {}
+					exec(self.short_namer,{'re':re},extract_short_namer)
+					# if you use a function it must be named "renamer"
+					short_namer = extract_short_namer['renamer']
+				except: 
+					print(self.short_namer)
+					raise Exception('failed to interpret the alias function with eval or exec')
 			def careful_naming():
 				def short_namer_careful(*args,**kwargs):
 					try: return short_namer(*args,**kwargs)
 					except: raise Exception(
-						'alias function (the short_namer) failed on args %s, kwargs %s'%(args,kwargs))
+						'short_namer/renamer function failed on args %s, kwargs %s'%(args,kwargs))
 				return short_namer_careful
 			self.short_namer = careful_naming()
 		self.spots = kwargs.pop('spots',{})

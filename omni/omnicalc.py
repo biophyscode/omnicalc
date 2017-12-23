@@ -656,7 +656,7 @@ class SliceMeta(TrajectoryStructure):
 		elif len(matches)==0: return None
 		else: return matches[0]
 
-class PlotSpec(dict):
+class PlotSpec:
 	"""Manage inferences about what to plot."""
 	def __init__(self,metadata,plotname,calcs):
 		#! no arguments protection here because we are subclassing a dict
@@ -666,15 +666,24 @@ class PlotSpec(dict):
 		self.metadata = metadata
 		# plotname cursor. the user can change this manually
 		self.plotname = plotname
+		# defaults
+		self.specs = {}
+		self.script = 'plot-%s.py'%self.plotname
+		# modifications and inference
 		self._get_cursor()
+	def get(self,*args): return self.specs.get(*args)
 	def _get_cursor(self):
+		#! should we remove items from specs as they are processed or otherwise enforce a data structure?
 		# search the plot dictionary for the calculation we need
 		if self.plotname in self.metadata.plots:
-			calcs_spec = self.metadata.plots[self.plotname]
-			self.request_calc = calcs_spec.get('calculation',calcs_spec.get('calculations',None))
-			if not self.request_calc:
-				raise Exception('plot %s in the metadata is missing the calculation(s) key'%self.plotname)
-			self.collections = calcs_spec.get('collections',[])
+			self.specs = self.metadata.plots[self.plotname]
+			self.request_calc = self.specs.get('calculation',self.specs.get('calculations',None))
+			if not self.request_calc: self.request_calc = str(self.plotname)
+			self.collections = self.specs.pop('collections',[])
+			# note the script name
+			self.script = self.specs.pop('script',self.script)
+			#! this is where we would process any plot-specific specs sometimes written to the plot section
+			#! ... for example the distance_ranges_by_metric key in ptdins.yaml
 		# if the plotname is not in the plot metadata we check calculations
 		elif self.plotname in self.metadata.calculations:
 			# note when falling back to calculations we can only have one upstream calculation
@@ -689,42 +698,6 @@ class PlotSpec(dict):
 	def sns(self):
 		return list(set(self.metadata.get_simulations_in_collection(
 			*str_or_list(self.collections))))
-	def get_calcnames(self):
-		raise Exception('MOVED')
-		# get calculation names from a key in a plot object
-		if self.plotname in self.metadata.plots:
-			calcs_spec = self.metadata.plots[self.plotname]
-			calcs = calcs_spec.get('calculation',calcs_spec.get('calculations',None))
-			if not calcs: 
-				raise Exception('plot %s in the metadata is missing the calculation(s) key'%self.plotname)
-
-			#! this block tries to find calculations. it should be merged fetch_upstream
-			# the calculations key in a plot object can be a string, list, or dict
-			if type(calcs) in str_types: self.calcnames = [calcs]
-			elif type(calcs)==list: self.calcnames = calcs
-			# use a dictionary to specify 
-			elif type(calcs)==dict: 
-				target_calculations = []
-				# search for each of the calculations and return the specific instance instead of the name
-				for key,val in calcs.items():
-					candidates = self.calcs.toc[key]
-					#! example one-level search 
-					possibles = [c for c in candidates
-						if val==dict([(i,j) for i,j in c.specs.items() if i!='upstream'])]
-					if len(possibles)==1: target_calculations.append(possibles[0])
-					else: raise Exception('dev')
-				self.calcnames = target_calculations
-			else: raise Exception(
-				'unclear calculation object in the plot data for %s: %s'%(self.plotname,calcs))
-			return self.calcnames
-
-		# if no plot object we fall back to calculations
-		elif self.plotname in self.metadata.calculations:
-			# if the plotname is not in plots we can only assume it refers to a single calculation
-			self.calcnames = [self.plotname]
-			return self.calcnames
-		else: raise Exception(('requesting calculation names for a plot called "%s" however this key '+
-			'cannot be found in either the plots or calculations section of the metadata')%self.plotname)
 
 class PlotLoaded(dict):
 	def __init__(self,calcnames,sns): 
@@ -781,7 +754,7 @@ class WorkSpace:
 		"""Parse metadata and config to check for the short_namer."""
 		# users can set a "master" short_namer in the meta dictionary if they have a very complex
 		# ... naming scheme i.e. multiple spots with spotnames in the post names
-		self.short_namer = self.metadata.meta.get('short_namer',None)
+		self.short_namer = self.metadata.meta.get('short_namer',self.metadata.director.get('renamer',None))
 		if self.short_namer==None:
 			nspots = self.config.get('spots',{})
 			# if no "master" short_namer in the meta and multiple spots we force the user to make one
@@ -824,10 +797,10 @@ class WorkSpace:
 		fns = []
 		for (dirpath, dirnames, filenames) in os.walk(os.path.join(self.cwd,root)): 
 			fns.extend([dirpath+'/'+fn for fn in filenames])
-		search = [fn for fn in fns if re.match('^%s\.py$'%name,os.path.basename(fn))]
+		search = [fn for fn in fns if re.match('^%s(?:\.py)?$'%name,os.path.basename(fn))]
 		if len(search)==0: 
-			raise Exception('\n[ERROR] cannot find %s.py'%name)
-		elif len(search)>1: raise Exception('\n[ERROR] redundant matches: %s'%str(search))
+			raise Exception('cannot find a script for %s'%name)
+		elif len(search)>1: raise Exception('redundant matches: %s'%str(search))
 		# manually import the function
 		return search[0]
 
@@ -973,7 +946,8 @@ class WorkSpace:
 		"""Legacy plotting mode."""
 		plots = self.metadata.plots
 		#---we hard-code the plot script naming convention here
-		script_name = self.find_script('plot-%s'%plotname)
+		plot_script_fn = self.plotspec.script
+		script_name = self.find_script(plot_script_fn)
 		if not os.path.isfile(script_name):
 			raise Exception('cannot find script %s'%script_name)
 		if plotname in plots: plotspec = plots[plotname]
@@ -1018,7 +992,8 @@ class WorkSpace:
 		#---inject supervised plot functions into the outgoing environment
 		inject_supervised_plot_tools(out)
 		#---execute the plot script
-		script = self.find_script('plot-%s'%plotname)
+		plot_script_fn = self.plotspec.script
+		script = self.find_script(plot_script_fn)
 		with open(script) as fp: code = fp.read()
 		#---handle builtins before executing. we pass all keys in out through builtins for other modules
 		import builtins
@@ -1087,6 +1062,13 @@ class WorkSpace:
 				'structure regex. we recommend converting a stray CPT file to match the structure regex for '
 				'this spot in order to continue.')%sn)
 			slices_new.append(slice_spec)
+		if self.debug=='slices':
+			status('welcome to the debugger. check out self.queue_computes and jobs_require_slices '
+				'to see pending calculations. exit and rerun to continue.',
+				tag='debug')
+			import ipdb
+			ipdb.set_trace()
+			sys.exit(1)
 		# make the slices
 		for jnum,(job,slice_spec) in enumerate(zip(jobs,slices_new)):
 			print(job.slice)
@@ -1116,15 +1098,8 @@ class WorkSpace:
 			else: job.slice_upstream = self.post.toc[keys[0]]
 		# if we need to make slices we will return
 		if jobs_require_slices: 
-			if self.debug=='slices':
-				status('welcome to the debugger. check out self.queue_computes and jobs_require_slices '
-					'to see pending calculations. exit and rerun to continue.',
-					tag='debug')
-				import ipdb
-				ipdb.set_trace()
-				sys.exit(1)
-			asciitree(dict(pending_slices=dict([('pending slice %d'%(jj+1),j.slice.__dict__) 
-				for jj,j in enumerate(jobs_require_slices)])))
+			asciitree({'pending slices':dict([('pending slice %d'%(jj+1),j.slice.__dict__) 
+				for jj,j in enumerate(jobs_require_slices)])})
 			status('pending jobs require %d slices (see above)'%len(jobs_require_slices),tag='status')
 			self.make_slices(jobs_require_slices)
 			# after loading slices we have to re-parse the postdata
@@ -1428,5 +1403,6 @@ def compute(debug=False,debug_slices=False,meta=None):
 def plot(*args,**kwargs):
 	status('generating workspace for plot',tag='status')
 	work = WorkSpace(plot=True,plot_args=args,plot_kwargs=kwargs)
+def go(*args,**kwargs): plot(*args,**kwargs)
 def look(*args,**kwargs):
 	work = WorkSpace(look=dict(args=args,kwargs=kwargs))

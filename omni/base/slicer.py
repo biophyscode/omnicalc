@@ -219,11 +219,9 @@ def mdasel(uni,select):
 	if hasattr(uni,'select_atoms'): return uni.select_atoms(select)
 	else: return uni.selectAtoms(select)
 
-def infer_parts_to_slice(start,end,skip,sequence):
+def infer_parts_to_slice_legacy(start,end,skip,sequence):
 	"""
-	We collect start/stop times from EDR files before slicing because it's faster than parsing the
-	trajectories themselves. But since the timestamps in EDR files are not 1-1 with the trajectories
-	we have to infer which trajectory files to use, in a non-strict way.
+	Legacy method for turning an EDR sequence in (sn,(s,N,name),part number)
 	"""
 	sources = []
 	for key,span in sequence:
@@ -239,7 +237,24 @@ def infer_parts_to_slice(start,end,skip,sequence):
 			#---! this needs fixed/made sensible
 			t0 = int(span[0]/float(skip)+0)*float(skip)
 			sources.append((key,t0))
-	return sources
+	return sources	
+
+def infer_parts_to_slice(start,end,skip,sequence):
+	"""Stopgap method for resolving step number ambiguity."""
+	try:
+		# protect from ambiguous step names which occurs when the time stamp starts at zero on a new step 
+		# ... and the original method cannot tell which step to use. typically the last step is the only 
+		# ... relevant one since preceding steps are usualy preparatory e.g. with restraints. users who wish
+		# ... to have more control are welcome to code up something more specific. the slicer is due for an
+		# ... overhaul anyway. for now, we just try to get the right sequence by restricting attention to
+		# ... the last step. since the toc is sorted this is easy.
+		# all steps have the same sn and they should be ordered from the toc so we filter by the last one
+		last_step = sequence[-1][0][1]
+		sequence_alt = [s for s in sequence if s[0][1]==last_step]
+		slice_target = infer_parts_to_slice_legacy(start,end,skip,sequence_alt)
+	# fall back to the original method
+	except: slice_target = infer_parts_to_slice_legacy(start,end,skip,sequence)
+	return slice_target
 
 def create_group(**kwargs):
 	"""

@@ -58,10 +58,11 @@ def replot():
 	This function re-executes the script.
 	Confirmed that it remembers variables you add.
 	"""
+	#---legacy workspace members
+	work.plot_prepare()
 	# previously we checked autoplot flags from the plots metadata here
 	# ... however now the autoplotting is controlled in several places in the workspace and passed as a flag
 	if not use_autoplot:
-		work.plot_prepare()		
 		replot_old_school()
 		return
 
@@ -73,6 +74,9 @@ def replot():
 		status('reimporting functions from "%s"'%os.path.basename(script),tag='status')
 		#---this is a problem because it reregisters the scripts
 		local_env = {'__name__':'__looking__'}
+		if not re.search('autoplot',code):
+			raise Exception('cannot find the text "autoplot" anywhere in your plot script at %s. '%script+
+				'this means the script is a legacy plot. you should set "autoplot: False" in the plot specs')
 		try: exec(compile(code,script,'exec'),globals(),local_env)
 		except Exception as e:
 			#---note that old-school scripts might have problems with globals when you send out the local_env
@@ -92,8 +96,6 @@ def replot():
 			plotrun.loader_name,os.path.basename(script)),tag='load')
 		#---if the loader is a function we run it otherwise it defaults to None
 		if plotrun.loader!=None: plotrun.loader()
-		#---legacy workspace members
-		work.plot_prepare()
 		#---run any plots in the routine
 		plotrun.autoplot()
 		#---in case the user has prototyped code in an if-main section we run the script once more

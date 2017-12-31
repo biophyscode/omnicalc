@@ -658,7 +658,9 @@ class SliceMeta(TrajectoryStructure):
 
 class PlotSpec:
 	"""Manage inferences about what to plot."""
-	def __init__(self,metadata,plotname,calcs):
+	def __init__(self,metadata,plotname,calcs,**kwargs):
+		if 'workspace' in kwargs: self.work = kwargs.pop('workspace')
+		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		#! no arguments protection here because we are subclassing a dict
 		# point to the calculations
 		self.calcs = calcs
@@ -673,7 +675,7 @@ class PlotSpec:
 		self._get_cursor()
 	def get(self,*args): return self.specs.get(*args)
 	def _get_cursor(self):
-		#! should we remove items from specs as they are processed or otherwise enforce a data structure?
+		"""Populate the PlotSpec with the correct objects and infer upstream calculations."""
 		# search the plot dictionary for the calculation we need
 		if self.plotname in self.metadata.plots:
 			self.specs = self.metadata.plots[self.plotname]
@@ -684,6 +686,12 @@ class PlotSpec:
 			self.script = self.specs.pop('script',self.script)
 			#! this is where we would process any plot-specific specs sometimes written to the plot section
 			#! ... for example the distance_ranges_by_metric key in ptdins.yaml
+			#! should we remove items from specs as they are processed or otherwise enforce a data structure?
+			# use the workspace to fill in calculations that are not specified by dictionaries
+			if type(self.request_calc) in str_types+[list]: 
+				upstream = self.work.collect_upstream_calculations(self.request_calc)
+				# reformulate calculations for the plotter
+				self.request_calc = dict([(k,v.specs) for k,v in upstream.items()])
 		# if the plotname is not in the plot metadata we check calculations
 		elif self.plotname in self.metadata.calculations:
 			# note when falling back to calculations we can only have one upstream calculation
@@ -878,7 +886,8 @@ class WorkSpace:
 			# the plotname is needed by other functions namely self.sns
 			self.plotname = plotname
 			# update the plotspec if the plotname changes. this also updates the upstream pointers
-			self.plotspec = PlotSpec(metadata=self.metadata,plotname=self.plotname,calcs=self.calcs)
+			self.plotspec = PlotSpec(metadata=self.metadata,plotname=self.plotname,
+				calcs=self.calcs,workspace=self)
 		if whittle_calc: raise Exception('dev')
 		# we always run the compute loop to make sure calculations are complete but also to get the jobs
 		# note that compute runs may be redundant if we call plotload more than once but it avoids repeats
@@ -913,9 +922,9 @@ class WorkSpace:
 		#! this will be useful if we add a different plotload return format later
 		bundle = dict([(k,PlotLoaded(calcnames=calcnames,sns=sns)) for k in ['data','calc']])
 		for cnum,(calcname,request) in enumerate(upstream_requests.items()):
-			status('caching upstream data from calculation %s'%calcname,
-				i=cnum,looplen=len(upstream_requests),tag='load')
-			for sn in sns:
+			for snum,sn in enumerate(sns):
+				status('caching upstream data from calculation %s, simulation %s'%(calcname,sn),
+					i=snum+len(sns)*cnum,looplen=len(sns)*len(upstream_requests),tag='load')
 				if calcname not in bundle['data']: bundle['data'][calcname] = {}
 				job = self.connect_upstream_calculation(request=request,sn=sn)
 				fn = job.result.files['dat']
@@ -939,7 +948,8 @@ class WorkSpace:
 		#! ... or a plot-specific plotload_version set in the plot metadata
 		else: raise Exception('invalid plotload_version: %s'%plotload_version)
 		# since we may run plotload several times we always return to the original plot specificaiton
-		self.plotspec = PlotSpec(metadata=self.metadata,plotname=plotname_cursor,calcs=self.calcs)
+		self.plotspec = PlotSpec(metadata=self.metadata,plotname=plotname_cursor,
+			calcs=self.calcs,workspace=self)
 		return outgoing
 
 	def plot_legacy(self,plotname,meta=None,autoplot=False):
@@ -1384,7 +1394,8 @@ class WorkSpace:
 		# the plotname is needed by other functions namely self.sns
 		self.plotname = plotname
 		# once we have a plotname we can generate a plotspec
-		self.plotspec = PlotSpec(metadata=self.metadata,plotname=self.plotname,calcs=self.calcs)
+		self.plotspec = PlotSpec(metadata=self.metadata,plotname=self.plotname,
+			calcs=self.calcs,workspace=self)
 		# the following code actually runs the plot via legacy or auto plot
 		# ... however it is only necessary to prepare the workspace if we are already in the header
 		if not self.plot_kwargs.get('header_caller',False):

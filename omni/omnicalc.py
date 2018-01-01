@@ -8,7 +8,6 @@ Otherwise, parts of the workspace are passed to down to member instances.
 """
 
 import os,sys,re,glob,copy,json,time,tempfile
-import yaml
 
 from config import read_config,bash
 from datapack import json_type_fixer
@@ -124,6 +123,7 @@ class MetaData:
 
 	def specs_to_metadata(self,specs_files):
 		"""Parse the files in the specs_files list and generate the metadata."""
+		import yaml
 		allspecs = []
 		# load all YAML files
 		for fn in specs_files:

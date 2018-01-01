@@ -211,7 +211,7 @@ if __name__ == "__main__":
 					sys.exit(1)
 				#---import as a local module
 				if (os.path.join(os.getcwd(),os.path.dirname(fn)) in sys.path
-					or os.path.dirname(fn)=='.'): 
+					or os.path.dirname(fn)=='.'):
 					new_funcs = import_local(fn)
 					makeface_funcs.update(**new_funcs)
 					if len(argvs)==1 and verbose: 

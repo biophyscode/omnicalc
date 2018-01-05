@@ -328,6 +328,16 @@ def slice_trajectory(**kwargs):
 		except Exception as e: 
 			raise Exception('could not locate trajectory for %s,%s,%s'%keys+': %s'%e)
 		outfile = 'trjconv%d.%s'%(num,output_format)
+		"""
+		note on timestamps: if you ask for time beyond the end of a simulation, the slicer will fail with
+		blank outputs from `gmx trjconv`. in one misadventure, the author misattributed this to problems
+		with the interval of the samples, since the dt flag causes trjconv to only save frames with times
+		which are zero modulo dt, and copied the begin flag to t0 to fail through the problem silently. 
+		a better alternative is to treat trjconv failures more seriously and check the time stamps with
+		`make look times`. the slicer is designed to ignore problems of jitter. if a new XTC starts on
+		a non-even or non-integer time, the slicer should continue as normal and rely on dt to find the next
+		valid time. ... ???
+		"""
 		tail = ' -b %d -e %d -dt %d -s %s -f %s -o %s%s%s'%(
 			t0 if t0>start else start,end,skip,tpr,traj,
 			outfile,group_flag,pbc_flag)

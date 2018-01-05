@@ -28,11 +28,13 @@ class WorkSpaceState:
 		self.compute = kwargs.pop('compute',False)
 		self.plot = kwargs.pop('plot',False)
 		self.look = kwargs.pop('look',False)
+		self.checkup = kwargs.pop('checkup',False)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		# the main compute loop is decided here
 		if self.compute and not self.plot: self.execution_name = 'compute'
 		elif self.plot and not self.compute: self.execution_name = 'plot'
 		elif self.look and not self.compute: self.execution_name = 'look'
+		elif self.checkup and not self.compute and not self.look: self.execution_name = 'checkup'
 		else: 
 			msg = ('The WorkSpaceState cannot determine the correct state. '
 				'Something has gone horribly wrong or development is incomplete.')
@@ -740,6 +742,7 @@ class WorkSpace:
 		if self.debug not in debug_flags: raise Exception('debug argument must be in %s'%debug_flags)
 		# determine the state (kwargs is passed by reference so we clear it)
 		self.state = WorkSpaceState(kwargs)
+		# checkup for interactions with factory
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		# process the config
 		self.read_config()
@@ -933,6 +936,21 @@ class WorkSpace:
 					raise Exception('calculation failed. clear the dat/spec files corresponding '
 						'to %s and recompute'%fn)
 				bundle['data'][calcname][sn] = {'data':data}
+				#! adding trajectory data here. assumes that the slice is the same for all calculations
+				try: 
+					# find the trajectory slice 
+					keys = [key for key,val in self.post.slices().items() if val==job.slice]	
+					if len(keys)>1 or len(keys)==0: raise Exception
+					else: slice_upstream = self.post.toc[keys[0]]	
+					if 'extras' not in bundle['calc']: bundle['calc']['extras'] = {}
+					bundle['calc']['extras'][sn] = {
+						# assumes a single postdir and passes along the basename and suffixes
+						'slice_path':slice_upstream.data['basename'],
+						'suffixes':slice_upstream.data.get('suffixes',[])}
+					# send along times for frame information
+					bundle['calc']['extras'][sn].update(**dict([(k,slice_upstream.data['body'][k]) 
+						for k in ['start','end','skip']]))
+				except: pass
 			bundle['calc'][calcname] = {'calcs':{'specs':job.calc.specs}}
 		# data are returned according to a versioning system
 		plotload_version = self.plotspec.get('plotload_version',
@@ -943,6 +961,7 @@ class WorkSpace:
 			if len(calcnames)==1 and len(bundle['data'])==1 and len(bundle['calc'])==1:
 				bundle['data'] = bundle['data'].values()[0]
 				bundle['calc'] = bundle['calc'].values()[0]
+			# note that calc may also include extras to specify the trajectory (see plot-actinlink_videos.py)
 			outgoing = bundle['data'],bundle['calc']
 		#! alternate plotload returns can be managed here with a global plotload_version from the director
 		#! ... or a plot-specific plotload_version set in the plot metadata
@@ -1032,16 +1051,22 @@ class WorkSpace:
 		self.plot_prepare()
 		plotrun.autoplot(out=out)
 
+	def parse_sources(self): 
+		"""Parse the source data in preparation for making slices."""
+		from base.parser import ParsedRawData
+		self.source = ParsedRawData(spots=self.config.get('spots',{}))
+
 	def make_slices(self,jobs):
 		"""
 		Make slices
 		"""
 		# only parse simulation data if we need to make slices
 		from base.parser import ParsedRawData
-		self.source = ParsedRawData(spots=self.config.get('spots',{}))
+		self.parse_sources()
 		from base.slicer import make_slice_gromacs,edrcheck
 		# cache important parts of the slice
-		slices_new = []
+		slices_new,slices_new_base = [],[]
+		# prepare simple slices (this prevents redundancy)
 		for jnum,job in enumerate(jobs):
 			# prepare slice information for the slicer
 			#! note that the make_slice_gromacs function is legacy and hence requires careful inputs
@@ -1050,6 +1075,11 @@ class WorkSpace:
 				for k in ['sn','start','end','skip','group','pbc']])}
 			sn = slice_spec['spec']['sn']
 			slice_spec['sn'] = sn
+			slice_spec['group_name'] = job.slice.data['group']
+			if slice_spec not in slices_new_base: slices_new_base.append(slice_spec)
+		# loop over basic slices and populate with other requirements
+		for slice_spec in slices_new_base:
+			sn = slice_spec['spec']['sn']
 			slice_spec['sequence'] = self.source.get_timeseries(sn)
 			slice_spec['sn_prefixed'] = self.namer.alias(sn)
 			spotname = self.namer.get_spotname(sn)
@@ -1057,7 +1087,6 @@ class WorkSpace:
 			slice_spec['tpr_keyfinder'] = self.source.keyfinder((spotname,'tpr'))
 			slice_spec['traj_keyfinder'] = self.source.keyfinder((spotname,'xtc'))
 			slice_spec['gro_keyfinder'] = self.source.keyfinder((spotname,'structure'))
-			slice_spec['group_name'] = job.slice.data['group']
 			# +++COMPARE find the right group to get the selection for the slicer
 			#! note that we do not need to actually use the NDX file on disk, but this might be a good idea
 			candidates = [val for val in self.slices.toc 
@@ -1074,15 +1103,15 @@ class WorkSpace:
 			slices_new.append(slice_spec)
 		if self.debug=='slices':
 			status('welcome to the debugger. check out self.queue_computes and jobs_require_slices '
-				'to see pending calculations. exit and rerun to continue.',
+				'to see pending calculations. see slices_new for pending slices. exit and rerun to continue.',
 				tag='debug')
 			import ipdb
 			ipdb.set_trace()
 			sys.exit(1)
 		# make the slices
-		for jnum,(job,slice_spec) in enumerate(zip(jobs,slices_new)):
-			print(job.slice)
-			status('making slice %d/%d'%(jnum+1,len(jobs)),tag='slice')
+		for snum,slice_spec in enumerate(slices_new):
+			asciitree(dict(slice=slice_spec))
+			status('making slice %d/%d'%(snum+1,len(slices_new)),tag='slice')
 			make_slice_gromacs(postdir=self.postdir,**slice_spec)
 
 	def prepare_compute(self,jobs):
@@ -1108,9 +1137,6 @@ class WorkSpace:
 			else: job.slice_upstream = self.post.toc[keys[0]]
 		# if we need to make slices we will return
 		if jobs_require_slices: 
-			asciitree({'pending slices':dict([('pending slice %d'%(jj+1),j.slice.__dict__) 
-				for jj,j in enumerate(jobs_require_slices)])})
-			status('pending jobs require %d slices (see above)'%len(jobs_require_slices),tag='status')
 			self.make_slices(jobs_require_slices)
 			# after loading slices we have to re-parse the postdata
 			self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director)
@@ -1296,6 +1322,9 @@ class WorkSpace:
 	### EXECUTION MODES
 	###
 
+	def checkup(self,**kwargs):
+		pass
+
 	def look(self,**kwargs):
 		"""Inspect something."""
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
@@ -1305,8 +1334,7 @@ class WorkSpace:
 		if look_specs: raise Exception('unprocessed kwargs %s'%look_specs)
 		if set(kwargs.keys())<={'write_json'} and args==('times',): 
 			import collections
-			from base.parser import ParsedRawData
-			self.source = ParsedRawData(spots=self.config.get('spots',{}))
+			self.parse_sources()
 			view_od = [(k,v) for spotname in [k for k in self.source.spots 
 				if k[1]=='edr'] for k,v in self.source.toc[spotname].items()]
 			# for survey purposes we tryto access all simulations

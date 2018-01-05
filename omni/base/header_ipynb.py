@@ -22,11 +22,11 @@ is_live = False
 #---tab completion
 exec(open(os.path.join(this_path,'omni/base/pythonrc.py')).read())
 #---generate a workspace
-work = WorkSpace(plot=plotname,cwd=this_path)
+work = WorkSpace(plot=True,plot_args=(plotname,),plot_kwargs=dict(header_caller=True),cwd=this_path)
 #---prepare variables for export into the global namepsace of the script
 from base.autoplotters import inject_supervised_plot_tools
 out = dict(work=work,plotname=plotname)
-inject_supervised_plot_tools(out,mode='interactive')
+inject_supervised_plot_tools(out,mode='interactive',silent=True)
 #---dump the injected functions into the global namespace and builtims
 import builtins
 for key,val in out.items(): builtins.__dict__[key] = val

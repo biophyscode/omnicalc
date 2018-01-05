@@ -17,7 +17,7 @@ sys.path.insert(0,'calcs')
 sys.path.insert(0,'omni')
 from omnicalc import WorkSpace
 
-work = WorkSpace(do_slices=False,checkup=True)
+work = WorkSpace(checkup=True)
 
 if method!='null' and not hasattr(work,method): 
 	raise Exception('no WorkSpace method called %s'%method)

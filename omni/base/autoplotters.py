@@ -51,6 +51,7 @@ class PlotSupervisor:
 		#---...see them. this is unorthodox however these functions only run once
 		if self.mode=='supervised' and any(targets) and out!=None: globals().update(**out)
 		for plot_name in targets:
+			#! plotname is wrong here. sometimes it is "plot"
 			status('executing plot %s'%plot_name,tag='plot')
 			if plot_name not in self.plot_functions:
 				raise Exception('this script does not have a plot function named %s'%plot_name)
@@ -90,7 +91,7 @@ def autoplot(plotrun):
 		return wrapper
 	return autoplot_decorator
 
-def inject_supervised_plot_tools(out,mode='supervised'):
+def inject_supervised_plot_tools(out,mode='supervised',silent=False):
 	"""
 	Add important tools to a dictionary which is later exported to the namespace for plotting.
 	This function was centralized here so that both the interactive header and non-interactive execution
@@ -98,6 +99,8 @@ def inject_supervised_plot_tools(out,mode='supervised'):
 	"""
 	import os,sys,re
 	work = out['work']
+	#---save keys before the additions
+	keys_incoming = set(out.keys())
 	#---import sequence from original header.py
 	import store
 	#---distribute the workspace to the store module
@@ -158,14 +161,18 @@ def inject_supervised_plot_tools(out,mode='supervised'):
 	if art_director: 
 		#---reload the art settings if they are already loaded
 		mod_name = re.match('^(.+)\.py$',os.path.basename(art_director)).group(1)
-		#---! switced from reload to a python3-compatible. would prefer to avoid pyc files.
-		import importlib
-		if mod_name in sys.modules: importlib.reload(sys.modules[mod_name])
-		art_vars = import_art_director(art_director,cwd='calcs')
-		#---unpack these into outgoing variables
-		for key,val in art_vars.items(): out[key] = val
-
+		#---! switched from reload to a python3-compatible. would prefer to avoid pyc files.
+		#---! currently disabled on the development branch (getting error module has no attribute reload)
+		try:
+			import importlib
+			if mod_name in sys.modules: importlib.reload(sys.modules[mod_name])
+			art_vars = import_art_director(art_director,cwd=os.path.join(cwd,'calcs'))
+			#---unpack these into outgoing variables
+			for key,val in art_vars.items(): out[key] = val
+		except: status('cannot reload the art director',tag='warning')
+	out['_plot_environment_keys'] = list(set(out.keys())-keys_incoming)
 	#---tell the user which variables are automagically loaded
+	if silent: return
 	status('the following variables are loaded into your plot script environment',tag='note')
 	from datapack import asciitree
 	def key_types(obj):
@@ -181,7 +188,9 @@ def inject_supervised_plot_tools(out,mode='supervised'):
 		report[name] = collections.OrderedDict()
 		items = [(key,out[key]) for key in sorted(out) if key_catalog[key]==name]
 		for key,val in items: 
-			if val.__class__.__name__=='module': 
+			if type(val).__name__=='classobj':
+				report[name][key] = '<class \'%s\'>'%val.__name__
+			elif val.__class__.__name__=='module': 
 				report[name][key] = '<module \'%s\'>'%val.__name__
 			elif val.__class__.__name__=='function': 
 				report[name][key] = '<function \'%s\'>'%val.__name__

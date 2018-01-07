@@ -683,7 +683,9 @@ class PlotSpec:
 			self.specs = self.metadata.plots[self.plotname]
 			self.request_calc = self.specs.get('calculation',self.specs.get('calculations',None))
 			if not self.request_calc: self.request_calc = str(self.plotname)
-			self.collections = self.specs.pop('collections',[])
+			self.collections = self.specs.get('collections',[])
+			if not self.collections: 
+				raise Exception('cannot assemble collections for plot %s. specs are: %s'%(self.plotname,self.specs))
 			# note the script name
 			self.script = self.specs.pop('script',self.script)
 			#! this is where we would process any plot-specific specs sometimes written to the plot section
@@ -702,9 +704,10 @@ class PlotSpec:
 			# ... since you have only supplied a name. to be more specific, you have to add a plots entry
 			self.request_calc = {self.plotname:self.metadata.calculations[self.plotname].get('specs',{})}
 			self.collections = self.metadata.calculations[self.plotname].get('collections',[])
+			if not self.collections: 
+				raise Exception('cannot assemble collections for plot %s after falling back to calcs'%(
+					self.plotname))
 		else: raise Exception('cannot find plotname %s in plots or calculations metadata'%self.plotname)
-		if not self.collections: 
-			raise Exception('cannot assemble collections for plot %s'%self.plotname)
 	def sns(self):
 		return list(set(self.metadata.get_simulations_in_collection(
 			*str_or_list(self.collections))))
@@ -971,8 +974,12 @@ class WorkSpace:
 			calcs=self.calcs,workspace=self)
 		return outgoing
 
-	def plot_legacy(self,plotname,meta=None,autoplot=False):
+	def plot_legacy(self,plotname,meta=None,autoplot=False,look=False):
 		"""Legacy plotting mode."""
+		# when looking from the factory we need a plotspec
+		if look: 
+			self.plotspec = PlotSpec(metadata=self.metadata,plotname=plotname,
+				calcs=self.calcs,workspace=self)
 		plots = self.metadata.plots
 		#---we hard-code the plot script naming convention here
 		plot_script_fn = self.plotspec.script
@@ -991,6 +998,8 @@ class WorkSpace:
 			except Exception as e: 
 				raise Exception('you should add %s to plots '%plotname+'since we could not '
 					'formulate a default plot for that calculation.')			
+		# the look method is used by the factory to get details for this plot
+		if look: return {'script_name':script_name}
 		header_script = 'omni/base/header.py'
 		meta_out = ' '.join(meta) if type(meta)==list else ('null' if not meta else meta)
 		# call the header script with a flag for legacy execution
@@ -1323,7 +1332,8 @@ class WorkSpace:
 	###
 
 	def checkup(self,**kwargs):
-		pass
+		"""Prepare the workspace for calls from the factory i.e. a "checkup"."""
+		self.prelim()
 
 	def look(self,**kwargs):
 		"""Inspect something."""
@@ -1360,6 +1370,12 @@ class WorkSpace:
 				view = [(sn,[('%s%s-%s'%stepname,[(i,j) for i,j in step.items()]) 
 					for stepname,step in details.items()]) for sn,details in view_od]
 				print('time_table = %s'%json.dumps(view))
+		elif not kwargs.keys() and args==():
+			#! ipdb is good enough for now, but it was nice to get dropped into interactive mode
+			status('welcome to the workspace. take a look around!',tag='debug')
+			self.prelim()
+			work = self
+			import ipdb;ipdb.set_trace()
 		else: raise Exception('invalid call to look with args %s and kwargs %s'%(args,kwargs))
 
 	def compute(self,**kwargs):

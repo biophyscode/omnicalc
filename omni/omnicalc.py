@@ -961,9 +961,9 @@ class WorkSpace:
 		# original plot codes expect a data,calc pair from this function
 		if plotload_version==1: 
 			# remove calculation name from the nested dictionary if only one
-			if len(calcnames)==1 and len(bundle['data'])==1 and len(bundle['calc'])==1:
+			if len(calcnames)==1 and len(bundle['data'])==1:
 				bundle['data'] = bundle['data'].values()[0]
-				bundle['calc'] = bundle['calc'].values()[0]
+			if len(bundle['calc'])==1: bundle['calc'] = bundle['calc'].values()[0]
 			# note that calc may also include extras to specify the trajectory (see plot-actinlink_videos.py)
 			outgoing = bundle['data'],bundle['calc']
 		#! alternate plotload returns can be managed here with a global plotload_version from the director

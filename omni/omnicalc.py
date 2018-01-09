@@ -315,6 +315,7 @@ class Calculations:
 		"""Expand calculations and apply loops."""
 		self.toc = {}
 		for calcname,calc in calcs_meta.items():
+			if calc.get('ignore',False): continue
 			# unroll each calculation and store the stubs because they map from the keyword used in the 
 			# ... parameter sweeps triggered by "loop" and the full specs
 			expanded_calcs,expanded_stubs = self.unroll_loops(calc,return_stubs=True)
@@ -800,8 +801,7 @@ class WorkSpace:
 		global namer
 		# prepare the namer, used in several places in omnicalc.py
 		namer = self.namer = NameManager(short_namer=self.short_namer,spots=self.config.get('spots',{}))
-
-		#####! is this necessary?
+		#! is this necessary?
 		# prepare lookup tables for other functions to map short names back to full names
 		self.namer.names_short,self.namer.names_long = {},{}
 		for sn in self.simulation_names():

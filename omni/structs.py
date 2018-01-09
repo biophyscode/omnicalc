@@ -165,13 +165,10 @@ class TrajectoryStructure(OmnicalcDataStructure):
 
 	# abstract trajectory structure
 	_structures = {
-		# calculations which request a slice and a group
+		# calculations which request a slice and a group (not strict so we can have e.g. ignore)
 		'calculation_request':{
 			'struct':{'sn':'string','group':'string','slice_name':'string'},
-			'meta':{'strict':True}},
-        #'calculation_request_basic':{
-		#	'struct':{'sn':'string','slice_name':'string'},
-		#	'meta':{'strict':True},},
+			'meta':{'strict':False}},
 		'post_spec_v2':{
 			'struct':{
 				'sn':'string','short_name':'string',
@@ -251,6 +248,7 @@ class Calculation(NoisyOmnicalcObject):
 		# hold the specs separately
 		self.specs = calc_specs.pop('specs',{})
 		self.name_style = calc_specs.pop('name_style',None)
+		self.ignore = calc_specs.pop('ignore',False)
 		# we protect against extra unprocessed data in the calculations here
 		if calc_specs: raise Exception('unprocessed inputs to the calculation: %s'%calc_specs)
 		# copy any upstream references for later

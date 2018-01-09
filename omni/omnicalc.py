@@ -135,7 +135,7 @@ class MetaData:
 					try: allspecs.append(yaml.load(fp.read()))
 					except Exception as e:
 						raise Exception('failed to parse YAML (are you sure you have no tabs?): %s'%e)
-		if not allspecs: raise Exception('dev')
+		# previously raised an exception if allspecs was empty but execution should continue
 		# merge the YAML dictionaries according to one of several methods
 		if self.merge_method=='strict':
 			specs = allspecs.pop(0)
@@ -208,6 +208,7 @@ class Calculations:
 		to warn the user that they might have a loop (which would cause infinite recursion). 
 		"""
 		#---infer the correct order for the calculation keys from their upstream dependencies
+		if not calcs_meta: return []
 		upstream_catalog = [i for i,j in catalog(calcs_meta) if 'upstream' in i]
 		#---if there are no specs required to get the upstream data object the user can either 
 		#---...use none/None as a placeholder or use the name as the key as in "upstream: name"
@@ -289,7 +290,7 @@ class Calculations:
 		try:
 			with time_limit(30): 
 
-				#! protection against infinite looping? also consider adding a fully-linked calculations graph?
+				#! protection against infinite looping? also consider adding a fully-linked calc graph?
 				while calc_names:
 					name = calc_names.pop()
 					this_calc = self.specs.calculations[name]
@@ -1088,8 +1089,9 @@ class WorkSpace:
 		"""
 		Make slices
 		"""
+		#! make sure all slices are handled somewhere in these lists?
 		if any([job.slice.style!='readymade' for job in jobs]):
-			import ipdb;ipdb.set_trace()
+			self.make_slices_automacs([job for job in self.jobs if job.slice.style=='slice_request_named'])
 		else: self.make_slices_readymade([job for job in self.jobs if job.slice.style=='readymade'])
 
 	def make_slices_readymade(self,jobs):

@@ -364,10 +364,18 @@ class NameManager(NamingConvention):
 				except: 
 					print(self.short_namer)
 					raise Exception('failed to interpret the alias function with eval or exec')
+			# make sure the namer can take one argument with optional spotname which can be null
+			import inspect
+			args,varargs,varkw,defaults = inspect.getargspec(short_namer)
+			if len(args)-len(defaults)!=1: 
+				raise Exception("short_namer/renamer function takes only one argument (the simulation name) "+
+								"and a keyword argument \"spot\" which can be null.")
 			def careful_naming():
-				def short_namer_careful(*args,**kwargs):
+				def short_namer_careful(*args,**kwargs):					
 					try: return short_namer(*args,**kwargs)
-					except: raise Exception(
+					except: 
+						import ipdb;ipdb.set_trace()
+						raise Exception(
 						'short_namer/renamer function failed on args %s, kwargs %s'%(args,kwargs))
 				return short_namer_careful
 			self.short_namer = careful_naming()

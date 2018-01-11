@@ -17,12 +17,9 @@ for i in ['omni','calcs']: sys.path.insert(0,os.path.join(this_path,i))
 
 from omnicalc import WorkSpace
 
-#---flag for IPython notebook use
-is_live = False
-#---tab completion
-exec(open(os.path.join(this_path,'omni/base/pythonrc.py')).read())
 #---generate a workspace
-work = WorkSpace(plot=True,plot_args=(plotname,),plot_kwargs=dict(header_caller=True),cwd=this_path)
+work = WorkSpace(plot=True,plot_args=(plotname,),is_live=True,
+	plot_kwargs=dict(header_caller=True),cwd=this_path)
 work.plot_prepare()
 #---prepare variables for export into the global namepsace of the script
 from base.autoplotters import inject_supervised_plot_tools

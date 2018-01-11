@@ -351,7 +351,7 @@ class NameManager(NamingConvention):
 	"""
 	def __init__(self,**kwargs):
 		self.short_namer = kwargs.pop('short_namer',None)
-		if not self.short_namer: self.short_namer = lambda sn,spot:sn
+		if not self.short_namer: self.short_namer = lambda sn,spot=None:sn
 		else: 
 			# allow lambda or functions
 			try: short_namer = eval(self.short_namer)
@@ -366,8 +366,8 @@ class NameManager(NamingConvention):
 					raise Exception('failed to interpret the alias function with eval or exec')
 			# make sure the namer can take one argument with optional spotname which can be null
 			import inspect
-			args,varargs,varkw,defaults = inspect.getargspec(short_namer)
-			if len(args)-len(defaults)!=1: 
+			namer_args,namer_varargs,namer_varkw,namer_defaults = inspect.getargspec(short_namer)
+			if not namer_defaults or len(namer_args)-len(namer_defaults)!=1: 
 				raise Exception("short_namer/renamer function takes only one argument (the simulation name) "+
 								"and a keyword argument \"spot\" which can be null.")
 			def careful_naming():

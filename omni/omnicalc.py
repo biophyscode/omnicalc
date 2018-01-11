@@ -761,6 +761,7 @@ class WorkSpace:
 		# remove arguments for plotting
 		self.plot_args = kwargs.pop('plot_args',())
 		self.plot_kwargs = kwargs.pop('plot_kwargs',{})
+		self.is_live = kwargs.pop('is_live',False)
 		debug_flags = [False,'slices','compute','stale']
 		self.debug = kwargs.pop('debug',False)
 		if self.debug not in debug_flags: raise Exception('debug argument must be in %s'%debug_flags)
@@ -1057,6 +1058,8 @@ class WorkSpace:
 		import builtins
 		builtins._plotrun_specials = out.keys()
 		for key in out: builtins.__dict__[key] = out[key]
+		#---tell ths script if we are live. you can run supervised or legacy from the notebook
+		out.update(is_live=self.is_live)
 		#---supervised execution is noninteractive and runs plots based on plotspecs
 		#---...hence we run the script as per the replot() function in omni/base/header.py
 		#---...see the header function for more detail

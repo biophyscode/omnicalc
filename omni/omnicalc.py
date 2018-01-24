@@ -286,7 +286,6 @@ class Calculations:
 		calc_names = [calc]
 		#! the following is under development and will need to be updated after fully-linking calculation 
 		#! ... loops but for now we protect against hanging
-		import ipdb;ipdb.set_trace()
 		from base.timer import time_limit
 		try:
 			with time_limit(30): 
@@ -448,7 +447,6 @@ class PostData(NoisyOmnicalcObject):
 		"""
 		fn,dn = kwargs.pop('fn'),kwargs.pop('dn'),
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
-		import ipdb;ipdb.set_trace()
 		self.files = dict([(k,os.path.join(dn,fn+'.%s'%k)) for k in ['spec','dat']])
 		if not os.path.isfile(self.files['spec']):
 			raise Exception('cannot find this spec file %s'%self.files['spec'])

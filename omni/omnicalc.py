@@ -286,6 +286,7 @@ class Calculations:
 		calc_names = [calc]
 		#! the following is under development and will need to be updated after fully-linking calculation 
 		#! ... loops but for now we protect against hanging
+		import ipdb;ipdb.set_trace()
 		from base.timer import time_limit
 		try:
 			with time_limit(30): 
@@ -310,7 +311,7 @@ class Calculations:
 				elif len(groups_u)==0: raise Exception('failed to get upstream group for %s'%calc)
 				else: return groups_u[0]
 
-		except TimeoutException, msg: raise Exception('taking too long to infer groups')
+		except: raise Exception('taking too long to infer groups')
 
 	def interpret_calculations(self,calcs_meta):
 		"""Expand calculations and apply loops."""
@@ -447,7 +448,8 @@ class PostData(NoisyOmnicalcObject):
 		"""
 		fn,dn = kwargs.pop('fn'),kwargs.pop('dn'),
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
-		self.files = dict([(k,os.path.join(dn,fn+'.%s'%k)) for k in 'spec','dat'])
+		import ipdb;ipdb.set_trace()
+		self.files = dict([(k,os.path.join(dn,fn+'.%s'%k)) for k in ['spec','dat']])
 		if not os.path.isfile(self.files['spec']):
 			raise Exception('cannot find this spec file %s'%self.files['spec'])
 		self.specs = json.load(open(self.files['spec']))

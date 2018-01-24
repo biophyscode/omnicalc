@@ -1013,8 +1013,8 @@ class WorkSpace:
 			#---...object for this plotname, assuming it is the same as the calculation
 			try:
 				plotspec = {'calculation':plotname,
-					'collections':self.calcs[plotname]['collections'],
-					'slices':self.calcs[plotname]['slice_name']}
+					'collections':self.metadata.calculations[plotname]['collections'],
+					'slices':self.metadata.calculations[plotname]['slice_name']}
 				print('[NOTE] there is no %s entry in plots so we are using calculations'%plotname)
 			except Exception as e: 
 				raise Exception('you should add %s to plots '%plotname+'since we could not '
@@ -1366,7 +1366,6 @@ class WorkSpace:
 				struct_file = os.path.join(self.postdir,'%s.%s'%(job.slice_upstream.data['basename'],'gro'))
 				traj_file = os.path.join(self.postdir,'%s.%s'%(job.slice_upstream.data['basename'],'xtc'))
 			else: raise Exception('dev')
-			outgoing = dict(grofile=struct_file,trajfile=traj_file,**outgoing)
 			# load upstream data files at the last moment
 			upstream = {}
 			for unum,(key,val) in enumerate(job.upstream.items()):
@@ -1378,7 +1377,9 @@ class WorkSpace:
 			outgoing.update(upstream=upstream)
 			# we run plot_prepare because some calculation scripts require it
 			self.plot_prepare()
-			# call the function
+			# redundant keywords are structure/grofile and trajectory/trajfile
+			outgoing = dict(grofile=struct_file,trajfile=traj_file,
+				structure=struct_file,trajectory=traj_file,**outgoing)
 			result,attrs = function(**outgoing)
 			# we remove the blank dat file before continuing. one of very few delete commands
 			if job.result.style!='computing': raise Exception('attmpting to compute a stale job')

@@ -894,7 +894,7 @@ class WorkSpace:
 		else: 
 			raise Exception(('cannot find an upstream job which computes '
 				'"%s" for simulation "%s" with specs: %s')%(
-				name,job.slice.data['sn'],calc_request.__dict__))
+				request.name,request.slice.data['sn'],request.__dict__))
 
 	def plotload(self,plotname,**kwargs):
 		"""

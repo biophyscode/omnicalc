@@ -135,7 +135,7 @@ class MetaData:
 					try: allspecs.append(yaml.load(fp.read()))
 					except Exception as e:
 						raise Exception('failed to parse YAML (are you sure you have no tabs?): %s'%e)
-		if not allspecs: raise Exception('dev')
+		# previously raised an exception if allspecs was empty but execution should continue
 		# merge the YAML dictionaries according to one of several methods
 		if self.merge_method=='strict':
 			specs = allspecs.pop(0)
@@ -208,6 +208,7 @@ class Calculations:
 		to warn the user that they might have a loop (which would cause infinite recursion). 
 		"""
 		#---infer the correct order for the calculation keys from their upstream dependencies
+		if not calcs_meta: return []
 		upstream_catalog = [i for i,j in catalog(calcs_meta) if 'upstream' in i]
 		#---if there are no specs required to get the upstream data object the user can either 
 		#---...use none/None as a placeholder or use the name as the key as in "upstream: name"
@@ -289,7 +290,7 @@ class Calculations:
 		try:
 			with time_limit(30): 
 
-				#! protection against infinite looping? also consider adding a fully-linked calculations graph?
+				#! protection against infinite looping? also consider adding a fully-linked calc graph?
 				while calc_names:
 					name = calc_names.pop()
 					this_calc = self.specs.calculations[name]
@@ -309,12 +310,13 @@ class Calculations:
 				elif len(groups_u)==0: raise Exception('failed to get upstream group for %s'%calc)
 				else: return groups_u[0]
 
-		except TimeoutException, msg: raise Exception('taking too long to infer groups')
+		except: raise Exception('taking too long to infer groups')
 
 	def interpret_calculations(self,calcs_meta):
 		"""Expand calculations and apply loops."""
 		self.toc = {}
 		for calcname,calc in calcs_meta.items():
+			if calc.get('ignore',False): continue
 			# unroll each calculation and store the stubs because they map from the keyword used in the 
 			# ... parameter sweeps triggered by "loop" and the full specs
 			expanded_calcs,expanded_stubs = self.unroll_loops(calc,return_stubs=True)
@@ -356,7 +358,6 @@ class Calculations:
 						*str_or_list(calc.raw['collections']))
 				# custom simulation names request will whittle the sns list here
 				else: sns = list(sns_overrides)
-				# group is not required and will be filled in later if missing
 				group_name = calc.raw.get('group',self.infer_group(calc=calckey))
 				# loop over simulations
 				for sn in sns:
@@ -446,7 +447,7 @@ class PostData(NoisyOmnicalcObject):
 		"""
 		fn,dn = kwargs.pop('fn'),kwargs.pop('dn'),
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
-		self.files = dict([(k,os.path.join(dn,fn+'.%s'%k)) for k in 'spec','dat'])
+		self.files = dict([(k,os.path.join(dn,fn+'.%s'%k)) for k in ['spec','dat']])
 		if not os.path.isfile(self.files['spec']):
 			raise Exception('cannot find this spec file %s'%self.files['spec'])
 		self.specs = json.load(open(self.files['spec']))
@@ -527,10 +528,16 @@ class PostDataLibrary:
 		strict_sns = kwargs.pop('strict_sns',False)
 		# we have a copy of the director in case there are special instructions there
 		self.director = kwargs.pop('director',{})
+		# handle previous additions to the library which we want to save
+		self.previous = kwargs.pop('previous',None)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		# generate a "stable" or "corral" of data objects
 		self.stable = [os.path.basename(i) for i in glob.glob(os.path.join(self.where,'*'))]
-		self.toc = {}
+		# populate the toc with post slices not on disk from previous make_slices i.e. the readymade
+		if self.previous:
+			self.toc = dict([(k,v) for k,v in self.previous.toc.items() 
+				if v and v.__dict__.get('style',None)=='readymade'])
+		else: self.toc = {}
 		nfiles = len(self.stable)
 		# master classification loop
 		while self.stable: 
@@ -555,6 +562,12 @@ class PostDataLibrary:
 					#except: self.toc[name] = {}
 					if this_datspec.valid: self.toc[basename] = this_datspec
 					#! handle invalid datspecs?
+					else: self.toc[basename] = {}
+				# register datspec files from readymade simulations here
+				elif namedat['name_style']=='readymade_datspec':
+					basename = self.get_twin(name,('dat','spec'))
+					this_datspec = PostData(fn=basename,dn=self.where,style='read')
+					if this_datspec.valid: self.toc[basename] = this_datspec
 					else: self.toc[basename] = {}
 				# if this is a standard gromacs file we check twins and register it as a slice
 				elif namedat['name_style']=='standard_gmx':
@@ -635,27 +648,34 @@ class SliceMeta(TrajectoryStructure):
 		for sn,slices_spec in self.raw.items():
 			# detect the style of a particular slice
 			style = self.classify(slices_spec)
-			# once slice specification can yield many slices
-			slices_raw = self.cross(style=style,data=slices_spec)
+			# once slice specification can yield many slices (cross works for multiple types)
+			if style in ['slices_request','readymade_request']:
+				slices_raw = self.cross(style=style,data=slices_spec)
+			else: raise Exception('unclear how to turn style %s into a SliceMeta'%style)
 			# make a formal slice element out of the raw data
 			for key,val in slices_raw.items(): 
 				# register different types with the toc
-				if key[0]=='slices':
+				if style=='slices_request' and key[0]=='slices':
 					# +++ TRRANFORM a cross output into a slice
 					slice_transformed = dict(val,sn=sn,slice_name=key[1])
 					# +++ BUILD slice object
 					self.toc.append(Slice(slice_transformed))
-				elif key[0]=='groups':
+				elif style=='slices_request' and key[0]=='groups':
 					# +++ TRANSFORM a cross output into a group
 					group_transformed = dict(selection=val,sn=sn,group_name=key[1])
 					self.toc.append(Group(group_transformed))
+				elif style=='readymade_request':
+					# +++ BUILD slice object
+					self.toc.append(Slice(data=dict(slice_name=key[0],sn=sn,**val)))
 				else: raise Exception('expecting a group or slice but instead received %s'%{key:val})
 
 	def search(self,candidate):
 		"""Search the requested slices."""
 		matches = [sl for sl in self.toc if sl==candidate]
 		if len(matches)>1: raise Exception('redundant matches for %s'%candidate)
-		elif len(matches)==0: return None
+		elif len(matches)==0: 
+			import ipdb;ipdb.set_trace()
+			return None
 		else: return matches[0]
 
 class PlotSpec:
@@ -685,7 +705,8 @@ class PlotSpec:
 			if not self.request_calc: self.request_calc = str(self.plotname)
 			self.collections = self.specs.get('collections',[])
 			if not self.collections: 
-				raise Exception('cannot assemble collections for plot %s. specs are: %s'%(self.plotname,self.specs))
+				raise Exception('cannot assemble collections for plot %s. specs are: %s'%(
+					self.plotname,self.specs))
 			# note the script name
 			self.script = self.specs.pop('script',self.script)
 			#! this is where we would process any plot-specific specs sometimes written to the plot section
@@ -740,6 +761,7 @@ class WorkSpace:
 		# remove arguments for plotting
 		self.plot_args = kwargs.pop('plot_args',())
 		self.plot_kwargs = kwargs.pop('plot_kwargs',{})
+		self.is_live = kwargs.pop('is_live',False)
 		debug_flags = [False,'slices','compute','stale']
 		self.debug = kwargs.pop('debug',False)
 		if self.debug not in debug_flags: raise Exception('debug argument must be in %s'%debug_flags)
@@ -781,8 +803,7 @@ class WorkSpace:
 		global namer
 		# prepare the namer, used in several places in omnicalc.py
 		namer = self.namer = NameManager(short_namer=self.short_namer,spots=self.config.get('spots',{}))
-
-		#####! is this necessary?
+		#! is this necessary?
 		# prepare lookup tables for other functions to map short names back to full names
 		self.namer.names_short,self.namer.names_long = {},{}
 		for sn in self.simulation_names():
@@ -1001,8 +1022,8 @@ class WorkSpace:
 			#---...object for this plotname, assuming it is the same as the calculation
 			try:
 				plotspec = {'calculation':plotname,
-					'collections':self.calcs[plotname]['collections'],
-					'slices':self.calcs[plotname]['slice_name']}
+					'collections':self.metadata.calculations[plotname]['collections'],
+					'slices':self.metadata.calculations[plotname]['slice_name']}
 				print('[NOTE] there is no %s entry in plots so we are using calculations'%plotname)
 			except Exception as e: 
 				raise Exception('you should add %s to plots '%plotname+'since we could not '
@@ -1046,6 +1067,8 @@ class WorkSpace:
 		import builtins
 		builtins._plotrun_specials = out.keys()
 		for key in out: builtins.__dict__[key] = out[key]
+		#---tell ths script if we are live. you can run supervised or legacy from the notebook
+		out.update(is_live=self.is_live)
 		#---supervised execution is noninteractive and runs plots based on plotspecs
 		#---...hence we run the script as per the replot() function in omni/base/header.py
 		#---...see the header function for more detail
@@ -1078,6 +1101,42 @@ class WorkSpace:
 		"""
 		Make slices
 		"""
+		#! make sure all slices are handled somewhere in these lists?
+		if any([job.slice.style!='readymade' for job in jobs]):
+			self.make_slices_automacs([job for job in self.jobs if job.slice.style=='slice_request_named'])
+		else: self.make_slices_readymade([job for job in self.jobs if job.slice.style=='readymade'])
+
+	def make_slices_readymade(self,jobs):
+		"""
+		Identify readymade slices on disk. Note that this task is placed here as a mimic for 
+		make_slices_automacs because it would be wasteful to catalog the parts of a readymade slice via
+		PostDataLibrary. Note that this function could also be replaced with an alternate checker so that
+		other data could be imported with a custom function later.
+		"""
+		registered_slices = []
+		for job in jobs:
+			# check slices on disk
+			for key in ['structure','trajectory']:
+				for fn in str_or_list(job.slice.data[key]):
+					fn_abs = os.path.join(self.postdir,fn)
+					if not os.path.isfile(fn_abs):
+						raise Exception('readymade file not found %s'%fn_abs)
+			# add to the postdata with a unique name for this slice
+			if job.slice.__dict__ not in registered_slices:
+				registered_slices.append(copy.deepcopy(job.slice.__dict__))
+				# readymade slices must use the slice name in the post processing file name so choose wisely
+				name = '%s.readymade.%s'%(
+					self.namer.short_namer(job.slice.data['sn']),job.slice.data['slice_name'])
+				if name in self.post.toc: raise Exception('already found %s'%name)
+				self.post.toc[name] = job.slice
+			# we already added this slice to post
+			else: pass
+
+	def make_slices_automacs(self,jobs):
+		"""
+		Make GROMACS trajectory slices from source data.
+		"""
+		if not jobs: return
 		# only parse simulation data if we need to make slices
 		from base.parser import ParsedRawData
 		self.parse_sources()
@@ -1157,7 +1216,9 @@ class WorkSpace:
 		if jobs_require_slices: 
 			self.make_slices(jobs_require_slices)
 			# after loading slices we have to re-parse the postdata
-			self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director)
+			#! this will overwrite things!
+			self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director,
+				previous=self.post)
 			# match the upstream slices here
 			for job in jobs:
 				# find the trajectory slice
@@ -1183,8 +1244,11 @@ class WorkSpace:
 			# ... if you want to force the full name. otherwise all post-data omits this. all downstream
 			# ... calculations also omit the PBC and group by default anyway.
 			name_style = job.calc.name_style
-			basename = self.namer.basename(job=job,
-				name_style='standard_datspec' if not name_style else name_style)
+			# if readymade we set the name_style here
+			if not name_style and job.slice.style=='readymade': name_style_this = 'readymade_datspec'
+			elif not name_style: name_style_this = 'standard_datspec'
+			else: name_style_this = name_style
+			basename = self.namer.basename(job=job,name_style=name_style_this)
 			# prepare suffixes for new dat files
 			keys = [int(re.match('^%s\.n(\d+)\.spec$'%basename,key).group(1)) 
 				for key in spec_toc.get(basename,[]) if re.match('^%s'%basename,key)]
@@ -1300,11 +1364,17 @@ class WorkSpace:
 			# +++ BUILD arguments structure as the compute function would expect
 			#! it would be nice to formalize this or make it less gromacs-specific? perhaps by using a mode?
 			outgoing = dict(workspace=self,sn=job.slice_upstream.data['sn'],calc=dict(specs=job.calc.specs))
-			#! unpack files. this is specific to the GRO/XTC format and needs a conditional!
-			#! post directory is hard-coded here
-			struct_file = os.path.join(self.postdir,'%s.%s'%(job.slice_upstream.data['basename'],'gro'))
-			traj_file = os.path.join(self.postdir,'%s.%s'%(job.slice_upstream.data['basename'],'xtc'))
-			outgoing = dict(grofile=struct_file,trajfile=traj_file,**outgoing)
+			# unpack files depending on the type of slice
+			#! note that this is where you would run a custom importer for non-MD data
+			if job.slice.style=='readymade':
+				struct_file = os.path.join(self.postdir,job.slice_upstream.data['structure'])
+				traj_file = [os.path.join(self.postdir,i) for i in str_or_list(
+					job.slice_upstream.data['trajectory'])]
+			elif job.slice.style=='slice_request_named':
+				#! post directory is hard-coded here
+				struct_file = os.path.join(self.postdir,'%s.%s'%(job.slice_upstream.data['basename'],'gro'))
+				traj_file = os.path.join(self.postdir,'%s.%s'%(job.slice_upstream.data['basename'],'xtc'))
+			else: raise Exception('dev')
 			# load upstream data files at the last moment
 			upstream = {}
 			for unum,(key,val) in enumerate(job.upstream.items()):
@@ -1316,7 +1386,9 @@ class WorkSpace:
 			outgoing.update(upstream=upstream)
 			# we run plot_prepare because some calculation scripts require it
 			self.plot_prepare()
-			# call the function
+			# redundant keywords are structure/grofile and trajectory/trajfile
+			outgoing = dict(grofile=struct_file,trajfile=traj_file,
+				structure=struct_file,trajectory=traj_file,**outgoing)
 			result,attrs = function(**outgoing)
 			# we remove the blank dat file before continuing. one of very few delete commands
 			if job.result.style!='computing': raise Exception('attmpting to compute a stale job')

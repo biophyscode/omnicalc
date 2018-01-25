@@ -40,7 +40,8 @@ class OmnicalcDataStructure(NoisyOmnicalcObject):
 		self.data = data
 		self.style = self.classify(self.data)
 
-	types_map = {'string':str_types,'number':[int,float],'bool':[bool,None],'list':[list]}
+	types_map = {'string':str_types,'number':[int,float],
+		'bool':[bool,None],'list':[list],'str_or_list':str_types+[list]}
 	def type_checker(self,v,t): 
 		# lists restruct is to specific options
 		if type(t)==list: return v in t
@@ -87,7 +88,7 @@ class OmnicalcDataStructure(NoisyOmnicalcObject):
 			raise Exception('matched multiple data structures to %s'%subject)
 		elif len(candidates)==0: 
 			import ipdb;ipdb.set_trace()
-			raise Exception('failed to classify %s in %s'%(subject,self))
+			raise Exception('failed to classify %s in %s'%(subject,self.__dict__))
 		else: return candidates[0]
 
 	def cross(self,style,data):
@@ -133,6 +134,10 @@ class OmnicalcDataStructure(NoisyOmnicalcObject):
 
 	def __eq__(self,other):
 		"""Supervise comparisons."""
+		if ((self.style=='readymade' or other.style=='readymade') and 
+			self.data['sn']=='membrane-v8421' and other.data['sn']=='membrane-v8421'):
+			pass
+			#import ipdb;ipdb.set_trace()
 		if self.style==other.style: return self.data==other.data
 		# all comparisons happen with special functions instead of the usual __eq__
 		#! more elegant way to handle comparison orderings? perhaps a dictionary or something?
@@ -160,10 +165,10 @@ class TrajectoryStructure(OmnicalcDataStructure):
 
 	# abstract trajectory structure
 	_structures = {
-		# calculations which request a slice and a group
+		# calculations which request a slice and a group (not strict so we can have e.g. ignore)
 		'calculation_request':{
 			'struct':{'sn':'string','group':'string','slice_name':'string'},
-			'meta':{'strict':True}},
+			'meta':{'strict':False}},
 		'post_spec_v2':{
 			'struct':{
 				'sn':'string','short_name':'string',
@@ -190,6 +195,15 @@ class TrajectoryStructure(OmnicalcDataStructure):
 			'struct':{
 				'sn':'string','group':'string','slice_name':'string','pbc':'string',
 				'start':'number','end':'number','skip':'number'}},
+		'readymade_request':{
+			# cannot be strict and cannot check types for this (nested?) style
+			'meta':{'strict':False,'check_types':False},
+			'struct':{OmnicalcDataStructure.StructureKey('slice_name'):{
+				'structure':'string','trajectory':'str_or_list'}},},
+		'readymade':{
+			'meta':{'strict':False,'check_types':True},
+			'struct':{'structure':'string','trajectory':'str_or_list','slice_name':'string','sn':'string',
+			'name_style':['readymade_datspec']}},
 		'gromacs_group':{
 			'meta':{'strict':True,'check_types':True},
 			'struct':{'group_name':'string','selection':'string','sn':'string'}},
@@ -203,11 +217,15 @@ class TrajectoryStructure(OmnicalcDataStructure):
 				#! deprecated 'dat_type':['gmx'],'slice_type':['standard'],
 				'name_style':['standard_gmx']}},}
 
-	_unequal = [{'calculation_request','gromacs_group'},{'slice_request_named','gromacs_group'}]
+	_unequal = [{'calculation_request','gromacs_group'},{'slice_request_named','gromacs_group'},
+		{'slice_request_named','calculation_request_basic'},{'gromacs_group','calculation_request_basic'},
+		{'slice_request_named','readymade'},{'post_spec_v2','readymade'},{'post_spec_v2_basic','readymade'},
+		{'gromacs_slice','readymade'},{'gromacs_group','readymade'}]
 	_equivalence = {
 		('slice_request_named','calculation_request'):['slice_name','sn','group'],
 		('post_spec_v2','slice_request_named'):['sn','group','pbc','start','end','skip'],
-		('post_spec_v2_basic','slice_request_named'):['sn','start','end','skip'],}
+		('post_spec_v2_basic','slice_request_named'):['sn','start','end','skip'],
+		('readymade','calculation_request'):['sn','slice_name'],}
 
 	def _eq_gromacs_slice_to_slice_request_named(self,a,b):
 		checks = ([a.data[k]==b.data['body'][k] for k in ['start','end','skip','pbc','group']]+
@@ -230,6 +248,7 @@ class Calculation(NoisyOmnicalcObject):
 		# hold the specs separately
 		self.specs = calc_specs.pop('specs',{})
 		self.name_style = calc_specs.pop('name_style',None)
+		self.ignore = calc_specs.pop('ignore',False)
 		# we protect against extra unprocessed data in the calculations here
 		if calc_specs: raise Exception('unprocessed inputs to the calculation: %s'%calc_specs)
 		# copy any upstream references for later
@@ -311,6 +330,13 @@ class NamingConvention:
 				'(?P<start>%(float)s)-(?P<end>%(float)s)-(?P<skip>%(float)s)\.'+
 				'(?P<group>%(wild)s+)\.pbc(?P<pbc>%(wild)s+)\.(?P<calc_name>%(wild)s+)'+
 				'\.n(?P<nnum>\d+)\.(dat|spec)$',}),
+		# naming convention for results from readymade slices
+		('readymade_datspec',{
+			# we append the dat/spec suffix and the nnum later
+			#! should this include the number?
+			'd2n':r'%(short_name)s.readymade.%(slice_name)s.%(calc_name)s',
+			'n2d':'^(?P<short_name>%(wild)s+)\.readymade\.(?P<slice_name>%(wild)s+)'+
+				'\.(?P<calc_name>%(wild)s+)\.n(?P<nnum>\d+)\.(dat|spec)$',}),
 		#??? unused
 		('raw_datspec',{
 			# we append the dat/spec suffix and the nnum later
@@ -325,7 +351,7 @@ class NameManager(NamingConvention):
 	"""
 	def __init__(self,**kwargs):
 		self.short_namer = kwargs.pop('short_namer',None)
-		if not self.short_namer: self.short_namer = lambda sn,spot:sn
+		if not self.short_namer: self.short_namer = lambda sn,spot=None:sn
 		else: 
 			# allow lambda or functions
 			try: short_namer = eval(self.short_namer)
@@ -338,10 +364,18 @@ class NameManager(NamingConvention):
 				except: 
 					print(self.short_namer)
 					raise Exception('failed to interpret the alias function with eval or exec')
+			# make sure the namer can take one argument with optional spotname which can be null
+			import inspect
+			namer_args,namer_varargs,namer_varkw,namer_defaults = inspect.getargspec(short_namer)
+			if not namer_defaults or len(namer_args)-len(namer_defaults)!=1: 
+				raise Exception("short_namer/renamer function takes only one argument (the simulation name) "+
+								"and a keyword argument \"spot\" which can be null.")
 			def careful_naming():
-				def short_namer_careful(*args,**kwargs):
+				def short_namer_careful(*args,**kwargs):					
 					try: return short_namer(*args,**kwargs)
-					except: raise Exception(
+					except: 
+						import ipdb;ipdb.set_trace()
+						raise Exception(
 						'short_namer/renamer function failed on args %s, kwargs %s'%(args,kwargs))
 				return short_namer_careful
 			self.short_namer = careful_naming()
@@ -410,5 +444,8 @@ class NameManager(NamingConvention):
 		elif name_style=='standard_gmx':
 			request = dict([(k,job.slice.data[k]) for k in ['start','end','skip','group','pbc']])
 			request.update(short_name=self.names_short[job.slice.data['sn']])
+		elif name_style=='readymade_datspec':
+			request = dict(short_name=self.names_short[job.slice.data['sn']],calc_name=job.calc.name,
+				slice_name=job.slice.data['slice_name'])
 		else: raise Exception('cannot pepare data for the namer for name_style %s'%name_style)
 		return self.parser[name_style]['d2n']%request

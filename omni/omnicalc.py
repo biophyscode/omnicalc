@@ -310,7 +310,7 @@ class Calculations:
 				elif len(groups_u)==0: raise Exception('failed to get upstream group for %s'%calc)
 				else: return groups_u[0]
 
-		except TimeoutException, msg: raise Exception('taking too long to infer groups')
+		except: raise Exception('taking too long to infer groups')
 
 	def interpret_calculations(self,calcs_meta):
 		"""Expand calculations and apply loops."""
@@ -447,7 +447,7 @@ class PostData(NoisyOmnicalcObject):
 		"""
 		fn,dn = kwargs.pop('fn'),kwargs.pop('dn'),
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
-		self.files = dict([(k,os.path.join(dn,fn+'.%s'%k)) for k in 'spec','dat'])
+		self.files = dict([(k,os.path.join(dn,fn+'.%s'%k)) for k in ['spec','dat']])
 		if not os.path.isfile(self.files['spec']):
 			raise Exception('cannot find this spec file %s'%self.files['spec'])
 		self.specs = json.load(open(self.files['spec']))
@@ -942,8 +942,17 @@ class WorkSpace:
 				#! conservative
 				if 'specs' not in self.plots[self.plotname]: self.plots[self.plotname]['specs'] = {}
 				self.plots[self.plotname]['specs'].update(**self.metadata.plots[self.plotname]['specs'])
+		# see if the requested calculation can be unrolled
+		unrolled = self.calcs.unroll_loops(self.plotspec.request_calc)
+		if len(unrolled)>1:
+			upstream_requests = {}
+			# extra index if we are inside a loop. users will have to get the one they want in the plot code
+			for ii,item in enumerate(unrolled):
+				ups = self.collect_upstream_calculations(item)
+				for key,val in ups.items(): upstream_requests[(key,ii)] = val
 		# convert upstream calculation requests into proper calculations
-		upstream_requests = self.collect_upstream_calculations(self.plotspec.request_calc)
+		else: upstream_requests = self.collect_upstream_calculations(self.plotspec.request_calc)
+		# convert upstream calculation requests into proper calculations
 		calcnames = upstream_requests.keys()
 		# package the data for export to the plot environment in a custom dictionary
 		#! this will be useful if we add a different plotload return format later
@@ -1013,8 +1022,8 @@ class WorkSpace:
 			#---...object for this plotname, assuming it is the same as the calculation
 			try:
 				plotspec = {'calculation':plotname,
-					'collections':self.calcs[plotname]['collections'],
-					'slices':self.calcs[plotname]['slice_name']}
+					'collections':self.metadata.calculations[plotname]['collections'],
+					'slices':self.metadata.calculations[plotname]['slice_name']}
 				print('[NOTE] there is no %s entry in plots so we are using calculations'%plotname)
 			except Exception as e: 
 				raise Exception('you should add %s to plots '%plotname+'since we could not '
@@ -1366,7 +1375,6 @@ class WorkSpace:
 				struct_file = os.path.join(self.postdir,'%s.%s'%(job.slice_upstream.data['basename'],'gro'))
 				traj_file = os.path.join(self.postdir,'%s.%s'%(job.slice_upstream.data['basename'],'xtc'))
 			else: raise Exception('dev')
-			outgoing = dict(grofile=struct_file,trajfile=traj_file,**outgoing)
 			# load upstream data files at the last moment
 			upstream = {}
 			for unum,(key,val) in enumerate(job.upstream.items()):
@@ -1378,7 +1386,9 @@ class WorkSpace:
 			outgoing.update(upstream=upstream)
 			# we run plot_prepare because some calculation scripts require it
 			self.plot_prepare()
-			# call the function
+			# redundant keywords are structure/grofile and trajectory/trajfile
+			outgoing = dict(grofile=struct_file,trajfile=traj_file,
+				structure=struct_file,trajectory=traj_file,**outgoing)
 			result,attrs = function(**outgoing)
 			# we remove the blank dat file before continuing. one of very few delete commands
 			if job.result.style!='computing': raise Exception('attmpting to compute a stale job')

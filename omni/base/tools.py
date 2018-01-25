@@ -144,3 +144,23 @@ def backrun(command=None,cwd='.',log='log-back'):
     os.chmod(kill_script,0o744)
     print('[STATUS] if you want to terminate the job, run "%s" or "./%s"'%(term_command,kill_script))
     job.communicate()
+
+class Observer(object):
+	"""Watch locals and return them. The umpteenth metaprogramming trick for nice environments!"""
+	# via https://stackoverflow.com/questions/9186395/
+	# ... python-is-there-a-way-to-get-a-local-function-variable-from-within-a-decorator
+	def __init__(self,function):
+		self._locals = {}
+		self.function = function
+	def __call__(self,*args,**kwargs):
+	 	def tracer(frame,event,arg):
+			if event=='return': self._locals = frame.f_locals.copy()
+		# tracer is activated on next call, return or exception
+		sys.setprofile(tracer)
+		# trace the function call
+		try: res = self.function(*args,**kwargs)
+		# disable tracer and replace with old one
+		finally: sys.setprofile(None)
+	def clear_locals(self): self._locals = {}
+	@property
+	def locals(self): return self._locals

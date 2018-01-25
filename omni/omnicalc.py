@@ -1097,14 +1097,16 @@ class WorkSpace:
 		from base.parser import ParsedRawData
 		self.source = ParsedRawData(spots=self.config.get('spots',{}))
 
-	def make_slices(self,jobs):
+	def make_slices(self,jobs_require_slices):
 		"""
 		Make slices
 		"""
 		#! make sure all slices are handled somewhere in these lists?
-		if any([job.slice.style!='readymade' for job in jobs]):
-			self.make_slices_automacs([job for job in self.jobs if job.slice.style=='slice_request_named'])
-		else: self.make_slices_readymade([job for job in self.jobs if job.slice.style=='readymade'])
+		if any([job.slice.style!='readymade' for job in jobs_require_slices]):
+			self.make_slices_automacs([job for job in jobs_require_slices if job.slice.style=='slice_request_named'])
+		# this happens everytime we run with readymade because the slices need to be found on disk
+		else: self.make_slices_readymade(
+			[job for job in make_slices_automacs if job.slice.style=='readymade'])
 
 	def make_slices_readymade(self,jobs):
 		"""

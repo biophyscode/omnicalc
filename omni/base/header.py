@@ -53,7 +53,7 @@ def replot_old_school():
 	except Exception as e: tracebacker(e)
 
 #---define the replotter
-def replot():
+def replot(loading=False):
 	"""
 	This function re-executes the script.
 	Confirmed that it remembers variables you add.
@@ -71,11 +71,11 @@ def replot():
 	try:
 		#---we execute the script once with a weird name in case there is main code there
 		#---...note that decorators for load and plot functions will run here
-		status('reimporting functions from "%s"'%os.path.basename(script),tag='status')
+		status('reimporting functions from `%s`'%os.path.basename(script),tag='status')
 		#---this is a problem because it reregisters the scripts
 		local_env = {'__name__':'__looking__'}
-		if not re.search('autoplot',code):
-			raise Exception('cannot find the text "autoplot" anywhere in your plot script at %s. '%script+
+		if not re.search('plotrun',code):
+			raise Exception('cannot find the text "plotrun" anywhere in your plot script at %s. '%script+
 				'this means the script is a legacy plot. you should set "autoplot: False" in the plot specs')
 		try: exec(compile(code,script,'exec'),globals(),local_env)
 		except Exception as e:
@@ -87,21 +87,40 @@ def replot():
 			#---! added this exception reporter to investigate annoying replot-with-code-in-globals issue
 			status('exception was: %s'%e,tag='exception')
 			exec(compile(code,script,'exec'),globals())
-		local_env['__name__'] = '__replotting__'
+		#! rename the following to main
+		local_env['__name__'] = plotrun.script_name = '__main__'
 		#---we have to load local_env into globals here otherwise stray functions in the plot
 		#---...will not be found by other functions which might be decorated
 		globals().update(**local_env)
-		#---run the loader function which should conditionally referesh data (i.e. only as needed)
-		status('running the loader function "%s" from "%s"'%(
-			plotrun.loader_name,os.path.basename(script)),tag='load')
 		#---if the loader is a function we run it otherwise it defaults to None
-		if plotrun.loader!=None: plotrun.loader()
-		#---run any plots in the routine
-		plotrun.autoplot()
-		#---in case the user has prototyped code in an if-main section we run the script once more
-		#---...noting of course that it is very unlikely to have changed since the compile above
-		exec(compile(code,script,'exec'),globals())
+		if plotrun.loader!=None and (not plotrun.loader_ran or loading): 
+		#---run the loader function which should conditionally referesh data (i.e. only as needed)
+			status('running the loader function `%s` from `%s`'%(
+				plotrun.loader_name,os.path.basename(script)),tag='load')
+			# the loader is decorated with a function that catches locals
+			plotrun.loader()
+			# expose locals from the loader to globals automatically
+			globals().update(**plotrun.residue)
+			plotrun.loader_ran = True
+		#---run any plots in the routine unless we are reloading
+		if not loading:
+			plotrun.autoplot()
+			#---in case the user has prototyped code in an if-main section we run the script once more
+			#---...noting of course that it is very unlikely to have changed since the compile above
+			status(('replot is re-executing with __name__=="%s" in case you are '+
+				'developing')%local_env['__name__'])
+			exec(compile(code,script,'exec'),globals())
 	except Exception as e: tracebacker(e)
+
+def reload(): 
+	"""
+	The `replot` function parses the code again and runs any plots.
+	To run the loader function again and then redo the plots, use this function.
+	"""
+	replot(loading=True)
+	plotrun.loader_ran = False
+	plotrun.reload()
+	replot()
 
 #---clean up
 for key in ['key']:

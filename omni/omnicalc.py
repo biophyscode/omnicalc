@@ -921,8 +921,17 @@ class WorkSpace:
 				#! conservative
 				if 'specs' not in self.plots[self.plotname]: self.plots[self.plotname]['specs'] = {}
 				self.plots[self.plotname]['specs'].update(**self.metadata.plots[self.plotname]['specs'])
+		# see if the requested calculation can be unrolled
+		unrolled = self.calcs.unroll_loops(self.plotspec.request_calc)
+		if len(unrolled)>1:
+			upstream_requests = {}
+			# extra index if we are inside a loop. users will have to get the one they want in the plot code
+			for ii,item in enumerate(unrolled):
+				ups = self.collect_upstream_calculations(item)
+				for key,val in ups.items(): upstream_requests[(key,ii)] = val
 		# convert upstream calculation requests into proper calculations
-		upstream_requests = self.collect_upstream_calculations(self.plotspec.request_calc)
+		else: upstream_requests = self.collect_upstream_calculations(self.plotspec.request_calc)
+		# convert upstream calculation requests into proper calculations
 		calcnames = upstream_requests.keys()
 		# package the data for export to the plot environment in a custom dictionary
 		#! this will be useful if we add a different plotload return format later

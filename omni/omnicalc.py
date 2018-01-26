@@ -288,13 +288,13 @@ class Calculations:
 		#! ... loops but for now we protect against hanging
 		from base.timer import time_limit
 		try:
-			with time_limit(30): 
+			with time_limit(300): 
 
 				#! protection against infinite looping? also consider adding a fully-linked calc graph?
 				while calc_names:
 					name = calc_names.pop()
 					this_calc = self.specs.calculations[name]
-					group = this_calc.get('group',None)
+					group = this_calc.get('group',None)					
 					if group!=None: groups.append(group)
 					else: 
 						ups = this_calc.get('specs',{}).get('upstream')
@@ -306,11 +306,13 @@ class Calculations:
 						elif type(ups)==list: calc_names.extend(ups)
 						else: raise Exception('cannot parse upstream spec %s'%ups)
 				groups_u = list(set(groups))
+				print groups_u
 				if len(groups_u)>1: raise Exception('multiple possible groups %s'%groups_u)
 				elif len(groups_u)==0: raise Exception('failed to get upstream group for %s'%calc)
 				else: return groups_u[0]
 
-		except: raise Exception('taking too long to infer groups')
+		except: raise Exception('taking too long to infer groups; you may need to add a group to '+
+								'calculation %s'%name)
 
 	def interpret_calculations(self,calcs_meta):
 		"""Expand calculations and apply loops."""

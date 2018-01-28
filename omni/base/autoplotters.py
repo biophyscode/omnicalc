@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import os,sys,re,collections
-from base.tools import status
+from base.tools import status,Observer
 
 """
 AUTOPLOTTERS
@@ -24,23 +24,25 @@ class PlotSupervisor:
 		self.plot_functions = {}
 		self.loader = None
 		self.loader_name = None
+		self.loader_ran = False
+		self.script_name = None
 
 	def register_loader(self,name,function):
-		"""Only register the loader once."""
-		if self.loader==None: 
-			self.loader = function
-			self.loader_name = name
-		#---only allow the loader to be registered once
-		elif self.mode!='interactive': 
-			raise Exception('we already have a function decorated with autoload: "%s"'%self.loader_name)
+		"""
+		Register the load function and hold its code for comparison. 
+		We only reexecute code if it changes.
+		"""
+		self.loader = function
+		self.loader_name = name
+
+	def reload(self): 
+		"""The loader only ever runs once. Users can reload with this alias."""
+		self.loader()
 
 	def register(self,name,function):
 		"""Maintain a list of plot functions."""
-		if name not in self.plot_names: 
-			status('registering plot function `%s`'%name,tag='plot')
-			self.plot_names.append(name)
-			self.plot_functions[name] = function
-		else: pass
+		self.plot_functions[name] = function
+		if name not in self.plot_names: self.plot_names.append(name)
 
 	def autoplot(self,out=None):
 		"""Execute the replot sequence."""
@@ -52,7 +54,7 @@ class PlotSupervisor:
 		if self.mode=='supervised' and any(targets) and out!=None: globals().update(**out)
 		for plot_name in targets:
 			#! plotname is wrong here. sometimes it is "plot"
-			status('executing plot %s'%plot_name,tag='plot')
+			status('executing plot function `%s`'%plot_name,tag='autoplot')
 			if plot_name not in self.plot_functions:
 				raise Exception('this script does not have a plot function named %s'%plot_name)
 			self.plot_functions[plot_name]()
@@ -67,13 +69,21 @@ def autoload(plotrun):
 		#---the autoload decorator nested here so we get the supervisor as a parameter
 		#---add the function to the supervisor
 		name = function.__name__
-		plotrun.register_loader(name,function)
+		# only announce the wrap when looking otherwise confusing
+		if plotrun.script_name!='__main__':
+			status('wrapping the loader function named `%s`'%name)
+		#! plotrun.register_loader(name,function)
 		def wrapper(*args,**kwargs):
 			#---you cannot call status here. have the function announce itself
 			#---...actually this comes through in the jupyter notebook. removed for clarity
-			status('running autoload %s,%s'%(args,kwargs),tag='load')
-			function(*args,**kwargs)
-			status('autoload is complete %s,%s'%(args,kwargs),tag='load')
+			status('running autoload args=%s, kwargs=%s'%(args,kwargs),tag='load')
+			# we are using the Observer to get persistent locals from the function
+			# ... note that we are calling Observer manually here because it is a decorator
+			obs = Observer(function)
+			obs.__call__(*args,**kwargs)
+			# save locals for later loading into globals in replot
+			plotrun.residue = obs._locals
+		plotrun.register_loader(name,wrapper)
 		return wrapper
 	return autoload_decorator
 
@@ -85,9 +95,13 @@ def autoplot(plotrun):
 		#---the autoplot decorator nested here so we get the supervisor as a parameter
 		#---add the function to the supervisor
 		name = function.__name__
+		# only announce the wrap when looking otherwise confusing
+		if plotrun.script_name!='__main__':
+			status('wrapping the plot function named `%s`'%name)
 		plotrun.register(name,function)
 		def wrapper(*args,**kwargs):
-			function(*args,**kwargs)
+			status('executing plot function `%s`'%name)
+			return function(*args,**kwargs)
 		return wrapper
 	return autoplot_decorator
 

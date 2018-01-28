@@ -673,9 +673,7 @@ class SliceMeta(TrajectoryStructure):
 		"""Search the requested slices."""
 		matches = [sl for sl in self.toc if sl==candidate]
 		if len(matches)>1: raise Exception('redundant matches for %s'%candidate)
-		elif len(matches)==0: 
-			import ipdb;ipdb.set_trace()
-			return None
+		elif len(matches)==0: return None
 		else: return matches[0]
 
 class PlotSpec:

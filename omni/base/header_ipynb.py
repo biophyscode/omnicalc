@@ -47,3 +47,22 @@ for key in ['this_path','key']:
 
 #---downstream scripts need to know if we are in a notebook
 is_live = True
+
+#! currently no way to detect autoplot without user input
+if work.do_autoplot():
+	print('[NOTE] this plot is an *autoplot* which you must run with `replot()` in a new cell '
+		'which will run the decorated load and plot functions. After you do this once, you can '
+		'update the plot functions, run the plots by calling those functions, and visualize the result.')
+
+def replot():
+	"""..."""
+	if work.do_autoplot():
+		work.plot_prepare()
+		if plotrun.loader_ran==False:
+			plotrun.loader()
+			plotrun.loader_ran = True
+			globals().update(**plotrun.residue)
+		for plot_name,func in plotrun.plot_functions.items():
+			print('[PLOT] interactive plotter is running `%s`'%plot_name)
+			func()
+	else: raise Exception('The `replot` function does not apply for scripts which are not "autoplot".')

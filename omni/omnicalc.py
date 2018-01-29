@@ -137,13 +137,13 @@ class MetaData:
 						raise Exception('failed to parse YAML (are you sure you have no tabs?): %s'%e)
 		# previously raised an exception if allspecs was empty but execution should continue
 		# merge the YAML dictionaries according to one of several methods
-		if self.merge_method=='strict':
+		if self.merge_method=='strict' and len(allspecs)>0:
 			specs = allspecs.pop(0)
 			for spec in allspecs:
 				for key,val in spec.items():
 					if key not in specs: specs[key] = copy.deepcopy(val)
 					else: raise Exception('redundant key %s in more than one meta file'%key)
-		elif self.merge_method=='careful':
+		elif self.merge_method=='careful' and len(allspecs)>0:
 			#! recurse only ONE level down in case e.g. calculations is defined in two places but there
 			#! ... are no overlaps, then this will merge the dictionaries at the top level
 			specs = allspecs.pop(0)
@@ -159,11 +159,12 @@ class MetaData:
 									'usually occurs because you have many meta files and you only want '+
 									'to use one. try the "meta" keyword argument to specify the path '+
 									'to the meta file you want.')%(topkey,key))
-		elif self.merge_method=='sequential':
+		elif self.merge_method=='sequential' and len(allspecs)>0:
 			# load yaml files in the order they are specified in the config.py file with overwrites
 			specs = allspecs.pop(0)
 			for spec in allspecs:
 				specs.update(**spec)
+		elif len(allspecs)==0: specs = {}
 		else: raise Exception('\n[ERROR] unclear meta specs merge method %s'%self.merge_method)
 		return self.variables_unpacker(specs=specs,variables=specs.get('variables',{}))
 
@@ -306,7 +307,6 @@ class Calculations:
 						elif type(ups)==list: calc_names.extend(ups)
 						else: raise Exception('cannot parse upstream spec %s'%ups)
 				groups_u = list(set(groups))
-				print groups_u
 				if len(groups_u)>1: raise Exception('multiple possible groups %s'%groups_u)
 				elif len(groups_u)==0: raise Exception('failed to get upstream group for %s'%calc)
 				else: return groups_u[0]
@@ -1509,6 +1509,10 @@ class WorkSpace:
 		# no compute jobs
 		else: pass
 
+	def do_autoplot(self):
+		"""Easy way to see if this plot is an autoplot."""
+		return self.plotspec.get('autoplot',self.metadata.director.get('autoplot',False))
+
 	def plot(self):
 		"""
 		Analyze calculations or make plots. This is meant to follow the compute loop.
@@ -1526,7 +1530,7 @@ class WorkSpace:
 		# the following code actually runs the plot via legacy or auto plot
 		# ... however it is only necessary to prepare the workspace if we are already in the header
 		if not self.plot_kwargs.get('header_caller',False):
-			do_autoplot = self.plotspec.get('autoplot',self.metadata.director.get('autoplot',False))
+			do_autoplot = self.do_autoplot()
 			# check plotspec for the autoplot flag otherwise get the default from director
 			# trailing arguments to plot indicate functions we want to run and trigger a non-interactive mode
 			if do_autoplot and len(args)>0:

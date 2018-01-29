@@ -1105,8 +1105,7 @@ class WorkSpace:
 		if any([job.slice.style!='readymade' for job in jobs_require_slices]):
 			self.make_slices_automacs([job for job in jobs_require_slices if job.slice.style=='slice_request_named'])
 		# this happens everytime we run with readymade because the slices need to be found on disk
-		else: self.make_slices_readymade(
-			[job for job in make_slices_automacs if job.slice.style=='readymade'])
+		else: self.make_slices_readymade([job for job in jobs_require_slices if job.slice.style=='readymade'])
 
 	def make_slices_readymade(self,jobs):
 		"""

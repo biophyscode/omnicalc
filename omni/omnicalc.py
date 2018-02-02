@@ -391,6 +391,7 @@ class PostData(NoisyOmnicalcObject):
 		# specs reflect the raw data in a spec file
 		self.specs = kwargs.pop('specs',{})
 		self.fn,self.dn = kwargs.pop('fn',None),kwargs.pop('dn',None)
+		debug = kwargs.pop('debug',False)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		self.valid = True
 		#! check validity later?
@@ -398,6 +399,7 @@ class PostData(NoisyOmnicalcObject):
 		self.namer = namer
 		if self.style=='read': 
 			if self.specs: raise Exception('cannot parse a spec file if you already sent specs')
+			if debug: self.parse(fn=self.fn,dn=self.dn)
 			try: self.parse(fn=self.fn,dn=self.dn)
 			#! hiding parse errors here because the code is tested on legacy data and namer lookup failures
 			#! ... occur if the user does not account for old data in the collections metadata
@@ -554,14 +556,17 @@ class PostDataLibrary:
 				# +++ COMPARE namedat to two possible name_style values from the NameManager
 				if namedat['name_style'] in ['standard_datspec','standard_datspec_pbc_group']:
 					basename = self.get_twin(name,('dat','spec'))
-					#try: 
 					this_datspec = PostData(fn=basename,dn=self.where,style='read')
 					#! note that there are many ways that PostData can fail but a common one is a failure
 					#! ... to do reverse name lookups. basically any failure to read the spec dumps it into
 					#! ... limbo and the user is expected to go find it and debug things. this exception
 					#! ... was necessary to prevent errors parsing old simulation results that are not in
 					#! ... the collections metadata and hence is essnetial 
-					#except: self.toc[name] = {}
+					#! if you have failures to recognize post data, then add a regex match here for the 
+					#! ... base of the filename and then try to make a post data object with the debug flag,
+					#! ... which flag will try the classification without try/except so you can see the 
+					#! ... failure to classify and then add new structures to structs.py. last tested on the
+					#! ... legacy ptdins dataset so that omnicalc now works with very old data
 					if this_datspec.valid: self.toc[basename] = this_datspec
 					#! handle invalid datspecs?
 					else: self.toc[basename] = {}

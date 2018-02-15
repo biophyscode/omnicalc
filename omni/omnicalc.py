@@ -379,6 +379,13 @@ class Group(TrajectoryStructure):
 	"""A class which holds a group specification for a slice."""
 	pass
 
+def empty_dict_to_null(series):
+	"""Empty dictionaries to None. Necessary for comparing specs_version 1."""
+	for k,v in series.items():
+		if type(v) == dict and v=={}: series[k] = None
+		elif type(v)==dict: empty_dict_to_null(v)
+		else: pass
+
 class PostData(NoisyOmnicalcObject):
 
 	"""
@@ -616,12 +623,28 @@ class PostDataLibrary:
 			# ... eliminates this and relegates extra so-called specs to the dat file itself to 
 			# ... avoid interfering with job construction. this dictsub test and better slice matching
 			# ... eliminated several (at least five) additional comparisons
-			candidates = [key for key,val in self.posts().items() 
+			candidates_again = [key for key,val in self.posts().items() 
 				if val.slice==job.slice and val.calc.name==job.calc.name 
 				and dictsub(job.calc.specs,val.calc.specs)]
-			if len(candidates)==1: return candidates[0]
+			if len(candidates_again)==1: return candidates_again[0]
 			# this is the obvious place to debug if you think that omnicalc is trying to rerun completed jobs
-			else: return False
+			else: 
+				# a final attempt converts empty dictionary in the job to None, which occurs in some specs
+				# ... for very old legacy jobs. Ryan added this as a third (!) conditional here in order 
+				# ... to read data from 2015, and to keep this separate from the regular workflow. obviously
+				# ... this is a kludge, but at least it is relatively isolated!
+				#! will this slow things down?
+				job_calc_specs = copy.deepcopy(job.calc.specs)
+				# correct empty dictionaries to None
+				empty_dict_to_null(job_calc_specs) 
+				candidates_again_legacy = [key for key,val in self.posts().items() 
+					if val.slice==job.slice and val.calc.name==job.calc.name 
+					and dictsub(job_calc_specs,val.calc.specs)]
+				if len(candidates_again_legacy)==1: return candidates_again_legacy[0]
+				else:
+					if debug:
+						import ipdb;ipdb.set_trace()
+					return False
 		else: return self.toc[candidates[0]]
 
 	def get_twin(self,name,pair):
@@ -767,7 +790,7 @@ class WorkSpace:
 		self.plot_args = kwargs.pop('plot_args',())
 		self.plot_kwargs = kwargs.pop('plot_kwargs',{})
 		self.is_live = kwargs.pop('is_live',False)
-		debug_flags = [False,'slices','compute','stale']
+		debug_flags = [False,'slices','compute','stale','missing']
 		self.debug = kwargs.pop('debug',False)
 		if self.debug not in debug_flags: raise Exception('debug argument must be in %s'%debug_flags)
 		# determine the state (kwargs is passed by reference so we clear it)
@@ -1309,6 +1332,11 @@ class WorkSpace:
 			# search for a result
 			job.result = self.post.search_results(job=job)
 			if not job.result: 
+				if self.debug=='missing':
+					#! this debug section lets you investigate why a result is on disk and missing
+					status('debugging the missing result',tag='debug')
+					result = self.search_results(job=job,debug=True)
+					import ipdb;ipdb.set_trace()
 				# the debug mode throws an exception to indicate that the preemptive compute failed
 				if debug: raise Exception('failed to simulate compute loop for job %s'%job)
 				self.queue_computes.append(job)

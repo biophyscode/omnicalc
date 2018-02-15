@@ -541,6 +541,7 @@ class PostDataLibrary:
 		self.director = kwargs.pop('director',{})
 		# handle previous additions to the library which we want to save
 		self.previous = kwargs.pop('previous',None)
+		self.legacy_post_mode = kwargs.pop('legacy_post_mode',False)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		# generate a "stable" or "corral" of data objects
 		self.stable = [os.path.basename(i) for i in glob.glob(os.path.join(self.where,'*'))]
@@ -611,7 +612,7 @@ class PostDataLibrary:
 	def posts(self): return dict([(key,val) for key,val in self.toc.items() 
 		if val.__class__.__name__=='PostData'])
 
-	def search_results(self,job,debug=True):
+	def search_results(self,job,debug=False):
 		"""Search the posts for a particular result."""
 		candidates = [key for key,val in self.posts().items() 
 			# we find a match by matching the slice and calc, both of which have custom equivalence operators
@@ -633,17 +634,20 @@ class PostDataLibrary:
 				# ... for very old legacy jobs. Ryan added this as a third (!) conditional here in order 
 				# ... to read data from 2015, and to keep this separate from the regular workflow. obviously
 				# ... this is a kludge, but at least it is relatively isolated!
-				#! will this slow things down?
-				job_calc_specs = copy.deepcopy(job.calc.specs)
-				# correct empty dictionaries to None
-				empty_dict_to_null(job_calc_specs) 
-				candidates_again_legacy = [key for key,val in self.posts().items() 
-					if val.slice==job.slice and val.calc.name==job.calc.name 
-					and dictsub(job_calc_specs,val.calc.specs)]
+				# since this was slowing things down a big, we check for a special setting
+				if self.legacy_post_mode:
+					job_calc_specs = copy.deepcopy(job.calc.specs)
+					# correct empty dictionaries to None
+					empty_dict_to_null(job_calc_specs) 
+					candidates_again_legacy = [key for key,val in self.posts().items() 
+						if val.slice==job.slice and val.calc.name==job.calc.name 
+						and dictsub(job_calc_specs,val.calc.specs)]
+				else: candidates_again_legacy = []
 				if len(candidates_again_legacy)==1: return candidates_again_legacy[0]
 				else:
 					if debug:
-						import ipdb;ipdb.set_trace()
+						import ipdb
+						ipdb.set_trace()
 					return False
 		else: return self.toc[candidates[0]]
 
@@ -1247,7 +1251,7 @@ class WorkSpace:
 			# after loading slices we have to re-parse the postdata
 			#! this will overwrite things!
 			self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director,
-				previous=self.post)
+				previous=self.post,legacy_post_mode=self.config.get('legacy_post_mode',False))
 			# match the upstream slices here
 			for job in jobs:
 				# find the trajectory slice
@@ -1335,8 +1339,9 @@ class WorkSpace:
 				if self.debug=='missing':
 					#! this debug section lets you investigate why a result is on disk and missing
 					status('debugging the missing result',tag='debug')
-					result = self.search_results(job=job,debug=True)
-					import ipdb;ipdb.set_trace()
+					result = self.post.search_results(job=job,debug=True)
+					import ipdb
+					ipdb.set_trace()
 				# the debug mode throws an exception to indicate that the preemptive compute failed
 				if debug: raise Exception('failed to simulate compute loop for job %s'%job)
 				self.queue_computes.append(job)
@@ -1490,7 +1495,8 @@ class WorkSpace:
 			status('welcome to the workspace. take a look around!',tag='debug')
 			self.prelim()
 			work = self
-			import ipdb;ipdb.set_trace()
+			import ipdb
+			ipdb.set_trace()
 		else: raise Exception('invalid call to look with args %s and kwargs %s'%(args,kwargs))
 
 	def compute(self,**kwargs):
@@ -1505,7 +1511,8 @@ class WorkSpace:
 		self.jobs = self.calcs.prepare_jobs()
 		# parse the post-processing data only once (o/w multiple imports on plotload which calls compute)
 		if not hasattr(self,'post'):
-			self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director)
+			self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director,
+				legacy_post_mode=self.config.get('legacy_post_mode',False))
 		# formalize the slice requests
 		# +++ BUILD slicemeta object (only uses the OmnicalcDataStructure for cross)
 		self.slices = SliceMeta(raw=self.metadata.slices,

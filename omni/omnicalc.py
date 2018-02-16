@@ -560,7 +560,9 @@ class PostDataLibrary:
 					#! ... was necessary to prevent errors parsing old simulation results that are not in
 					#! ... the collections metadata and hence is essnetial 
 					#except: self.toc[name] = {}
-					if this_datspec.valid: self.toc[basename] = this_datspec
+					if this_datspec.valid: 
+						import ipdb;ipdb.set_trace()
+						self.toc[basename] = this_datspec
 					#! handle invalid datspecs?
 					else: self.toc[basename] = {}
 				# register datspec files from readymade simulations here

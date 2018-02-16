@@ -94,7 +94,7 @@ def replot(loading=False):
 		globals().update(**local_env)
 		#---if the loader is a function we run it otherwise it defaults to None
 		if plotrun.loader!=None and (not plotrun.loader_ran or loading): 
-		#---run the loader function which should conditionally referesh data (i.e. only as needed)
+			#---run the loader function which should conditionally referesh data (i.e. only as needed)
 			status('running the loader function `%s` from `%s`'%(
 				plotrun.loader_name,os.path.basename(script)),tag='load')
 			# the loader is decorated with a function that catches locals

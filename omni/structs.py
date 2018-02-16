@@ -87,9 +87,12 @@ class OmnicalcDataStructure(NoisyOmnicalcObject):
 		if len(candidates)>1: 
 			raise Exception('matched multiple data structures to %s'%subject)
 		elif len(candidates)==0: 
-			import ipdb;ipdb.set_trace()
 			raise Exception('failed to classify %s in %s'%(subject,self.__dict__))
-		else: return candidates[0]
+		else: 
+			#print('yay')
+			#print(candidates)
+			#import ipdb;ipdb.set_trace()
+			return candidates[0]
 
 	def cross(self,style,data):
 		"""Turn a raw definition into multiple constituent components."""
@@ -173,6 +176,13 @@ class TrajectoryStructure(OmnicalcDataStructure):
 			'struct':{
 				'sn':'string','short_name':'string',
 				'dat_type':['gmx'],'slice_type':['standard'],
+				'group':'string','pbc':'string',
+				'start':'number','end':'number','skip':'number'},
+			'meta':{'strict':True,'check_types':True}},
+		'post_spec_v1':{
+			'struct':{
+				'sn':'string','short_name':'string',
+				'slice_type':['standard'],
 				'group':'string','pbc':'string',
 				'start':'number','end':'number','skip':'number'},
 			'meta':{'strict':True,'check_types':True}},

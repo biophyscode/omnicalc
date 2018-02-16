@@ -137,13 +137,13 @@ class MetaData:
 						raise Exception('failed to parse YAML (are you sure you have no tabs?): %s'%e)
 		# previously raised an exception if allspecs was empty but execution should continue
 		# merge the YAML dictionaries according to one of several methods
-		if self.merge_method=='strict':
+		if self.merge_method=='strict' and len(allspecs)>0:
 			specs = allspecs.pop(0)
 			for spec in allspecs:
 				for key,val in spec.items():
 					if key not in specs: specs[key] = copy.deepcopy(val)
 					else: raise Exception('redundant key %s in more than one meta file'%key)
-		elif self.merge_method=='careful':
+		elif self.merge_method=='careful' and len(allspecs)>0:
 			#! recurse only ONE level down in case e.g. calculations is defined in two places but there
 			#! ... are no overlaps, then this will merge the dictionaries at the top level
 			specs = allspecs.pop(0)
@@ -159,11 +159,12 @@ class MetaData:
 									'usually occurs because you have many meta files and you only want '+
 									'to use one. try the "meta" keyword argument to specify the path '+
 									'to the meta file you want.')%(topkey,key))
-		elif self.merge_method=='sequential':
+		elif self.merge_method=='sequential' and len(allspecs)>0:
 			# load yaml files in the order they are specified in the config.py file with overwrites
 			specs = allspecs.pop(0)
 			for spec in allspecs:
 				specs.update(**spec)
+		elif len(allspecs)==0: specs = {}
 		else: raise Exception('\n[ERROR] unclear meta specs merge method %s'%self.merge_method)
 		return self.variables_unpacker(specs=specs,variables=specs.get('variables',{}))
 
@@ -288,13 +289,13 @@ class Calculations:
 		#! ... loops but for now we protect against hanging
 		from base.timer import time_limit
 		try:
-			with time_limit(30): 
+			with time_limit(300): 
 
 				#! protection against infinite looping? also consider adding a fully-linked calc graph?
 				while calc_names:
 					name = calc_names.pop()
 					this_calc = self.specs.calculations[name]
-					group = this_calc.get('group',None)
+					group = this_calc.get('group',None)					
 					if group!=None: groups.append(group)
 					else: 
 						ups = this_calc.get('specs',{}).get('upstream')
@@ -310,7 +311,8 @@ class Calculations:
 				elif len(groups_u)==0: raise Exception('failed to get upstream group for %s'%calc)
 				else: return groups_u[0]
 
-		except: raise Exception('taking too long to infer groups')
+		except: raise Exception('taking too long to infer groups; you may need to add a group to '+
+								'calculation %s'%name)
 
 	def interpret_calculations(self,calcs_meta):
 		"""Expand calculations and apply loops."""
@@ -377,6 +379,13 @@ class Group(TrajectoryStructure):
 	"""A class which holds a group specification for a slice."""
 	pass
 
+def empty_dict_to_null(series):
+	"""Empty dictionaries to None. Necessary for comparing specs_version 1."""
+	for k,v in series.items():
+		if type(v) == dict and v=={}: series[k] = None
+		elif type(v)==dict: empty_dict_to_null(v)
+		else: pass
+
 class PostData(NoisyOmnicalcObject):
 
 	"""
@@ -389,6 +398,7 @@ class PostData(NoisyOmnicalcObject):
 		# specs reflect the raw data in a spec file
 		self.specs = kwargs.pop('specs',{})
 		self.fn,self.dn = kwargs.pop('fn',None),kwargs.pop('dn',None)
+		debug = kwargs.pop('debug',False)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		self.valid = True
 		#! check validity later?
@@ -396,6 +406,7 @@ class PostData(NoisyOmnicalcObject):
 		self.namer = namer
 		if self.style=='read': 
 			if self.specs: raise Exception('cannot parse a spec file if you already sent specs')
+			if debug: self.parse(fn=self.fn,dn=self.dn)
 			try: self.parse(fn=self.fn,dn=self.dn)
 			#! hiding parse errors here because the code is tested on legacy data and namer lookup failures
 			#! ... occur if the user does not account for old data in the collections metadata
@@ -530,6 +541,7 @@ class PostDataLibrary:
 		self.director = kwargs.pop('director',{})
 		# handle previous additions to the library which we want to save
 		self.previous = kwargs.pop('previous',None)
+		self.legacy_post_mode = kwargs.pop('legacy_post_mode',False)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		# generate a "stable" or "corral" of data objects
 		self.stable = [os.path.basename(i) for i in glob.glob(os.path.join(self.where,'*'))]
@@ -552,17 +564,18 @@ class PostDataLibrary:
 				# +++ COMPARE namedat to two possible name_style values from the NameManager
 				if namedat['name_style'] in ['standard_datspec','standard_datspec_pbc_group']:
 					basename = self.get_twin(name,('dat','spec'))
-					#try: 
 					this_datspec = PostData(fn=basename,dn=self.where,style='read')
 					#! note that there are many ways that PostData can fail but a common one is a failure
 					#! ... to do reverse name lookups. basically any failure to read the spec dumps it into
 					#! ... limbo and the user is expected to go find it and debug things. this exception
 					#! ... was necessary to prevent errors parsing old simulation results that are not in
 					#! ... the collections metadata and hence is essnetial 
-					#except: self.toc[name] = {}
-					if this_datspec.valid: 
-						import ipdb;ipdb.set_trace()
-						self.toc[basename] = this_datspec
+					#! if you have failures to recognize post data, then add a regex match here for the 
+					#! ... base of the filename and then try to make a post data object with the debug flag,
+					#! ... which flag will try the classification without try/except so you can see the 
+					#! ... failure to classify and then add new structures to structs.py. last tested on the
+					#! ... legacy ptdins dataset so that omnicalc now works with very old data
+					if this_datspec.valid: self.toc[basename] = this_datspec
 					#! handle invalid datspecs?
 					else: self.toc[basename] = {}
 				# register datspec files from readymade simulations here
@@ -599,7 +612,7 @@ class PostDataLibrary:
 	def posts(self): return dict([(key,val) for key,val in self.toc.items() 
 		if val.__class__.__name__=='PostData'])
 
-	def search_results(self,job,debug=True):
+	def search_results(self,job,debug=False):
 		"""Search the posts for a particular result."""
 		candidates = [key for key,val in self.posts().items() 
 			# we find a match by matching the slice and calc, both of which have custom equivalence operators
@@ -611,12 +624,31 @@ class PostDataLibrary:
 			# ... eliminates this and relegates extra so-called specs to the dat file itself to 
 			# ... avoid interfering with job construction. this dictsub test and better slice matching
 			# ... eliminated several (at least five) additional comparisons
-			candidates = [key for key,val in self.posts().items() 
+			candidates_again = [key for key,val in self.posts().items() 
 				if val.slice==job.slice and val.calc.name==job.calc.name 
 				and dictsub(job.calc.specs,val.calc.specs)]
-			if len(candidates)==1: return candidates[0]
+			if len(candidates_again)==1: return candidates_again[0]
 			# this is the obvious place to debug if you think that omnicalc is trying to rerun completed jobs
-			else: return False
+			else: 
+				# a final attempt converts empty dictionary in the job to None, which occurs in some specs
+				# ... for very old legacy jobs. Ryan added this as a third (!) conditional here in order 
+				# ... to read data from 2015, and to keep this separate from the regular workflow. obviously
+				# ... this is a kludge, but at least it is relatively isolated!
+				# since this was slowing things down a big, we check for a special setting
+				if self.legacy_post_mode:
+					job_calc_specs = copy.deepcopy(job.calc.specs)
+					# correct empty dictionaries to None
+					empty_dict_to_null(job_calc_specs) 
+					candidates_again_legacy = [key for key,val in self.posts().items() 
+						if val.slice==job.slice and val.calc.name==job.calc.name 
+						and dictsub(job_calc_specs,val.calc.specs)]
+				else: candidates_again_legacy = []
+				if len(candidates_again_legacy)==1: return candidates_again_legacy[0]
+				else:
+					if debug:
+						import ipdb
+						ipdb.set_trace()
+					return False
 		else: return self.toc[candidates[0]]
 
 	def get_twin(self,name,pair):
@@ -675,9 +707,7 @@ class SliceMeta(TrajectoryStructure):
 		"""Search the requested slices."""
 		matches = [sl for sl in self.toc if sl==candidate]
 		if len(matches)>1: raise Exception('redundant matches for %s'%candidate)
-		elif len(matches)==0: 
-			import ipdb;ipdb.set_trace()
-			return None
+		elif len(matches)==0: return None
 		else: return matches[0]
 
 class PlotSpec:
@@ -764,7 +794,7 @@ class WorkSpace:
 		self.plot_args = kwargs.pop('plot_args',())
 		self.plot_kwargs = kwargs.pop('plot_kwargs',{})
 		self.is_live = kwargs.pop('is_live',False)
-		debug_flags = [False,'slices','compute','stale']
+		debug_flags = [False,'slices','compute','stale','missing']
 		self.debug = kwargs.pop('debug',False)
 		if self.debug not in debug_flags: raise Exception('debug argument must be in %s'%debug_flags)
 		# determine the state (kwargs is passed by reference so we clear it)
@@ -1107,8 +1137,7 @@ class WorkSpace:
 		if any([job.slice.style!='readymade' for job in jobs_require_slices]):
 			self.make_slices_automacs([job for job in jobs_require_slices if job.slice.style=='slice_request_named'])
 		# this happens everytime we run with readymade because the slices need to be found on disk
-		else: self.make_slices_readymade(
-			[job for job in make_slices_automacs if job.slice.style=='readymade'])
+		else: self.make_slices_readymade([job for job in jobs_require_slices if job.slice.style=='readymade'])
 
 	def make_slices_readymade(self,jobs):
 		"""
@@ -1222,7 +1251,7 @@ class WorkSpace:
 			# after loading slices we have to re-parse the postdata
 			#! this will overwrite things!
 			self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director,
-				previous=self.post)
+				previous=self.post,legacy_post_mode=self.config.get('legacy_post_mode',False))
 			# match the upstream slices here
 			for job in jobs:
 				# find the trajectory slice
@@ -1307,6 +1336,12 @@ class WorkSpace:
 			# search for a result
 			job.result = self.post.search_results(job=job)
 			if not job.result: 
+				if self.debug=='missing':
+					#! this debug section lets you investigate why a result is on disk and missing
+					status('debugging the missing result',tag='debug')
+					result = self.post.search_results(job=job,debug=True)
+					import ipdb
+					ipdb.set_trace()
 				# the debug mode throws an exception to indicate that the preemptive compute failed
 				if debug: raise Exception('failed to simulate compute loop for job %s'%job)
 				self.queue_computes.append(job)
@@ -1460,7 +1495,8 @@ class WorkSpace:
 			status('welcome to the workspace. take a look around!',tag='debug')
 			self.prelim()
 			work = self
-			import ipdb;ipdb.set_trace()
+			import ipdb
+			ipdb.set_trace()
 		else: raise Exception('invalid call to look with args %s and kwargs %s'%(args,kwargs))
 
 	def compute(self,**kwargs):
@@ -1475,7 +1511,8 @@ class WorkSpace:
 		self.jobs = self.calcs.prepare_jobs()
 		# parse the post-processing data only once (o/w multiple imports on plotload which calls compute)
 		if not hasattr(self,'post'):
-			self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director)
+			self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director,
+				legacy_post_mode=self.config.get('legacy_post_mode',False))
 		# formalize the slice requests
 		# +++ BUILD slicemeta object (only uses the OmnicalcDataStructure for cross)
 		self.slices = SliceMeta(raw=self.metadata.slices,
@@ -1511,6 +1548,10 @@ class WorkSpace:
 		# no compute jobs
 		else: pass
 
+	def do_autoplot(self):
+		"""Easy way to see if this plot is an autoplot."""
+		return self.plotspec.get('autoplot',self.metadata.director.get('autoplot',False))
+
 	def plot(self):
 		"""
 		Analyze calculations or make plots. This is meant to follow the compute loop.
@@ -1528,7 +1569,7 @@ class WorkSpace:
 		# the following code actually runs the plot via legacy or auto plot
 		# ... however it is only necessary to prepare the workspace if we are already in the header
 		if not self.plot_kwargs.get('header_caller',False):
-			do_autoplot = self.plotspec.get('autoplot',self.metadata.director.get('autoplot',False))
+			do_autoplot = self.do_autoplot()
 			# check plotspec for the autoplot flag otherwise get the default from director
 			# trailing arguments to plot indicate functions we want to run and trigger a non-interactive mode
 			if do_autoplot and len(args)>0:

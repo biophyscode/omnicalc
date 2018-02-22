@@ -87,9 +87,14 @@ class OmnicalcDataStructure(NoisyOmnicalcObject):
 		if len(candidates)>1: 
 			raise Exception('matched multiple data structures to %s'%subject)
 		elif len(candidates)==0: 
-			import ipdb;ipdb.set_trace()
-			raise Exception('failed to classify %s in %s'%(subject,self.__dict__))
-		else: return candidates[0]
+			raise Exception('failed to classify %s'%(subject))
+		else: 
+			#! note that if you are debugging failed classifications above, then it is very useful to 
+			#! ... print the successful classification candidate and subjects here. this is useful
+			#! ... in combination with the debug flag to PostData from PostDataLibrary. add a conditional
+			#! ... to see why a particular post file is not being recognized and compare to ones that are.
+			#! ... hopefully this will be less necessary now that the code is tested on legacy post data
+			return candidates[0]
 
 	def cross(self,style,data):
 		"""Turn a raw definition into multiple constituent components."""
@@ -176,10 +181,24 @@ class TrajectoryStructure(OmnicalcDataStructure):
 				'group':'string','pbc':'string',
 				'start':'number','end':'number','skip':'number'},
 			'meta':{'strict':True,'check_types':True}},
+		#! spec v1 lacks the dat_type and the slice_type and was added for legacy (ptdins)
+		'post_spec_v1':{
+			'struct':{
+				'sn':'string','short_name':'string',
+				'group':'string','pbc':'string',
+				'name_style':['standard_gmx'],
+				'start':'number','end':'number','skip':'number'},
+			'meta':{'strict':True,'check_types':True}},
 		'post_spec_v2_basic':{
 			'struct':{
 				'sn':'string','short_name':'string',
 				'dat_type':['gmx'],'slice_type':['standard'],
+				'start':'number','end':'number','skip':'number'},
+			'meta':{'strict':True,'check_types':True}},
+		'post_spec_v1_basic':{
+			'struct':{
+				'sn':'string','short_name':'string',
+				'name_style':['standard_gmx'],
 				'start':'number','end':'number','skip':'number'},
 			'meta':{'strict':True,'check_types':True}},
 		'slices_request':{
@@ -225,6 +244,8 @@ class TrajectoryStructure(OmnicalcDataStructure):
 		('slice_request_named','calculation_request'):['slice_name','sn','group'],
 		('post_spec_v2','slice_request_named'):['sn','group','pbc','start','end','skip'],
 		('post_spec_v2_basic','slice_request_named'):['sn','start','end','skip'],
+		('post_spec_v1','slice_request_named'):['sn','group','pbc','start','end','skip'],
+		('post_spec_v1_basic','slice_request_named'):['sn','start','end','skip'],
 		('readymade','calculation_request'):['sn','slice_name'],}
 
 	def _eq_gromacs_slice_to_slice_request_named(self,a,b):

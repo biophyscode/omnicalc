@@ -355,7 +355,9 @@ class Calculations:
 				# get slice name
 				slice_name = calc.raw['slice_name']
 				# loop over simulations
-				if not sns_overrides: 
+				if not sns_overrides:
+					if not calc.raw['collections']: 
+						raise Exception('calculation %s needs collections'%calc.name)
 					sns = self.specs.get_simulations_in_collection(
 						*str_or_list(calc.raw['collections']))
 				# custom simulation names request will whittle the sns list here
@@ -769,6 +771,9 @@ class PlotLoaded(dict):
 	def __init__(self,calcnames,sns): 
 		#! development code for a new method of loading data for plots and analysis
 		self.calcnames,self.sns = calcnames,sns
+	def __get__(key):
+		if key not in self: raise Exception('plotloaded instance has no key %s'%key)
+		else: return self[key]
 
 class WorkSpace:
 	"""
@@ -912,7 +917,7 @@ class WorkSpace:
 			if len(culled)==1: packaged[target.name] = culled[0]
 			else: 
 				raise Exception('failed to uniquely identify a requested calculation in the upstream '+
-					'calculations: %s'%target.__dict__)
+					'calculations (found %d matches): %s'%(len(culled),target.__dict__))
 		return packaged
 
 	def connect_upstream_calculation(self,sn,request):
@@ -999,7 +1004,7 @@ class WorkSpace:
 				data = load(os.path.basename(fn),cwd=os.path.dirname(fn))
 				if data.get('error',False)=='error':
 					raise Exception('calculation failed. clear the dat/spec files corresponding '
-						'to %s and recompute'%fn)
+						'to %s (by using `make clear_compute`) and recompute'%fn)
 				bundle['data'][calcname][sn] = {'data':data}
 				#! adding trajectory data here. assumes that the slice is the same for all calculations
 				try: 
@@ -1030,6 +1035,11 @@ class WorkSpace:
 			outgoing = bundle['data'],bundle['calc']
 		#! alternate plotload returns can be managed here with a global plotload_version from the director
 		#! ... or a plot-specific plotload_version set in the plot metadata
+		#! note that the plotloaded class above is meant to be a first attempt at making it easier to look up
+		#! ... data from the data,calc objects returned from this function. RPB briefly considered using
+		#! ... plotload_version to change the return from plotload from a doublet to a single item which could
+		#! ... then include the data and calc, but this offers little benefit over just returning a smarter
+		#! ... data object that is also backwards compatible. calc will remain as-is
 		else: raise Exception('invalid plotload_version: %s'%plotload_version)
 		# since we may run plotload several times we always return to the original plot specificaiton
 		self.plotspec = PlotSpec(metadata=self.metadata,plotname=plotname_cursor,

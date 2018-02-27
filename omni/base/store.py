@@ -256,6 +256,8 @@ def store(obj,name,path,attrs=None,print_types=False,verbose=True):
 			try: dset = fobj.create_dataset(key,data=obj[key].tolist())
 			except: raise Exception("failed to write this object so it's probably not numpy"+
 				"\n"+key+' type='+str(type(obj[key]))+' dtype='+str(obj[key].dtype))
-	if attrs != None: fobj.create_dataset('meta',data=np.string_(json.dumps(attrs)))
+	if attrs != None: 
+		try: fobj.create_dataset('meta',data=np.string_(json.dumps(attrs)))
+		except Exception as e: raise Exception('failed to serialize attributes: %s'%e)
 	if verbose: status('[WRITING] '+path+'/'+name)
 	fobj.close()

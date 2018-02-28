@@ -120,8 +120,10 @@ def inject_supervised_plot_tools(out,mode='supervised',silent=False):
 	#---distribute the workspace to the store module
 	#---...we have to distribute this way, or internalize these function
 	store.work = work
-	from store import plotload,picturesave
+	from store import plotload,picturesave,picturesave_redacted
 	from tools import status
+	if work.metadata.director.get('redacted',False):
+		picturesave = picturesave_redacted
 	#---handle latex and matplotlibrc here
 	from config import read_config
 	try: 

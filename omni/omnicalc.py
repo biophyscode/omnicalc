@@ -794,10 +794,12 @@ class WorkSpace:
 		"""
 		# settings and defaults
 		self.cwd = kwargs.pop('cwd',os.getcwd())
-		self.meta_cursor = kwargs.pop('meta_cursor',None)
 		# remove arguments for plotting
 		self.plot_args = kwargs.pop('plot_args',())
 		self.plot_kwargs = kwargs.pop('plot_kwargs',{})
+		# meta files can also be used just for plotting
+		self.meta_cursor = kwargs.pop('meta_cursor',
+			self.plot_kwargs.pop('meta_cursor',self.plot_kwargs.get('meta',None)))
 		self.is_live = kwargs.pop('is_live',False)
 		debug_flags = [False,'slices','compute','stale','missing']
 		self.debug = kwargs.pop('debug',False)

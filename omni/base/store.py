@@ -41,11 +41,20 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 		directory = directory_redacted
 		status('you have requested redacted figures, so they are saved to %s'%directory,tag='warning')
 		import random
-		color_back,color_front = '','#696969'
-		scrambler = lambda x,max_len=12:''.join([chr(ord('a')+random.randint(0,25)) for i in x][:max_len])
-		#---best just to come right out and say it
-		scrambler = lambda x,max_len=12: ('redacted...'*3)[:max(max_len,len(x))]
-		scrambler = lambda x:'redacted'
+		color_back = work.metadata.director.get('redacted_background_color','')
+		color_fore = work.metadata.director.get('redacted_foreground_color','k')
+		if 'redacted_scrambler' in work.metadata.director:
+			scrambler_code = work.metadata.director['redacted_scrambler']
+			try: 
+				scrambler = eval(scrambler_code)
+				scrambler('test text')
+			except: raise Exception(
+				'failed to evaluate your `redacted_scrambler` from the director: `%s`'%scrambler_code)
+		else: 
+			#! method below is deprecated because it looks silly. best to use hashes
+			if False: scrambler = lambda x,max_len=12:''.join([
+				chr(ord('a')+random.randint(0,25)) for i in x][:max_len])
+			scrambler = lambda x,max_len=10:('#'*len(x))[:max_len]
 		num_format = re.compile("^[\-]?[1-9][0-9]*\.?[0-9]+$")
 		isnumber = lambda x:re.match(num_format,x)
 		for obj in [i for i in plt.findobj() if type(i)==mpl.text.Text]:
@@ -53,7 +62,7 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 		    if text_this!='' and not isnumber(text_this):
 		        obj.set_text(scrambler(text_this))
 		        if color_back: obj.set_backgroundcolor(color_back)
-		        obj.set_color(color_front)
+		        obj.set_color(color_fore)
 	#---if version then we choose savename based on the next available index
 	if version:
 		#---check for this meta
@@ -106,7 +115,7 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 
 def picturesave_redacted(*args,**kwargs):
 	"""Wrap picturesave with redacted plots."""
-	return picturesave_original(*args,redacted=True,**kwargs)
+	return picturesave(*args,redacted=True,**kwargs)
 
 def picturedat(savename,directory='./',bank=False):
 	"""

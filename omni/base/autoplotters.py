@@ -57,6 +57,7 @@ class PlotSupervisor:
 			status('executing plot function `%s`'%plot_name,tag='autoplot')
 			if plot_name not in self.plot_functions:
 				raise Exception('this script does not have a plot function named %s'%plot_name)
+			self.plot_functions.update(**self.residue)
 			self.plot_functions[plot_name]()
 
 def autoload(plotrun):
@@ -171,7 +172,8 @@ def inject_supervised_plot_tools(out,mode='supervised',silent=False):
 
 	#---custom "art director" can be useful for coordinating aesthetics for different projects
 	from plotter.art_director_importer import import_art_director,protected_art_words
-	art_director = work.metadata.variables.get('art_director',None)
+	#---you can set the art director in the variables or ideally in the director
+	art_director = work.metadata.director.get('art_director',work.metadata.variables.get('art_director',None))
 	#---always set protected variables to null
 	for key in protected_art_words: out[key] = None
 	if art_director: 

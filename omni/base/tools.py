@@ -154,7 +154,10 @@ class Observer(object):
 		self.function = function
 	def __call__(self,*args,**kwargs):
 	 	def tracer(frame,event,arg):
-			if event=='return': self._locals = frame.f_locals.copy()
+			if event=='return': 
+				self._locals = frame.f_locals.copy()
+				# it is unwise to modify locals so dynamic variables can drop to _locals
+				self._locals.update(**self._locals.get('_locals',{}))
 		# tracer is activated on next call, return or exception
 		sys.setprofile(tracer)
 		# trace the function call

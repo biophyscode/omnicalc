@@ -799,7 +799,7 @@ class WorkSpace:
 		self.plot_kwargs = kwargs.pop('plot_kwargs',{})
 		# meta files can also be used just for plotting
 		self.meta_cursor = kwargs.pop('meta_cursor',
-			self.plot_kwargs.pop('meta_cursor',self.plot_kwargs.get('meta',None)))
+			self.plot_kwargs.pop('meta_cursor',self.plot_kwargs.pop('meta',None)))
 		self.is_live = kwargs.pop('is_live',False)
 		debug_flags = [False,'slices','compute','stale','missing']
 		self.debug = kwargs.pop('debug',False)
@@ -1124,7 +1124,11 @@ class WorkSpace:
 		out.update(**local_env)
 		plotrun = out['plotrun']
 		#---the loader is required for this method
+		self.plot_prepare()
 		plotrun.loader()
+		#---note that we have to add locals from the loader into globals here
+		#---note also that you cannot use "locals()" to route variables from one function into the local
+		out.update(**plotrun.residue)
 		#---intervene to interpret command-line arguments
 		kwargs_plot = plotspecs.pop('kwargs',{})
 		#---command line arguments that follow the plot script name must name the functions
@@ -1133,7 +1137,6 @@ class WorkSpace:
 		if plotrun.routine==(): plotrun.routine = None
 		if plotspecs: raise Exception('unprocessed plotspecs %s'%plotspecs)
 		if kwargs_plot: raise Exception('unprocessed plotting kwargs %s'%kwargs_plot)
-		self.plot_prepare()
 		plotrun.autoplot(out=out)
 
 	def parse_sources(self): 

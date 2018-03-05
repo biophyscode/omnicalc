@@ -11,7 +11,7 @@ import os,sys,re,glob,copy,json,time,tempfile
 
 from config import read_config,bash
 from datapack import json_type_fixer
-from base.tools import catalog,delve,str_or_list,str_types,status
+from base.tools import catalog,delve,str_or_list,str_types,status,unique_ordered
 from base.hypothesis import hypothesis
 from datapack import asciitree,delveset,dictsub,dictsub_sparse
 from structs import NameManager,Calculation,TrajectoryStructure,NoisyOmnicalcObject
@@ -176,7 +176,7 @@ class MetaData:
 			raise Exception('cannot find collection %s'%name)
 		sns = []
 		for name in names: sns.extend(self.collections.get(name,[]))
-		return sorted(list(set(sns)))
+		return unique_ordered(sns)
 
 class ComputeJob:
 	def __repr__(self): return str(self.__dict__)
@@ -764,8 +764,8 @@ class PlotSpec:
 					self.plotname))
 		else: raise Exception('cannot find plotname %s in plots or calculations metadata'%self.plotname)
 	def sns(self):
-		return list(set(self.metadata.get_simulations_in_collection(
-			*str_or_list(self.collections))))
+		return unique_ordered(self.metadata.get_simulations_in_collection(
+			*str_or_list(self.collections)))
 
 class PlotLoaded(dict):
 	def __init__(self,calcnames,sns): 

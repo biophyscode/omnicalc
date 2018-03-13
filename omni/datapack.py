@@ -258,7 +258,7 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False,string=False):
 	elif type(obj) in [list,tuple]:
 		for ind,item in enumerate(obj):
 			spacer_this = spacer_both['end'] if ind==len(obj)-1 else spacer
-			if type(item) in [float,int,bool]+str_types: print(spacer_this+str(item))
+			if type(item) in [float,int,bool,type(None)]+str_types: print(spacer_this+str(item))
 			elif item != {}:
 				asciitree(item,depth=depth+1,
 					last=last+([depth] if ind==len(obj)-1 else []),
@@ -268,10 +268,6 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False,string=False):
 		for ind,key in enumerate(obj.keys()):
 			spacer_this = spacer_both['end'] if ind==len(obj)-1 else spacer
 			if type(obj[key]) in str_types+[float,int,bool]: print(spacer_this+str(key)+' = '+str(obj[key]))
-			#---special: print single-item lists of strings on the same line as the key
-			#elif (type(obj[key])==list and len(obj[key])==1 and 
-			#	type(obj[key][0]) in str_types+[float,int,bool]):
-			#	print(spacer_this+key+' = '+str(obj[key]))
 			#---special: skip lists if blank dictionaries
 			elif type(obj[key])==list and all([i=={} for i in obj[key]]):
 				print(spacer_this+key+' = %s'%obj[key])

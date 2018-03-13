@@ -12,7 +12,8 @@ from PIL import PngImagePlugin
 import numpy as np
 
 def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
-	dpi=300,form='png',version=False,pdf=False,tight=True,pad_inches=0,figure_held=None,loud=True):
+	dpi=300,form='png',version=False,pdf=False,tight=True,pad_inches=0,figure_held=None,loud=True,
+	redacted=False):
 	"""
 	Function which saves the global matplotlib figure without overwriting.
 	!Note that saving tuples get converted to lists in the metadata so if you notice that your plotter is not 
@@ -33,6 +34,35 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 			raise Exception(
 				'keys "%r" are incoming via meta but are already part of picture_hooks'
 				%redundant_extras)
+	#---redacted figures have blurred labels
+	if redacted:
+		directory_redacted = os.path.join(directory,'REDACTED')
+		if not os.path.isdir(directory_redacted): os.mkdir(directory_redacted)
+		directory = directory_redacted
+		status('you have requested redacted figures, so they are saved to %s'%directory,tag='warning')
+		import random
+		color_back = work.metadata.director.get('redacted_background_color','')
+		color_fore = work.metadata.director.get('redacted_foreground_color','k')
+		if 'redacted_scrambler' in work.metadata.director:
+			scrambler_code = work.metadata.director['redacted_scrambler']
+			try: 
+				scrambler = eval(scrambler_code)
+				scrambler('test text')
+			except: raise Exception(
+				'failed to evaluate your `redacted_scrambler` from the director: `%s`'%scrambler_code)
+		else: 
+			#! method below is deprecated because it looks silly. best to use hashes
+			if False: scrambler = lambda x,max_len=12:''.join([
+				chr(ord('a')+random.randint(0,25)) for i in x][:max_len])
+			scrambler = lambda x,max_len=10:('#'*len(x))[:max_len]
+		num_format = re.compile("^[\-]?[1-9][0-9]*\.?[0-9]+$")
+		isnumber = lambda x:re.match(num_format,x)
+		for obj in [i for i in plt.findobj() if type(i)==mpl.text.Text]:
+		    text_this = obj.get_text()
+		    if text_this!='' and not isnumber(text_this):
+		        obj.set_text(scrambler(text_this))
+		        if color_back: obj.set_backgroundcolor(color_back)
+		        obj.set_color(color_fore)
 	#---if version then we choose savename based on the next available index
 	if version:
 		#---check for this meta
@@ -82,6 +112,10 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 		imgmeta.add_text('meta',json.dumps(meta))
 		im.save(base_fn,form,pnginfo=imgmeta)
 	else: print('[WARNING] you are saving as %s and only png allows metadata-versioned pictures'%form)
+
+def picturesave_redacted(*args,**kwargs):
+	"""Wrap picturesave with redacted plots."""
+	return picturesave(*args,redacted=True,**kwargs)
 
 def picturedat(savename,directory='./',bank=False):
 	"""
@@ -256,6 +290,8 @@ def store(obj,name,path,attrs=None,print_types=False,verbose=True):
 			try: dset = fobj.create_dataset(key,data=obj[key].tolist())
 			except: raise Exception("failed to write this object so it's probably not numpy"+
 				"\n"+key+' type='+str(type(obj[key]))+' dtype='+str(obj[key].dtype))
-	if attrs != None: fobj.create_dataset('meta',data=np.string_(json.dumps(attrs)))
+	if attrs != None: 
+		try: fobj.create_dataset('meta',data=np.string_(json.dumps(attrs)))
+		except Exception as e: raise Exception('failed to serialize attributes: %s'%e)
 	if verbose: status('[WRITING] '+path+'/'+name)
 	fobj.close()

@@ -154,7 +154,10 @@ class Observer(object):
 		self.function = function
 	def __call__(self,*args,**kwargs):
 	 	def tracer(frame,event,arg):
-			if event=='return': self._locals = frame.f_locals.copy()
+			if event=='return': 
+				self._locals = frame.f_locals.copy()
+				# it is unwise to modify locals so dynamic variables can drop to _locals
+				self._locals.update(**self._locals.get('__locals__',{}))
 		# tracer is activated on next call, return or exception
 		sys.setprofile(tracer)
 		# trace the function call
@@ -164,3 +167,8 @@ class Observer(object):
 	def clear_locals(self): self._locals = {}
 	@property
 	def locals(self): return self._locals
+
+def unique_ordered(seq):
+	"""Return unique items maintaining the order."""
+	vals = set()
+	return [x for x in seq if not (x in vals or vals.add(x))]

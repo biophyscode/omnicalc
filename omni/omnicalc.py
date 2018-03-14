@@ -939,7 +939,7 @@ class WorkSpace:
 		"""
 		Export completed calculations to a plot environment.
 		"""
-		whittle_calc = kwargs.pop('whittle_calc',None)
+		whittle = kwargs.pop('whittle',None)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		# plotspec is first instantiated by Workspace.plot and it is important to replace it after
 		# ... running plotload so that items like Workspace.sns() still return the correct result
@@ -954,7 +954,6 @@ class WorkSpace:
 			# update the plotspec if the plotname changes. this also updates the upstream pointers
 			self.plotspec = PlotSpec(metadata=self.metadata,plotname=self.plotname,
 				calcs=self.calcs,workspace=self)
-		if whittle_calc: raise Exception('dev')
 		# we always run the compute loop to make sure calculations are complete but also to get the jobs
 		# note that compute runs may be redundant if we call plotload more than once but it avoids repeats
 		#! skip can be dangerous
@@ -984,11 +983,21 @@ class WorkSpace:
 		# see if the requested calculation can be unrolled
 		unrolled = self.calcs.unroll_loops(self.plotspec.request_calc)
 		if len(unrolled)>1:
-			upstream_requests = {}
-			# extra index if we are inside a loop. users will have to get the one they want in the plot code
-			for ii,item in enumerate(unrolled):
-				ups = self.collect_upstream_calculations(item)
-				for key,val in ups.items(): upstream_requests[(key,ii)] = val
+			# we only apply the whittle criteria *after* getting all possible upstreams
+			#! note that this means that you have to code in a loop first in the metadata
+			if whittle:
+				if whittle not in unrolled:
+					raise Exception(
+						'the whittle %s must be an element of the calculations roll %s'%(whittle,unrolled))
+				up = self.collect_upstream_calculations(whittle)
+				if len(up)!=1: raise Exception('failed to whittle %s'%whittle)
+				upstream_requests = up
+			else:
+				upstream_requests = {}
+				# extra index if we are inside a loop. users will have to get the one they want in the plot code
+				for ii,item in enumerate(unrolled):
+					ups = self.collect_upstream_calculations(item)
+					for key,val in ups.items(): upstream_requests[(key,ii)] = val
 		# convert upstream calculation requests into proper calculations
 		else: upstream_requests = self.collect_upstream_calculations(self.plotspec.request_calc)
 		# convert upstream calculation requests into proper calculations

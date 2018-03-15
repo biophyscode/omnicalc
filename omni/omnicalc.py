@@ -732,13 +732,19 @@ class PlotSpec:
 	def get(self,*args): return self.specs.get(*args)
 	def _get_cursor(self):
 		"""Populate the PlotSpec with the correct objects and infer upstream calculations."""
+		# unregistered_plots flag is used for a metadata-free plot script
+		unregistered_plots = self.metadata.director.get('unregistered_plots',False)
 		# search the plot dictionary for the calculation we need
 		if self.plotname in self.metadata.plots:
 			self.specs = self.metadata.plots[self.plotname]
 			self.request_calc = self.specs.get('calculation',self.specs.get('calculations',None))
-			if not self.request_calc: self.request_calc = str(self.plotname)
+			# setting unregistered_plots in the director lets you call plot scripts without metadata
+			# ... which can be very useful if you want the script itself to control e.g. collections or 
+			# ... to receive further instruction from the command line. this option also lets you omit 
+			# ... the calculation flag in the plot metadata so you can settle it in the script
+			if not self.request_calc and not unregistered_plots: self.request_calc = str(self.plotname)
 			self.collections = self.specs.get('collections',[])
-			if not self.collections: 
+			if not self.collections and not unregistered_plots:
 				raise Exception('cannot assemble collections for plot %s. specs are: %s'%(
 					self.plotname,self.specs))
 			# note the script name
@@ -762,6 +768,7 @@ class PlotSpec:
 			if not self.collections: 
 				raise Exception('cannot assemble collections for plot %s after falling back to calcs'%(
 					self.plotname))
+		elif unregistered_plots: pass
 		else: raise Exception('cannot find plotname %s in plots or calculations metadata'%self.plotname)
 	def sns(self):
 		return unique_ordered(self.metadata.get_simulations_in_collection(
@@ -918,7 +925,9 @@ class WorkSpace:
 			#! no protection against repeated calculation names
 			if len(culled)==1: packaged[target.name] = culled[0]
 			else: 
-				raise Exception('failed to uniquely identify a requested calculation in the upstream '+
+				#! last attempt to check for the right calculations. under development in curvature project
+				if len(candidates)==1: packaged[target.name] = candidates[0]
+				else: raise Exception('failed to uniquely identify a requested calculation in the upstream '+
 					'calculations (found %d matches): %s'%(len(culled),target.__dict__))
 		return packaged
 
@@ -1070,8 +1079,10 @@ class WorkSpace:
 					'slices':self.metadata.calculations[plotname]['slice_name']}
 				print('[NOTE] there is no %s entry in plots so we are using calculations'%plotname)
 			except Exception as e: 
-				raise Exception('you should add %s to plots '%plotname+'since we could not '
-					'formulate a default plot for that calculation.')			
+				if self.metadata.director.get('unregistered_plots',False): pass
+				else:
+					raise Exception('you should add %s to plots '%plotname+'since we could not '
+						'formulate a default plot for that calculation.')			
 		# the look method is used by the factory to get details for this plot
 		if look: return {'script_name':script_name}
 		header_script = 'omni/base/header.py'

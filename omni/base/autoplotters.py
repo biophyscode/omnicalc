@@ -26,6 +26,7 @@ class PlotSupervisor:
 		self.loader_name = None
 		self.loader_ran = False
 		self.script_name = None
+		self.residue = {}
 
 	def register_loader(self,name,function):
 		"""
@@ -57,6 +58,7 @@ class PlotSupervisor:
 			status('executing plot function `%s`'%plot_name,tag='autoplot')
 			if plot_name not in self.plot_functions:
 				raise Exception('this script does not have a plot function named %s'%plot_name)
+
 			self.plot_functions.update(**self.residue)
 			self.plot_functions[plot_name]()
 

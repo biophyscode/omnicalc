@@ -31,6 +31,10 @@ for key,val in out.items(): builtins.__dict__[key] = val
 builtins._plotrun_specials = out.keys()
 globals().update(**out)
 
+#---ignore annoying future warnings
+import warnings
+warnings.simplefilter(action='ignore',category=FutureWarning)
+
 #---decorate picturesave so plots are visible in the notebook
 picturesave_omni = picturesave
 def picturesave(*args,**kwargs):

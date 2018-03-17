@@ -74,7 +74,7 @@ def replot(loading=False):
 		status('reimporting functions from `%s`'%os.path.basename(script),tag='status')
 		#---this is a problem because it reregisters the scripts
 		local_env = {'__name__':'__looking__'}
-		if not re.search('plotrun',code):
+		if not re.search('plotrun',code) and not work.metadata.director.get('unregistered_plots',False):
 			raise Exception('cannot find the text "plotrun" anywhere in your plot script at %s. '%script+
 				'this means the script is a legacy plot. you should set "autoplot: False" in the plot specs')
 		try: exec(compile(code,script,'exec'),globals(),local_env)

@@ -939,16 +939,20 @@ class WorkSpace:
 		candidates = [jc for jc in self.jobs 
 			if jc.calc==request and jc.slice.data['sn']==sn]
 		if len(candidates)==1: return candidates[0]
-		else: 
+		else:
+			if not hasattr(request,'slice'): slice_sn = 'no slice for requested sn: %s'%sn
+			else: slice_sn = request.slice.data['sn']
 			raise Exception(('cannot find an upstream job which computes '
 				'"%s" for simulation "%s" with specs: %s')%(
-				request.name,request.slice.data['sn'],request.__dict__))
+				request.name,slice_sn,request.__dict__))
 
 	def plotload(self,plotname,**kwargs):
 		"""
 		Export completed calculations to a plot environment.
 		"""
 		whittle = kwargs.pop('whittle',None)
+		collections_alt = [i for j in [self.metadata.collections[c] 
+			for c in str_or_list(kwargs.pop('collections',[]))] for i in j]
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		# plotspec is first instantiated by Workspace.plot and it is important to replace it after
 		# ... running plotload so that items like Workspace.sns() still return the correct result
@@ -967,7 +971,8 @@ class WorkSpace:
 		# note that compute runs may be redundant if we call plotload more than once but it avoids repeats
 		#! skip can be dangerous
 		self.compute(automatic=False)
-		sns = self.plotspec.sns()
+		if not collections_alt: sns = self.plotspec.sns()
+		else: sns = collections_alt
 		if not sns: raise Exception('cannot get simulations for plot %s'%self.plotname)
 		# many plot functions use a deprecated work.plots[plotname]['specs'] call to get details about 
 		# ... the plots from the metadata. to support this feature we add the cursor from the plotspec

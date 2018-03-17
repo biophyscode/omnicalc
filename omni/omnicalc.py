@@ -1042,6 +1042,17 @@ class WorkSpace:
 		#! ... plotload_version to change the return from plotload from a doublet to a single item which could
 		#! ... then include the data and calc, but this offers little benefit over just returning a smarter
 		#! ... data object that is also backwards compatible. calc will remain as-is
+		elif plotload_version==2: 
+			class DataPack:
+				"""A single portal to the upstream data. Under development."""
+				def __init__(self,data,calc):
+					self.data,self.names = [],[]
+					self.extras = calc.pop('extras')
+					for key,val in data.items():
+						self.names.append(calc.pop(key))
+						self.data.append(val)
+					if calc: raise Exception
+			outgoing = DataPack(**bundle)
 		else: raise Exception('invalid plotload_version: %s'%plotload_version)
 		# since we may run plotload several times we always return to the original plot specificaiton
 		self.plotspec = PlotSpec(metadata=self.metadata,plotname=plotname_cursor,

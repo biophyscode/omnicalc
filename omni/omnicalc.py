@@ -1068,13 +1068,60 @@ class WorkSpace:
 		elif plotload_version==2: 
 			class DataPack:
 				"""A single portal to the upstream data. Under development."""
+				def __repr__(self):
+					asciitree(dict(data=dict([('%s (%d)'%(name,num),val) 
+						for num,(name,val) in enumerate(self.names)])))
+					return "DataPack: %s"%list(set(zip(*self.names)[0]))
 				def __init__(self,data,calc):
+					self.calcnames = set()
 					self.data,self.names = [],[]
 					self.extras = calc.pop('extras')
 					for key,val in data.items():
-						self.names.append(calc.pop(key))
+						if type(key) in str_types: calcname = key
+						else: 
+							if len(key)!=2: raise Exception
+							# if there are multiple upstream loops they are keyed by calcname and an index
+							calcname = key[0]
+						self.calcnames.add(calcname)
+						# remove unnecessary dictionary keys that pack job.calc.specs above
+						self.names.append((calcname,calc.pop(key)['calcs']['specs']))
 						self.data.append(val)
 					if calc: raise Exception
+					if len(self.names)==1: self.set()
+				def set(self,name=None,select=None):
+					# for single-item packs we set the cursor here and return
+					if len(self.names)==1:
+						self.cursor = self.names[0]
+						#! point to the data key for each simulation
+						self.this = dict([(i,self.data[self.cursor][i]['data']) 
+							for i in self.data[self.cursor]])
+						return
+					if not name and len(self.calcnames)>1:
+						raise Exception('set requires a calculation name from %s'%self.calcnames)
+					elif len(self.calcnames)>1: calcname = name
+					else: calcname = list(self.calcnames)[0]
+					# single-data packs automatically set the cursor there so we except if no select
+					if not select: raise Exception('set requires a dictionary to match names')
+					# select the calculation by key,value pairs in select where the key is the path in specs
+					candidates,indices = [],[]
+					for index,(name,detail) in enumerate(self.names):
+						if name==calcname:
+							# delve may fail on invalid keys so we only try
+							try: 
+								if all([delve(detail,*i)==j for i,j in select.items()]):
+									candidates.append(name)
+									indices.append(index)
+							except: pass
+					if len(candidates)==0: 
+						raise Exception('cannot find path values %s in names %s'%(select,self.names))
+					elif len(candidates)>1:
+						raise Exception('multiple matches %s for path values %s in names %s'%(
+							candidates,select,self.names))
+					else: 
+						self.cursor = candidates[0]
+						#! point to the data key for each simulation
+						self.this = dict([(i,self.data[indices[0]][i]['data']) 
+							for i in self.data[indices[0]]])
 			outgoing = DataPack(**bundle)
 		else: raise Exception('invalid plotload_version: %s'%plotload_version)
 		# since we may run plotload several times we always return to the original plot specificaiton

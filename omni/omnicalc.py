@@ -629,7 +629,7 @@ class PostDataLibrary:
 			candidates_again = [key for key,val in self.posts().items() 
 				if val.slice==job.slice and val.calc.name==job.calc.name 
 				and dictsub(job.calc.specs,val.calc.specs)]
-			if len(candidates_again)==1: return candidates_again[0]
+			if len(candidates_again)==1: return self.toc[candidates_again[0]]
 			# this is the obvious place to debug if you think that omnicalc is trying to rerun completed jobs
 			else: 
 				# a final attempt converts empty dictionary in the job to None, which occurs in some specs
@@ -645,7 +645,7 @@ class PostDataLibrary:
 						if val.slice==job.slice and val.calc.name==job.calc.name 
 						and dictsub(job_calc_specs,val.calc.specs)]
 				else: candidates_again_legacy = []
-				if len(candidates_again_legacy)==1: return candidates_again_legacy[0]
+				if len(candidates_again_legacy)==1: return self.toc[candidates_again_legacy[0]]
 				else:
 					if debug:
 						import ipdb
@@ -1029,7 +1029,7 @@ class WorkSpace:
 				data = load(os.path.basename(fn),cwd=os.path.dirname(fn))
 				if data.get('error',False)=='error':
 					raise Exception('calculation failed. clear the dat/spec files corresponding '
-						'to %s (by using `make clear_compute`) and recompute'%fn)
+						'to %s (by using `make clear_stale`) and recompute'%fn)
 				bundle['data'][calcname][sn] = {'data':data}
 				#! adding trajectory data here. assumes that the slice is the same for all calculations
 				try: 
@@ -1092,16 +1092,22 @@ class WorkSpace:
 					# for single-item packs we set the cursor here and return
 					if len(self.names)==1:
 						self.cursor = self.names[0]
-						#! point to the data key for each simulation
-						self.this = dict([(i,self.data[self.cursor][i]['data']) 
-							for i in self.data[self.cursor]])
+						self.this = dict([(k,self.data[0][k]['data']) for k in self.data[0]])
 						return
 					if not name and len(self.calcnames)>1:
 						raise Exception('set requires a calculation name from %s'%self.calcnames)
 					elif len(self.calcnames)>1: calcname = name
 					else: calcname = list(self.calcnames)[0]
 					# single-data packs automatically set the cursor there so we except if no select
-					if not select: raise Exception('set requires a dictionary to match names')
+					if not select: 
+						indices = [kk for kk,(k,d) in enumerate(self.names) if k==calcname]
+						if len(indices)==1: 
+							self.cursor = self.names[indices[0]]
+							#! point to the data key for each simulation
+							self.this = dict([(i,self.data[indices[0]][i]['data']) 
+								for i in self.data[indices[0]]])
+							return
+						else: raise Exception('set requires a dictionary to match names')
 					# select the calculation by key,value pairs in select where the key is the path in specs
 					candidates,indices = [],[]
 					for index,(name,detail) in enumerate(self.names):
@@ -1122,6 +1128,7 @@ class WorkSpace:
 						#! point to the data key for each simulation
 						self.this = dict([(i,self.data[indices[0]][i]['data']) 
 							for i in self.data[indices[0]]])
+						return
 			outgoing = DataPack(**bundle)
 		else: raise Exception('invalid plotload_version: %s'%plotload_version)
 		# since we may run plotload several times we always return to the original plot specificaiton

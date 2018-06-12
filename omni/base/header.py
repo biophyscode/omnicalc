@@ -100,6 +100,9 @@ def replot(loading=False):
 			# the loader is decorated with a function that catches locals
 			plotrun.loader()
 			# expose locals from the loader to globals automatically
+			#! very recent addition testing lipid_lipid_bonds_analysis
+			# send _locals to globals and then send the other contents of the residue from the parent load
+			globals().update(**plotrun.residue.pop('_locals',{}))
 			globals().update(**plotrun.residue)
 			plotrun.loader_ran = True
 		#---run any plots in the routine unless we are reloading

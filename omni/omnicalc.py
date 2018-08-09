@@ -16,7 +16,12 @@ from base.hypothesis import hypothesis
 from datapack import asciitree,delveset,dictsub,dictsub_sparse
 from structs import NameManager,Calculation,TrajectoryStructure,NoisyOmnicalcObject
 from base.autoplotters import inject_supervised_plot_tools
-from base.store import load,store
+#! development note: ortho branch (dev) solves the problem of checking makefile targets without doing
+#!   all of the imports. current master omnicalc tries to import PIL when checking make targets so we 
+#!   use the following pass below to sidestep this problem. may cause downstream errors if the env is
+#!   not properly sourced
+try: from base.store import load,store
+except: pass
 from makeface import tracebacker
 
 global namer

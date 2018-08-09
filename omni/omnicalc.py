@@ -21,7 +21,7 @@ from base.autoplotters import inject_supervised_plot_tools
 #!   use the following pass below to sidestep this problem. may cause downstream errors if the env is
 #!   not properly sourced
 try: from base.store import load,store
-except: pass
+except: print('[WARNING] no PIL so environment is not ready')
 from makeface import tracebacker
 
 global namer

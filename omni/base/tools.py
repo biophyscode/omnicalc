@@ -2,6 +2,7 @@
 
 import os,sys,re,inspect,subprocess,time,collections,traceback,importlib
 str_types = [str,unicode] if sys.version_info<(3,0) else [str]
+# see also PIL imports elsewhere
 try: import yaml
 except: print('[WARNING] no yaml so environment is not ready')
 

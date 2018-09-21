@@ -953,6 +953,7 @@ class WorkSpace:
 		whittle = kwargs.pop('whittle',None)
 		collections_alt = [i for j in [self.metadata.collections[c] 
 			for c in str_or_list(kwargs.pop('collections',[]))] for i in j]
+		plotload_version_override = kwargs.pop('plotload_version',False)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		# plotspec is first instantiated by Workspace.plot and it is important to replace it after
 		# ... running plotload so that items like Workspace.sns() still return the correct result
@@ -1048,7 +1049,8 @@ class WorkSpace:
 				except: pass
 			bundle['calc'][calcname] = {'calcs':{'specs':job.calc.specs}}
 		# data are returned according to a versioning system
-		plotload_version = self.plotspec.get('plotload_version',
+		if plotload_version_override: plotload_version = plotload_version_override
+		else: plotload_version = self.plotspec.get('plotload_version',
 			self.metadata.director.get('plotload_output_style',1))
 		# original plot codes expect a data,calc pair from this function
 		if plotload_version==1: 
@@ -1109,12 +1111,16 @@ class WorkSpace:
 							return
 						else: raise Exception('set requires a dictionary to match names')
 					# select the calculation by key,value pairs in select where the key is the path in specs
+					# since the key is the path, but we might have a top, level path, we ensure that 
+					# ... non-tuples are set to tuples
+					#! this section is really half-backed. need to see where it is actually in-use
 					candidates,indices = [],[]
 					for index,(name,detail) in enumerate(self.names):
 						if name==calcname:
 							# delve may fail on invalid keys so we only try
 							try: 
-								if all([delve(detail,*i)==j for i,j in select.items()]):
+								if all([delve(detail,*(i if type(i)==tuple else (i,)))==j 
+									for i,j in select.items()]):
 									candidates.append(name)
 									indices.append(index)
 							except: pass
@@ -1470,10 +1476,10 @@ class WorkSpace:
 		mod.framelooper = framelooper
 		#---parallel processing
 		from joblib import Parallel,delayed
-		from joblib.pool import has_shareable_memory
+		#! sharable memory is outdated: from joblib.pool import has_shareable_memory
+		#! mod.has_shareable_memory = has_shareable_memory
 		mod.Parallel = Parallel
 		mod.delayed = delayed
-		mod.has_shareable_memory = has_shareable_memory
 
 	def get_calculation_function(self,calcname):
 		"""

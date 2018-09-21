@@ -19,6 +19,12 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 	!Note that saving tuples get converted to lists in the metadata so if you notice that your plotter is not 
 	overwriting then this is probably why.
 	"""
+	#! amazing bug: if you keep a comma after meta it makes it a tuple and then there must be a 
+	#!   one-way conversion to dict when it is written to the metadata of the image and this causes
+	#!   the figure counts to keep increasing no matter what. a very subtle error! corrected below
+	if type(meta)==tuple:
+		if len(meta)!=1 or type(meta[0])!=dict: raise Exception('meta must be a dict')
+		else: meta = meta[0]
 	#---automatically share images with group members (note that you could move this to config)
 	os.umask(0o002)
 	#---earlier import allows users to set Agg so we import here, later
@@ -103,7 +109,7 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 		os.remove(alt_name)
 	else: 
 		(figure_held if figure_held else plt).savefig(base_fn,dpi=dpi,bbox_extra_artists=extras,
-			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None,format=form)
+			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None,format=form,rasterized=False)
 	plt.close()
 	#---add metadata to png
 	if form=='png' and meta!=None:
@@ -112,6 +118,7 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 		imgmeta.add_text('meta',json.dumps(meta))
 		im.save(base_fn,form,pnginfo=imgmeta)
 	else: print('[WARNING] you are saving as %s and only png allows metadata-versioned pictures'%form)
+	return base_fn
 
 def picturesave_redacted(*args,**kwargs):
 	"""Wrap picturesave with redacted plots."""
@@ -225,6 +232,7 @@ def uniquify(array):
     """Get unique rows in an array."""
     #! this is likely deprecated. see art_ptdins.py for a newer version and not that unique now accepts axis
     #---contiguous array trick
+    #! for some reason this is failing in np version 1.12 
     alt = np.ascontiguousarray(array).view(
         np.dtype((np.void,array.dtype.itemsize*array.shape[1])))
     unique,idx,counts = np.unique(alt,return_index=True,return_counts=True)

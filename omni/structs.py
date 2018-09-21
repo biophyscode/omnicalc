@@ -268,6 +268,7 @@ class Calculation(NoisyOmnicalcObject):
 			collections=calc_specs.pop('collections',None))
 		# hold the specs separately
 		self.specs = calc_specs.pop('specs',{})
+		if self.specs==None: self.specs = {}
 		self.name_style = calc_specs.pop('name_style',None)
 		self.ignore = calc_specs.pop('ignore',False)
 		# we protect against extra unprocessed data in the calculations here

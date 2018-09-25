@@ -116,3 +116,15 @@ def json_type_fixer(series):
 		if type(v) == dict: json_type_fixer(v)
 		elif type(v)in str_types and v.isdigit(): series[k] = int(v)
 		elif type(v)in str_types and v=='None': series[k] = None
+
+def catalog(base,path=None):
+	"""
+	Traverse all paths in a nested dictionary. Returns a list of pairs: paths and values.
+	Note that lists can be a child item; catalog does not expand the indices.
+	"""
+	if not path: path=[]
+	if isinstance(base,dict):
+		for x in base.keys():
+			local_path = path[:]+[x]
+			for b in catalog(base[x],local_path): yield b
+	else: yield path,base

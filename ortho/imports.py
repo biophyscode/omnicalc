@@ -119,7 +119,7 @@ def importer(source,verbose=False,distribute=None,strict=False):
 			if os.path.relpath(dn,os.getcwd())[:2]!='..':
 				fn_alt = '%s.%s'%(re.sub(os.path.sep,'.',rel_dn),fn)
 				if verbose: 
-					print('note','previous exception was: %s'%e)
+					print('note','previous exception was: %s'%e1)
 					print('note','importing (local) from %s'%(fn_alt))
 				mod = importlib.import_module(fn_alt,package='./')
 			else: 

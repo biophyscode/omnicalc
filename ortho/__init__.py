@@ -23,12 +23,14 @@ expose = {
 	'dev':['tracebacker'],
 	# environments must get conf hence it must be here
 	'environments':['environ','env_list','register_extension','load_extension'],
-	'data':['check_repeated_keys'],
+	'data':['check_repeated_keys','delve','delveset',
+		'json_type_fixer','dictsub','dictsub_strict','dictsub_sparse'],
 	'imports':['importer'],
 	#'queue':['qbasic'],
 	'unit_tester':['unit_tester'],
 	'misc':['listify','unique','treeview','str_types','string_types','say','ctext'],
-	'reexec':['iteratively_execute','interact']}
+	'reexec':['iteratively_execute','interact'],
+	'requires':['requires_program','requires_python']}
 
 # use `python -c "import ortho"` to bootstrap the makefile
 if (os.path.splitext(os.path.basename(__file__))[0]!='__init__' or not os.path.isdir('ortho')): 

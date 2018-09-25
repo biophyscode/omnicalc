@@ -49,7 +49,7 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False):
 	if type(obj) in [float,int,bool]+str_types_list:
 		if depth == 0: print(spacer+str(obj)+'\n'+horizo*len(obj))
 		else: print(spacer+str(obj))
-	elif type(obj) == dict and all([type(i) in [str,float,int,bool] for i in obj.values()]) and depth==0:
+	elif isinstance(obj,dict) and all([type(i) in [str,float,int,bool] for i in obj.values()]) and depth==0:
 		asciitree({'HASH':obj},depth=1,recursed=True)
 	elif type(obj) in [list,tuple]:
 		for ind,item in enumerate(obj):
@@ -61,7 +61,7 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False):
 					last=last+([depth] if ind==len(obj)-1 else []),
 					recursed=True)
 			else: print('unhandled tree object %s'%item)
-	elif type(obj) == dict and obj != {}:
+	elif isinstance(obj,dict) and obj != {}:
 		for ind,key in enumerate(obj.keys()):
 			spacer_this = spacer_both['end'] if ind==len(obj)-1 else spacer
 			if type(obj[key]) in [float,int,bool]+str_types_list: print(spacer_this+key+' = '+str(obj[key]))

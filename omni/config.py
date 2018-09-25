@@ -2,7 +2,8 @@
 
 import os,sys
 from makeface import abspath
-from datapack import delve,delveset
+# from datapack import delve,delveset
+from ortho import delve,delveset
 import subprocess
 
 __all__ = ['set_config','unset']

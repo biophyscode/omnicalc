@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 import copy
-from base.tools import delve
+#! from omni.base.tools import delve
+from ortho import delve
 
 def hypothesis(sweep,default=None):
 	"""

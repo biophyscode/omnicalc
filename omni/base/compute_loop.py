@@ -2,7 +2,6 @@
 
 import time
 from joblib import Parallel,delayed
-from joblib.pool import has_shareable_memory
 from tools import status
 
 def framelooper(total,start=None,text='frame'):
@@ -20,8 +19,8 @@ def basic_compute_loop(compute_function,looper,run_parallel=True,debug=False):
 	"""
 	start = time.time()
 	if run_parallel:
-		incoming = Parallel(n_jobs=8,verbose=10 if debug else 0)(
-			delayed(compute_function,has_shareable_memory)(**looper[ll]) 
+		incoming = Parallel(n_jobs=8,verbose=10 if debug else 0.,require='sharedmem')(
+			delayed(compute_function)(**looper[ll]) 
 			for ll in framelooper(len(looper),start=start))
 	else: 
 		incoming = []

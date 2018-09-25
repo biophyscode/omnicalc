@@ -118,32 +118,31 @@ def gopher(spec,module_name='module',variable_name='function'):
 	return target
 
 def backrun(command=None,cwd='.',log='log-back'):
-    """
-    Run a command in the background and generate a kill switch.
-
-    Parameters
-    ----------
-    command : string
-        A terminal command used to execute the script in the background e.g. ``./script-protein.py``. You
-        can also use other targets in the command e.g. ``make back command="make metarun <name>"``.
-    """
-    cmd = "nohup %s > %s 2>&1 &"%(command,log)
-    print('[STATUS] running the background via "%s"'%cmd)
-    job = subprocess.Popen(cmd,shell=True,cwd=cwd,preexec_fn=os.setsid)
-    ask = subprocess.Popen('ps xao pid,ppid,pgid,sid,comm',
-        shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    com = ask.communicate()
-    if sys.version_info>=(3,0): ret = '\n'.join([j.decode() for j in com])
-    else: ret = '\n'.join(com)
-    if sys.version_info>=(3,0):
-        pgid = next(int(i.split()[2]) for i in ret.splitlines() if re.match('^\s*%d\s'%job.pid,i))
-    else: pgid = next(int(i.split()[2]) for i in ret.splitlines() if re.match('^\s*%d\s'%job.pid,i))
-    kill_script = 'script-stop-job.sh'
-    term_command = 'pkill -TERM -g %d'%pgid
-    with open(kill_script,'w') as fp: fp.write(term_command+'\n')
-    os.chmod(kill_script,0o744)
-    print('[STATUS] if you want to terminate the job, run "%s" or "./%s"'%(term_command,kill_script))
-    job.communicate()
+	"""
+	Run a command in the background and generate a kill switch.
+	Parameters
+	----------
+	command : string
+		A terminal command used to execute the script in the background e.g. ``./script-protein.py``. You
+		can also use other targets in the command e.g. ``make back command="make metarun <name>"``.
+	"""
+	cmd = "nohup %s > %s 2>&1 &"%(command,log)
+	print('[STATUS] running the background via "%s"'%cmd)
+	job = subprocess.Popen(cmd,shell=True,cwd=cwd,preexec_fn=os.setsid)
+	ask = subprocess.Popen('ps xao pid,ppid,pgid,sid,comm',
+		shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+	com = ask.communicate()
+	if sys.version_info>=(3,0): ret = '\n'.join([j.decode() for j in com])
+	else: ret = '\n'.join(com)
+	if sys.version_info>=(3,0):
+		pgid = next(int(i.split()[2]) for i in ret.splitlines() if re.match(r'^\s*%d\s'%job.pid,i))
+	else: pgid = next(int(i.split()[2]) for i in ret.splitlines() if re.match(r'^\s*%d\s'%job.pid,i))
+	kill_script = 'script-stop-job.sh'
+	term_command = 'pkill -TERM -g %d'%pgid
+	with open(kill_script,'w') as fp: fp.write(term_command+'\n')
+	os.chmod(kill_script,0o744)
+	print('[STATUS] if you want to terminate the job, run "%s" or "./%s"'%(term_command,kill_script))
+	job.communicate()
 
 class Observer(object):
 	"""Watch locals and return them. The umpteenth metaprogramming trick for nice environments!"""
@@ -153,7 +152,7 @@ class Observer(object):
 		self._locals = {}
 		self.function = function
 	def __call__(self,*args,**kwargs):
-	 	def tracer(frame,event,arg):
+		def tracer(frame,event,arg):
 			if event=='return': 
 				self._locals = frame.f_locals.copy()
 				# it is unwise to modify locals so dynamic variables can drop to _locals

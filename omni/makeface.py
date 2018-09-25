@@ -246,7 +246,7 @@ if __name__ == "__main__":
 	if len(argvs)==1: 
 		#---this formatting is read by the makefile to get the valid targets (please don't remove it)
 		print('[STATUS] available make targets: %s'%(' '.join(makeface_funcs.keys())))
-		from datapack import asciitree
-		asciitree({'make targets':list(sorted(makeface_funcs.keys()))})
+		from datapack import treeview
+		treeview({'make targets':list(sorted(makeface_funcs.keys()))})
 		print('[USAGE] `make <target> <args> <kwarg>="<val>" ...`')
 	else: makeface(*argvs[1:])

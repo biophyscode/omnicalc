@@ -6,11 +6,15 @@ make samples of a trajectory in GROMACS
 """
 
 import os,sys,time,re,subprocess
-from config import bash
-from base.tools import status
+#! from config import bash
+from ortho import bash
+from omni.base.tools import status
 
 #---only load gmxpaths once when it is used
-gmxpaths = None
+#! gmxpaths = None
+
+#! removed automacs-style checking
+gmxpaths = {'edrcheck':'gmx edrcheck','gmxcheck':'gmx check','trjconv':'gmx trjconv','trjcat':'gmx trjcat'}
 
 def make_slice_gromacs(**kwargs):
 	"""
@@ -56,129 +60,6 @@ def make_slice_gromacs(**kwargs):
 	#---return the name for storage in the postdat
 	return spec['outkey']
 
-def get_machine_config(hostname=None):
-	"""
-	Use AUTOMACS format for getting GROMACS paths.
-	Copied from amx/calls.py.
-	!!! NOTE THIS NEEDS TO BE UPDATED.
-	"""
-	machine_config = {}
-	#---!
-	config_fn = 'gromacs_config.py'
-	print('[STATUS] reading %s'%config_fn)
-	if not os.path.isfile(os.path.expanduser(config_fn)):
-		config_fn = os.path.expanduser('~/.automacs.py')
-		print('[STATUS] reading %s'%config_fn)
-		if not os.path.isfile(config_fn):
-			raise Exception('cannot find either a local (gromacs_config.py) or a global (~/.automacs.py) '
-				'gromacs configuration. make one with `make gromacs_config (local|home)`')
-	with open(os.path.expanduser(config_fn)) as fp: exec(fp.read(),machine_config)
-	#---most of the machine configuration file are headers that are loaded into the main dictionary
-	machine_config = machine_config['machine_configuration']
-	this_machine = 'LOCAL'
-	if not hostname:
-		hostnames = [key for key in machine_config 
-			if any([varname in os.environ and (
-			re.search(key,os.environ[varname])!=None or re.match(key,os.environ[varname]))
-			for varname in ['HOST','HOSTNAME']])]
-	else: hostnames = [key for key in machine_config if re.search(key,hostname)]
-	#---select a machine configuration according to the hostname
-	if len(hostnames)>1: raise Exception('[ERROR] multiple machine hostnames %s'%str(hostnames))
-	elif len(hostnames)==1: this_machine = hostnames[0]
-	else: this_machine = 'LOCAL'
-	print('[STATUS] setting gmxpaths for machine: %s'%this_machine)
-	machine_config = machine_config[this_machine]
-	#---! previously did some ppn calculations here
-	return machine_config
-
-def modules_load(machine_config):
-	"""
-	Interact with environment modules to load software.
-	"""
-	#---modules in LOCAL configuration must be loaded before checking version
-	import importlib
-	if 'module_path' in machine_config: module_path = machine_config['module_path']
-	else:
-		module_parent = os.environ.get('MODULESHOME','/usr/share/Modules/default')
-		module_path = os.path.join(module_parent,'init','python.py')
-	incoming = {}
-	if sys.version_info<(3,0): execfile(module_path,incoming)
-	else: exec(open(module_path).read(),incoming)
-	#---note that modules that rely on dynamically-linked C-code must use EnvironmentModules
-	modlist = machine_config['modules']
-	if type(modlist)==str: modlist = modlist.split(',')
-	for mod in modlist:
-		#---always unload gromacs to ensure correct version
-		incoming['module']('unload','gromacs')
-		print('[STATUS] module load %s'%mod)
-		incoming['module']('load',mod)
-
-def get_gmx_paths(override=False,gmx_series=False,hostname=None):
-	"""
-	Copied from amx/calls.py.
-	!!! NOTE THIS NEEDS TO BE UPDATED.
-	"""
-	gmx4paths = {'grompp':'grompp','mdrun':'mdrun','pdb2gmx':'pdb2gmx','editconf':'editconf',
-		'genbox':'genbox','make_ndx':'make_ndx','genion':'genion','genconf':'genconf',
-		'trjconv':'trjconv','tpbconv':'tpbconv','vmd':'vmd','gmxcheck':'gmxcheck','gmx':'gmxcheck',
-		'trjcat':'trjcat'}
-	gmx5paths = {'grompp':'gmx grompp','mdrun':'gmx mdrun','pdb2gmx':'gmx pdb2gmx',
-		'editconf':'gmx editconf','genbox':'gmx solvate','make_ndx':'gmx make_ndx',
-		'genion':'gmx genion','trjconv':'gmx trjconv','genconf':'gmx genconf',
-		'tpbconv':'gmx convert-tpr','gmxcheck':'gmx check','vmd':'vmd','solvate':'gmx solvate','gmx':'gmx',
-		'trjcat':'gmx trjcat'}
-	#---note that we tacked-on "gmx" so you can use it to find the share folder using get_gmx_share
-	machine_config = get_machine_config(hostname=hostname)
-	#---check the config for a "modules" keyword in case we need to laod it
-	if 'modules' in machine_config: modules_load(machine_config)
-	#---basic check for gromacs version series
-	suffix = '' if 'suffix' not in machine_config else machine_config['suffix']
-	check_gmx = subprocess.Popen('gmx%s'%suffix,shell=True,executable='/bin/bash',
-		stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
-	if override and 'gmx_series' in machine_config: gmx_series = machine_config['gmx_series']
-	elif not gmx_series:
-		#---! is this the best way to search?
-		if not re.search('command not found',str(check_gmx[1])): gmx_series = 5
-		else:
-			output = subprocess.Popen('mdrun%s -g /tmp/md.log'%suffix,shell=True,
-				executable='/bin/bash',stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
-			if sys.version_info<(3,0): check_mdrun = ''.join(output)
-			else: check_mdrun = ''.join([i.decode() for i in output])
-			if re.search('VERSION 4',check_mdrun): gmx_series = 4
-			elif not override: raise Exception('gromacs is absent. make sure it is installed. '+
-				'if your system uses the `module` command, try loading it with `module load gromacs` or '+
-				'something similar. you can also add `modules` in a list to the machine configuration dictionary '+
-				'in your gromacs config file (try `make gromacs_config` to see where it is).')
-			else: print('[NOTE] preparing gmxpaths with override')
-	if gmx_series == 4: gmxpaths = dict(gmx4paths)
-	elif gmx_series == 5: gmxpaths = dict(gmx5paths)
-	else: raise Exception('gmx_series must be either 4 or 5')
-	#---! need more consistent path behavior here
-	#---modify gmxpaths according to hardware configuration
-	config = machine_config
-	if suffix != '': 
-		if gmx_series == 5:
-			for key,val in gmxpaths.items():
-				gmxpaths[key] = re.sub('gmx ','gmx%s '%suffix,val)
-		else: gmxpaths = dict([(key,val+suffix) for key,val in gmxpaths.items()])
-	if 'nprocs' in machine_config and machine_config['nprocs'] != None: 
-		gmxpaths['mdrun'] += ' -nt %d'%machine_config['nprocs']
-	#---use mdrun_command for quirky mpi-type mdrun calls on clusters
-	if 'mdrun_command' in machine_config: gmxpaths['mdrun'] = machine_config['mdrun_command']
-	#---if any utilities are keys in config we override and then perform uppercase substitutions from config
-	utility_keys = [key for key in gmxpaths if key in machine_config]
-	if any(utility_keys):
-		for name in utility_keys:
-			gmxpaths[name] = machine_config[name]
-			for key,val in machine_config.items(): 
-				gmxpaths[name] = re.sub(key.upper(),str(val),gmxpaths[name])
-		del name
-	#---even if mdrun is customized in config we treat the gpu flag separately
-	if 'gpu_flag' in machine_config: gmxpaths['mdrun'] += ' -nb %s'%machine_config['gpu_flag']	
-	#---export the gmxpaths to the state
-	if 'state' in globals(): state.gmxpaths = gmxpaths
-	return gmxpaths
-	
 def edrcheck(fn,debug=False):
 	"""
 	Given the path of an EDR file we return its start and end time.
@@ -349,18 +230,18 @@ def slice_trajectory(**kwargs):
 	traj = traj_keyfinder(*keys)
 	tail = ' -dump %d -s %s -f %s -o %s.gro%s'%(start,tpr,traj,outkey,group_flag)
 	if pbc != None: tail = tail + ' -pbc %s'%pbc
-	bash(gmxpaths['trjconv']+tail,cwd=postdir,inpipe='0\n')
+	bash(gmxpaths['trjconv']+tail,cwd=postdir,inpipe='0\n',scroll=False)
 	
 	#---convert relevant trajectories
 	start = time.time()
 	for ii,(outfile,cmd) in enumerate(cmdlist):
 		status('slicing trajectory',i=ii,looplen=len(cmdlist),start=start,tag='SLICE')
-		bash(cmd,cwd=postdir,inpipe='0\n')
+		bash(cmd,cwd=postdir,inpipe='0\n',scroll=False)
 	
 	#---concatenate remaining steps with no errors
 	valid_parts = range(len(cmdlist))
 	bash(gmxpaths['trjcat']+' -o %s.%s -f '%(outkey,output_format)+
-		' '.join(zip(*cmdlist)[0]),cwd=postdir)
+		' '.join(zip(*cmdlist)[0]),cwd=postdir,scroll=False)
 
 	#---delete extraneous files
 	#---! consider using a temporary directory although it's nice to have things onsite

@@ -2,7 +2,9 @@
 
 import os,collections,re
 
-from base.tools import status,delve
+#! from omni.base.tools import status,delve
+from ortho import delve
+from omni.base.tools import status
 from slicer import edrcheck
 
 class ParsedRawData:
@@ -41,7 +43,7 @@ class ParsedRawData:
 		for snum,(spotname,spot) in enumerate(self.spots.items()):
 			status('running the treeparser: %s,%s'%spotname,
 				i=snum,looplen=len(self.spots),tag='parse',width=65)
- 			self.treeparser(spotname,**spot)
+			self.treeparser(spotname,**spot)
 
 	def divy_keys(self,spot):
 		"""

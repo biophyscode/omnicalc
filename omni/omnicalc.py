@@ -8,12 +8,16 @@ Otherwise, parts of the workspace are passed to down to member instances.
 """
 
 import os,sys,re,glob,copy,json,time,tempfile
+#! note that I turned many "from base" into "from omni.base" then gave up and:
+if 'omni' not in sys.path: sys.path.insert(0,'omni')
 
-from config import read_config,bash
-from datapack import json_type_fixer
+#! from config import read_config,bash
+from ortho import read_config,bash,requires_python
+#! from datapack import json_type_fixer
 from base.tools import catalog,delve,str_or_list,str_types,status,unique_ordered
 from base.hypothesis import hypothesis
-from datapack import asciitree,delveset,dictsub,dictsub_sparse
+#! from datapack import treeview,delveset,dictsub,dictsub_sparse
+from ortho import treeview,delveset,dictsub,dictsub_sparse,json_type_fixer
 from structs import NameManager,Calculation,TrajectoryStructure,NoisyOmnicalcObject
 from base.autoplotters import inject_supervised_plot_tools
 from base.store import load,store
@@ -110,7 +114,7 @@ class MetaData:
 		"""Internal variable substitutions using the "+" syntax."""
 		# apply "+"-delimited internal references in the yaml file
 		for path,sub in [(i,j[-1]) for i,j in catalog(specs) if type(j)==list 
-			and type(j)==str and re.match('^\+',j[-1])]:
+			and type(j)==str and re.match(r'^\+',j[-1])]:
 			source = delve(variables,*sub.strip('+').split('/'))
 			point = delve(specs,*path[:-1])
 			point[path[-1]][point[path[-1]].index(sub)] = source
@@ -129,9 +133,10 @@ class MetaData:
 		allspecs = []
 		# load all YAML files
 		for fn in specs_files:
+			print(fn)
 			with open(fn) as fp: 
 				if (self.merge_method != 'override_factory' or 
-					not re.match('^meta\.factory\.',os.path.basename(fn))):
+					not re.match(r'^meta\.factory\.',os.path.basename(fn))):
 					try: allspecs.append(yaml.load(fp.read()))
 					except Exception as e:
 						raise Exception('failed to parse YAML (are you sure you have no tabs?): %s'%e)
@@ -166,6 +171,7 @@ class MetaData:
 				specs.update(**spec)
 		elif len(allspecs)==0: specs = {}
 		else: raise Exception('\n[ERROR] unclear meta specs merge method %s'%self.merge_method)
+		if not specs: specs = {}
 		return self.variables_unpacker(specs=specs,variables=specs.get('variables',{}))
 
 	def get_simulations_in_collection(self,*names):
@@ -442,8 +448,10 @@ class PostData(NoisyOmnicalcObject):
 			# the compute function will change the style from new to read after rewriting the dat file
 			store(obj={'error':'error'},name=os.path.basename(self.files['dat']),
 				path=self.dn,attrs={},verbose=False)
-		except: raise Exception('failed to prewrite file %s with PostData: %s'%(
-			self.files['dat'],self.__dict__))
+		except Exception as e:
+			print('error',e) 
+			raise Exception('failed to prewrite file %s with PostData: %s'%(
+				self.files['dat'],self.__dict__))
 		try:
 			# write a dummy spec file
 			with open(self.files['spec'],'w') as fp: 
@@ -822,7 +830,8 @@ class WorkSpace:
 		# the specifications folder is read only once per workspace, but specs can be refreshed
 		self.specs_folder = Specifications(specs_path=self.specs_path,
 			meta_cursor=self.meta_cursor,parent_cwd=self.cwd,
-			meta_filter=self.config.get('meta_filter',None))
+			meta_filter=self.config.get('meta_filter',None),
+			merge_method=self.config.get('merge_method','careful'))
 		# placeholders for children
 		for child in self._children: self.__dict__[child] = None
 		# the main compute loop for the workspace determines the execution function
@@ -835,7 +844,7 @@ class WorkSpace:
 	def prepare_namer(self):
 		"""Parse metadata and config to check for the short_namer."""
 		# users can set a "master" short_namer in the meta dictionary if they have a very complex
-		# ... naming scheme i.e. multiple spots with spotnames in the post names
+		#   naming scheme i.e. multiple spots with spotnames in the post names
 		self.short_namer = self.metadata.meta.get('short_namer',self.metadata.director.get('renamer',None))
 		if self.short_namer==None:
 			nspots = self.config.get('spots',{})
@@ -863,9 +872,13 @@ class WorkSpace:
 
 	def read_config(self):
 		"""Read the config and set paths."""
-		self.config = read_config(cwd=self.cwd)
+		self.config = read_config()
 		#! is this deprecated? use a better data structure?
-		self.paths = dict([(key,self.config[key]) for key in ['post_plot_spot','post_data_spot']])
+		require_keys = ['post_plot_spot','post_data_spot']
+		missing = [key for key in require_keys if key not in self.config]
+		if missing: 
+			raise Exception('failed to get the following keys from the config: %s'%missing)
+		self.paths = dict([(key,self.config[key]) for key in require_keys])
 		self.paths['spots'] = self.config.get('spots',{})
 		# hard-coded paths
 		self.postdir = self.paths['post_data_spot']
@@ -878,7 +891,7 @@ class WorkSpace:
 		fns = []
 		for (dirpath, dirnames, filenames) in os.walk(os.path.join(self.cwd,root)): 
 			fns.extend([dirpath+'/'+fn for fn in filenames])
-		search = [fn for fn in fns if re.match('^%s(?:\.py)?$'%name,os.path.basename(fn))]
+		search = [fn for fn in fns if re.match(r'^%s(?:\.py)?$'%name,os.path.basename(fn))]
 		if len(search)==0: 
 			raise Exception('cannot find a script for %s'%name)
 		elif len(search)>1: raise Exception('redundant matches: %s'%str(search))
@@ -1069,7 +1082,7 @@ class WorkSpace:
 			class DataPack:
 				"""A single portal to the upstream data. Under development."""
 				def __repr__(self):
-					asciitree(dict(data=dict([('%s (%d)'%(name,num),val) 
+					treeview(dict(data=dict([('%s (%d)'%(name,num),val) 
 						for num,(name,val) in enumerate(self.names)])))
 					return "DataPack: %s"%list(set(zip(*self.names)[0]))
 				def __init__(self,data,calc):
@@ -1325,7 +1338,7 @@ class WorkSpace:
 			sys.exit(1)
 		# make the slices
 		for snum,slice_spec in enumerate(slices_new):
-			asciitree(dict(slice=slice_spec))
+			treeview(dict(slice=slice_spec))
 			status('making slice %d/%d'%(snum+1,len(slices_new)),tag='slice')
 			make_slice_gromacs(postdir=self.postdir,**slice_spec)
 
@@ -1456,24 +1469,24 @@ class WorkSpace:
 		"""
 		Send standard tools to the calculation functions.
 		"""
-		#---! under development
-		#---MASTER LISTING OF STANDARD TOOLS
-		#---MDAnalysis
+		# MASTER LISTING OF STANDARD TOOLS
+		# always supply numpy
+		import numpy as np
+		mod.np = np
+		# MDAnalysis
 		import MDAnalysis
 		mod.MDAnalysis = MDAnalysis
-		#---looping tools
+		# looping tools
 		from base.tools import status,framelooper
 		from base.store import alternate_module,uniquify
 		mod.alternate_module = alternate_module
 		mod.uniquify = uniquify
 		mod.status = status
 		mod.framelooper = framelooper
-		#---parallel processing
+		# parallel processing
 		from joblib import Parallel,delayed
-		from joblib.pool import has_shareable_memory
 		mod.Parallel = Parallel
 		mod.delayed = delayed
-		mod.has_shareable_memory = has_shareable_memory
 
 	def get_calculation_function(self,calcname):
 		"""
@@ -1498,7 +1511,7 @@ class WorkSpace:
 		for jnum,job in enumerate(self.pending):
 			job.result.style = 'computing'
 			#! carefully print the result otherwise it double prints slice, calc
-			asciitree(dict(calculation={
+			treeview(dict(calculation={
 				'result':dict([(k,job.result.__dict__[k]) for k in ['files','spec_version','specs']]),
 				'slice_request':job.slice.__dict__,'calc':job.calc.__dict__,
 				'slice':job.slice_upstream.__dict__,}))
@@ -1546,7 +1559,7 @@ class WorkSpace:
 	def fail_report(self):
 		"""Tell the user which files were incomplete."""
 		#! this function is deprecated in favor of standard error reporting with warnings in blank dat files
-		asciitree(dict(incomplete_jobs=dict([('job %d: %s'%(jj+1,j.style),j.files) 
+		treeview(dict(incomplete_jobs=dict([('job %d: %s'%(jj+1,j.style),j.files) 
 			for jj,j in enumerate([i.result for i in self.pending 
 				if i.result.__dict__['style'] in ['computing','new']])])))
 		status('compute loop failure means there many be preallocated files listed above. '
@@ -1588,7 +1601,7 @@ class WorkSpace:
 					str(round(j['start'],2)  if j['start'] else '???').rjust(12,'.'),
 					str(round(j['stop'],2) if j['stop'] else '???').rjust(12,'.'))) 
 					for k,v in obj.items() for i,j in v.items()]) for name,obj in view_od])
-				asciitree(dict(simulations=collections.OrderedDict([(k,view[k]) 
+				treeview(dict(simulations=collections.OrderedDict([(k,view[k]) 
 					for k in sorted(view.keys())])))
 			# systematic view
 			else: 
@@ -1630,12 +1643,12 @@ class WorkSpace:
 			status('skipping pending computatations in case you are plotting swiftly',tag='warning')
 			return
 		elif self.queue_computes and automatic: 
-			asciitree(dict(pending_jobs=dict([('pending job %d'%(jj+1),
+			treeview(dict(pending_jobs=dict([('pending job %d'%(jj+1),
 				dict(calculation=j.calc.__dict__,slice=j.slice.__dict__)) 
 				for jj,j in enumerate(self.queue_computes)])))
 			status('there are %d incomplete jobs (see above)'%len(
 				self.queue_computes),tag='status')
-			asciitree(dict(pending_calculations=list(set([i.calc.name for i in self.queue_computes]))))
+			treeview(dict(pending_calculations=list(set([i.calc.name for i in self.queue_computes]))))
 			# halt the process and drop into the debugger in order to check out the jobs
 			if self.debug=='compute':
 				status('welcome to the debugger. check out self.queue_computes to see pending calculations. '
@@ -1687,6 +1700,7 @@ class WorkSpace:
 ### INTERFACE FUNCTIONS
 ### note that these are imported by omni/cli.py and exposed to makeface
 
+@requires_python('yaml','h5py')
 def compute(debug=False,debug_slices=False,meta=None,back=False):
 	if back: 
 		from base.tools import backrun
@@ -1694,12 +1708,16 @@ def compute(debug=False,debug_slices=False,meta=None,back=False):
 	else:
 		status('generating workspace for compute',tag='status')
 		work = WorkSpace(compute=True,meta_cursor=meta,debug=debug)
+
 def plot(*args,**kwargs):
 	status('generating workspace for plot',tag='status')
 	work = WorkSpace(plot=True,plot_args=args,plot_kwargs=kwargs)
+
 def go(*args,**kwargs): plot(*args,**kwargs)
+
 def look(*args,**kwargs):
 	work = WorkSpace(look=dict(args=args,kwargs=kwargs))
+
 def clear_stale(meta=None):
 	"""Check for stale jobs."""
 	work = WorkSpace(compute=True,meta_cursor=meta,debug='stale')
@@ -1720,6 +1738,6 @@ def clear_stale(meta=None):
 			except: status('failed to delete %s'%spec_fn,tag='warning')
 		stales.append(dat_fn)
 	if stales:
-		asciitree({'cleaned files':sorted(stales)})
+		treeview({'cleaned files':sorted(stales)})
 		status('you can continue with `make compute` now. '
 			'we cleaned up stale dat files and corresponding spec files listed above')

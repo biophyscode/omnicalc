@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import os,sys,re,collections
-from base.tools import status,Observer
+from omni.base.tools import status,Observer
 
 """
 AUTOPLOTTERS
@@ -194,7 +194,7 @@ def inject_supervised_plot_tools(out,mode='supervised',silent=False):
 	#---tell the user which variables are automagically loaded
 	if silent: return
 	status('the following variables are loaded into your plot script environment',tag='note')
-	from datapack import asciitree
+	from datapack import treeview
 	def key_types(obj):
 		"""Organize injected variables for the user."""
 		if hasattr(obj,'__name__') and obj.__name__ in ['numpy']: return 'external'
@@ -219,4 +219,4 @@ def inject_supervised_plot_tools(out,mode='supervised',silent=False):
 					report[name][key] = str(val)
 				elif key in ['str_types']: report[name][key] = str(val)
 				else: report[name][key] = val
-	asciitree(dict({'plot_environment':report}))
+	treeview(dict({'plot_environment':report}))

@@ -7,7 +7,7 @@ Resembles the automatic documentation from AUTOMACS minus the automatic inclusio
 
 import os,sys,re,glob,subprocess,shutil,datetime
 from makeface import strip_builtins
-from datapack import asciitree
+from datapack import treeview
 from sphinx_auto import makefile,conf_py,conf_master_py
 
 __all__ = ['docs']

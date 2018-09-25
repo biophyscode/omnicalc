@@ -7,12 +7,13 @@ OMNICALC DATA STRUCTURES
 import os,sys,re,copy,glob
 
 from base.tools import catalog
-from datapack import asciitree,delveset,delve,str_types,dictsub,json_type_fixer
+#! from datapack import treeview,delveset,delve,str_types,dictsub,json_type_fixer
+from ortho import treeview,delveset,delve,str_types,dictsub,json_type_fixer
 
 class NoisyOmnicalcObject:
 	def __repr__(self):
 		"""Readable debugging."""
-		asciitree({self.__class__.__name__:self.__dict__})
+		treeview({self.__class__.__name__:self.__dict__})
 		return '<%s instance at 0x%x>'%(self.__class__.__name__,id(self))
 
 class OmnicalcDataStructure(NoisyOmnicalcObject):
@@ -41,7 +42,7 @@ class OmnicalcDataStructure(NoisyOmnicalcObject):
 		self.style = self.classify(self.data)
 
 	types_map = {'string':str_types,'number':[int,float],
-		'bool':[bool,None],'list':[list],'str_or_list':str_types+[list]}
+		'bool':[bool,None],'list':[list],'str_or_list':list(str_types)+[list]}
 	def type_checker(self,v,t): 
 		# lists restruct is to specific options
 		if type(t)==list: return v in t

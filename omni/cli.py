@@ -6,32 +6,22 @@ Omnicalc command-line interface.
 
 from __future__ import print_function
 
-# expose interface functions from omnicalc.py as well
-__all__ = [
-	'locate','set_config','setup','clone_calcs',
-	'blank_meta','audit','go',
-	# interface functions from omnicalc
-	'compute','plot','look','clear_stale',
-	#! temporary
-	'default_spot']
+# universal listing of all required packages
+required_python_packages = (
+	'yaml','h5py','joblib','matplotlib>2.0.0')
+
+# functions exposed to the command line
+if 1:
+	__all__ = [
+		'setup','clone_calcs',
+		'blank_meta','audit','go',
+		'compute','plot','look','clear_stale',
+		#! temporary
+		'default_spot']
 
 import os,sys,re
-from ortho import read_config,write_config,bash
-
-# note that omni/cli.py is imported by ortho and hence requires
-#   the following absolute import from the root
-from omni.logo import logo
-
-from omni.omnicalc import compute,plot,look,go,clear_stale
-
-default_config = {'commands': ['omni/cli.py'],'commands_aliases': [('set','set_config')]}
-
-def locate(keyword):
-	"""
-	Find a function.
-	"""
-	os.system((r'find ./ -name "*.py" | '
-		r'xargs egrep --color=always "(def|class) \w*%s\w*"'%keyword))
+from ortho import read_config,write_config,bash,requires_python,treeview,status
+#from omni.omnicalc import Workspace,load
 
 def setup():
 	"""
@@ -47,6 +37,7 @@ def clone_calcs(source):
 	"""
 	Clone a calculations repository.
 	"""
+	#! replace with sync from ortho
 	config = read_config()
 	if 'calculations_repo' in config and not os.path.isdir('calcs/.git'):
 		raise Exception('config has a calculations repo registered but we cannot find calcs/.git')
@@ -67,7 +58,6 @@ if False:
 	collections: {}
 	plots: {}
 	""".strip()
-
 	def blank_meta(make_template=True):
 		"""
 		Set up an empty specs container. You can opt to only make the specs folder in the event that
@@ -77,17 +67,17 @@ if False:
 		if make_template:
 			if not os.path.isfile('calcs/specs/meta.yaml'):
 				with open('calcs/specs/meta.yaml','w') as fp: fp.write(calcs_template)
+	def audit(debug=False,source='calcs/auditor.py'):
+		"""
+		Command-line interface to an auditor for tracking the status of different calculations.
+		"""
+		if not os.path.isfile(source): raise Exception('requires source code at %s'%source)
+		else: 
+			from makeface import import_remote
+			auditor = import_remote(source)
+			auditor['CalcsAuditor'](debug=debug)
 
-def audit(debug=False,source='calcs/auditor.py'):
-	"""
-	Command-line interface to an auditor for tracking the status of different calculations.
-	"""
-	if not os.path.isfile(source): raise Exception('requires source code at %s'%source)
-	else: 
-		from makeface import import_remote
-		auditor = import_remote(source)
-		auditor['CalcsAuditor'](debug=debug)
-
+#!!! temporary. needs better coordination with factory!
 def default_spot(spot):
 	#! temporary until a better method
 	config = read_config()
@@ -97,3 +87,101 @@ def default_spot(spot):
 	spots['sims']['spot_directory'] = os.path.basename(spot)
 	config['spots'] = spots
 	write_config(config)
+
+###
+### INTERFACE FUNCTIONS
+### note that these are imported by omni/cli.py and exposed to makeface
+
+@requires_python(*required_python_packages)
+def plot(*args,**kwargs):
+	status('generating workspace for plot',tag='status')
+	# since cli.py is inside omnicalc, this import must be just in time here
+	from omni import WorkSpace
+	work = WorkSpace(plot=True,plot_args=args,plot_kwargs=kwargs)
+
+@requires_python(*required_python_packages)
+def analysis(script):
+	"""Standard analysis environment called with `make go script=calcs/script_name.py`."""
+	from ortho import interact
+	print('status','preparing analysis environment')
+	from omni.base.analysis_hooks import omni_analysis_hook
+	# prepare the hooks to reexec for replot
+	from ortho.reexec import ReExec
+	class ReExecOmni(ReExec):
+		def reload(self):
+			out = self.namespace
+			out['__name__'] = 'ortho.reexec'
+			self.get_text()
+			exec(self.text,out,out)
+			exec('control.reload()',out,out)
+		def main(self):
+			out = self.namespace
+			out['__name__'] = '__main__'
+			self.get_text()
+			exec(self.text,out,out)
+		def replot(self):
+			out = self.namespace
+			out['__name__'] = 'ortho.reexec'
+			self.get_text()
+			exec(self.text,out,out)	
+			exec('control.autoplot()',out,out)
+			out['__name__'] = '__main__'
+	# names in the commands list must be in the subclass above and cannot
+	#   include the standard do or redo names
+	kwargs = {'reexec_class':ReExecOmni,'commands':['main','replot','reload']}
+	# the coda is passed along for the first execution of the script
+	# otherwise the commands in ReExecOmni will rerun things from interact
+	interact(hooks=(omni_analysis_hook,),script=script,msg='',
+		coda='control.reload()\ncontrol.autoplot()',**kwargs)
+
+def go(*args,**kwargs): 
+	"""Alias for plot. Calls the standard analysis pipeline."""
+	if not args and kwargs.keys()==['script']: analysis(**kwargs)
+	else: plot(*args,**kwargs)
+
+def look(*args,**kwargs):
+	# since cli.py is inside omnicalc, this import must be just in time here
+	from omni import WorkSpace
+	work = WorkSpace(look=dict(args=args,kwargs=kwargs))
+
+def clear_stale(meta=None):
+	"""Check for stale jobs."""
+	# since cli.py is inside omnicalc, this import must be just in time here
+	from omni import WorkSpace,load
+	work = WorkSpace(compute=True,meta_cursor=meta,debug='stale')
+	fn_sizes = dict([((v.files['dat'],v.files['spec']),os.path.getsize(v.files['dat'])) 
+		for k,v in work.post.posts().items()])
+	targets = [(dat_fn,spec_fn) for (dat_fn,spec_fn),size in fn_sizes.items() if size<=10**4]
+	stales = []
+	for dat_fn,spec_fn in targets:
+		data = load(os.path.basename(dat_fn),cwd=os.path.dirname(dat_fn))
+		if data.get('error',False)=='error': 
+			# one of very few places where we delete files because we are sure they are gabage
+			# ... the other place being the dat file deletion before writing the final file
+			status('removing stale dat file %s'%dat_fn)
+			try: os.remove(dat_fn)
+			except: status('failed to delete %s'%dat_fn,tag='warning')
+			status('removing stale spec file %s'%spec_fn)
+			try: os.remove(spec_fn)
+			except: status('failed to delete %s'%spec_fn,tag='warning')
+		stales.append(dat_fn)
+	if stales:
+		treeview({'cleaned files':sorted(stales)})
+		status('you can continue with `make compute` now. '
+			'we cleaned up stale dat files and corresponding spec files listed above')
+
+@requires_python(*required_python_packages)
+def compute(debug=False,debug_slices=False,meta=None,back=False):
+	"""
+	Main compute loop runs from here.
+	"""
+	# automatically clear stale
+	clear_stale()
+	if back: 
+		from base.tools import backrun
+		backrun(command='make compute',log='log-compute')
+	else:
+		status('generating workspace for compute',tag='status')
+		# since cli.py is inside omnicalc, this import must be just in time here
+		from omni import WorkSpace
+		work = WorkSpace(compute=True,meta_cursor=meta,debug=debug)

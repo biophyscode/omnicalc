@@ -7,21 +7,22 @@ We consolidate all omnicalc conditionals here so they can access the global name
 Otherwise, parts of the workspace are passed to down to member instances.
 """
 
+from __future__ import print_function
 import os,sys,re,glob,copy,json,time,tempfile
-#! note that I turned many "from base" into "from omni.base" then gave up and:
-if 'omni' not in sys.path: sys.path.insert(0,'omni')
 
 #! from config import read_config,bash
-from ortho import read_config,bash,requires_python
+from ortho import read_config,bash,requires_python,importer,tracebacker,listify
+from ortho import catalog,delve,json_type_fixer,hypothesis,unique_ordered
+from ortho import status,treeview,str_types,requires_python
+from ortho import dictsub,dictsub_sparse
 #! from datapack import json_type_fixer
-from base.tools import catalog,delve,str_or_list,str_types,status,unique_ordered
-from base.hypothesis import hypothesis
+#! from base.tools import catalog,delve,listify,str_types,status,unique_ordered
+#! from base.hypothesis import hypothesis
 #! from datapack import treeview,delveset,dictsub,dictsub_sparse
-from ortho import treeview,delveset,dictsub,dictsub_sparse,json_type_fixer
-from structs import NameManager,Calculation,TrajectoryStructure,NoisyOmnicalcObject
-from base.autoplotters import inject_supervised_plot_tools
-from base.store import load,store
-from makeface import tracebacker
+#! from ortho import treeview,delveset,dictsub,dictsub_sparse,json_type_fixer
+from .structs import NameManager,Calculation,TrajectoryStructure,NoisyOmnicalcObject
+#! from .base.autoplotters import inject_supervised_plot_tools
+from .base.store import load,store
 
 global namer
 # the namer is used throughout
@@ -33,12 +34,15 @@ class WorkSpaceState:
 		self.plot = kwargs.pop('plot',False)
 		self.look = kwargs.pop('look',False)
 		self.checkup = kwargs.pop('checkup',False)
+		#! analysis will supercede plot as a single entry point for new plot styles
+		self.analysis = kwargs.pop('analysis',False)
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		# the main compute loop is decided here
 		if self.compute and not self.plot: self.execution_name = 'compute'
 		elif self.plot and not self.compute: self.execution_name = 'plot'
 		elif self.look and not self.compute: self.execution_name = 'look'
 		elif self.checkup and not self.compute and not self.look: self.execution_name = 'checkup'
+		elif self.analysis: self.execution_name = 'analysis'
 		else: 
 			msg = ('The WorkSpaceState cannot determine the correct state. '
 				'Something has gone horribly wrong or development is incomplete.')
@@ -86,10 +90,33 @@ class Specifications:
 			else:
 				raise Exception('under development. need to process glob in meta="calcs/specs/*name.yaml"')	
 
+	@requires_python('yaml')
 	def interpret(self):
 		"""Main loop for interpreting specs."""
+		import yaml
 		# refresh the list of specs files
 		self.identify_specs_files()
+		# trawl for hooks which allow you to interpret the specs files differently
+		#! should this kind of hook method be standardized?
+		specs_hooks = {}
+		for fn in self.specs_files:
+			with open(fn) as fp: specs_hooks[fn] = yaml.load(fp)
+		# unroll everything
+		paths = list(catalog(specs_hooks))
+		# find the parser in the director, parser location in these yaml files
+		alt_parser = [(path,val) for path,val in paths if path[1:3]==['director','parser']]
+		# the parser can only be given once
+		if alt_parser and len(alt_parser)!=1:
+			raise Exception('found non-unique alternative parsers: %s'%alt_parser)
+		elif alt_parser:
+			parser_fn = os.path.abspath(alt_parser[0][1])
+			if not os.path.isfile(parser_fn):
+				raise Exception('cannot find parser given by director,parser in %s'%(
+					alt_parser[0][0][0],parser_fn))
+			mod = importer(parser_fn)
+			if 'MetaData' not in mod: 
+				raise Exception('specs parser %s does not contain a MetaData class'%alt_parser)
+			MetaData = mod['MetaData']
 		self.specs = MetaData(specs_files=self.specs_files,merge_method=self.merge_method)
 		# return the specs object to the workspace
 		return self.specs
@@ -127,13 +154,13 @@ class MetaData:
 		#! need to implement internal references (in variables) here?
 		return specs
 
+	@requires_python('yaml')
 	def specs_to_metadata(self,specs_files):
 		"""Parse the files in the specs_files list and generate the metadata."""
 		import yaml
 		allspecs = []
 		# load all YAML files
 		for fn in specs_files:
-			print(fn)
 			with open(fn) as fp: 
 				if (self.merge_method != 'override_factory' or 
 					not re.match(r'^meta\.factory\.',os.path.basename(fn))):
@@ -293,7 +320,7 @@ class Calculations:
 		calc_names = [calc]
 		#! the following is under development and will need to be updated after fully-linking calculation 
 		#! ... loops but for now we protect against hanging
-		from base.timer import time_limit
+		from ortho import time_limit
 		try:
 			with time_limit(300): 
 
@@ -344,7 +371,7 @@ class Calculations:
 		"""
 		sns = kwargs.pop('sns',[])
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
-		sns_overrides = None if not sns else list(str_or_list(sns))
+		sns_overrides = None if not sns else list(listify(sns))
 		# jobs are nameless in a list
 		jobs = []
 		# loop over calculations
@@ -365,7 +392,7 @@ class Calculations:
 					if not calc.raw['collections']: 
 						raise Exception('calculation %s needs collections'%calc.name)
 					sns = self.specs.get_simulations_in_collection(
-						*str_or_list(calc.raw['collections']))
+						*listify(calc.raw['collections']))
 				# custom simulation names request will whittle the sns list here
 				else: sns = list(sns_overrides)
 				group_name = calc.raw.get('group',self.infer_group(calc=calckey))
@@ -394,6 +421,7 @@ def empty_dict_to_null(series):
 		elif type(v)==dict: empty_dict_to_null(v)
 		else: pass
 
+@requires_python('h5py')
 class PostData(NoisyOmnicalcObject):
 
 	"""
@@ -761,7 +789,7 @@ class PlotSpec:
 			#! ... for example the distance_ranges_by_metric key in ptdins.yaml
 			#! should we remove items from specs as they are processed or otherwise enforce a data structure?
 			# use the workspace to fill in calculations that are not specified by dictionaries
-			if type(self.request_calc) in str_types+[list]: 
+			if isinstance(self.request_calc,str_types+(list,)): 
 				upstream = self.work.collect_upstream_calculations(self.request_calc)
 				# reformulate calculations for the plotter
 				self.request_calc = dict([(k,v.specs) for k,v in upstream.items()])
@@ -777,10 +805,10 @@ class PlotSpec:
 				raise Exception('cannot assemble collections for plot %s after falling back to calcs'%(
 					self.plotname))
 		elif unregistered_plots: pass
-		else: raise Exception('cannot find plotname %s in plots or calculations metadata'%self.plotname)
+		else: raise Exception('cannot find plotname "%s" in plots or calculations metadata'%self.plotname)
 	def sns(self):
 		return unique_ordered(self.metadata.get_simulations_in_collection(
-			*str_or_list(self.collections)))
+			*listify(self.collections)))
 
 class PlotLoaded(dict):
 	def __init__(self,calcnames,sns): 
@@ -816,7 +844,7 @@ class WorkSpace:
 		self.meta_cursor = kwargs.pop('meta_cursor',
 			self.plot_kwargs.pop('meta_cursor',self.plot_kwargs.pop('meta',None)))
 		self.is_live = kwargs.pop('is_live',False)
-		debug_flags = [False,'slices','compute','stale','missing']
+		debug_flags = [False,'slices','compute','stale','missing','external']
 		self.debug = kwargs.pop('debug',False)
 		if self.debug not in debug_flags: raise Exception('debug argument must be in %s'%debug_flags)
 		# determine the state (kwargs is passed by reference so we clear it)
@@ -908,7 +936,7 @@ class WorkSpace:
 		Given an "upstream" request we assemble a set of calculations for either plotload or compute.
 		"""
 		# if requests is a single string then we search for a single calculation with that name
-		if type(requests) in str_types: targets = [Calculation(name=requests)]
+		if isinstance(requests,str_types): targets = [Calculation(name=requests)]
 		# if requests is a list then we find a single unique calculation under that name
 		elif type(requests)==list: targets = [Calculation(name=name) for name in requests]
 		elif type(requests)==dict:
@@ -940,8 +968,12 @@ class WorkSpace:
 			else: 
 				#! last attempt to check for the right calculations. under development in curvature project
 				if len(candidates)==1: packaged[target.name] = candidates[0]
-				else: raise Exception('failed to uniquely identify a requested calculation in the upstream '+
-					'calculations (found %d matches): %s'%(len(culled),target.__dict__))
+				else: 
+					print('status','debugging calculations below')
+					print(culled)
+					raise Exception('failed to uniquely identify a requested calculation in the upstream '+
+						'calculations (found %d matches, see above) for target: %s'%(
+							len(culled),target.__dict__))
 		return packaged
 
 	def connect_upstream_calculation(self,sn,request):
@@ -965,16 +997,19 @@ class WorkSpace:
 		"""
 		whittle = kwargs.pop('whittle',None)
 		collections_alt = [i for j in [self.metadata.collections[c] 
-			for c in str_or_list(kwargs.pop('collections',[]))] for i in j]
+			for c in listify(kwargs.pop('collections',[]))] for i in j]
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		# plotspec is first instantiated by Workspace.plot and it is important to replace it after
 		# ... running plotload so that items like Workspace.sns() still return the correct result
-		plotname_cursor = str(self.plotname)
+		plotname_cursor = self.plotname
 		# make sure you have the right plotname
 		if plotname!=plotname_cursor:
+			# plotspec might be null in the analysis loop so we set it for the first time here
+			if self.plotname==None: self.plotname = plotname_cursor = plotname
 			#! ensure changes to the plotname do not change the simulations we require
 			#! ... note that this might not be necessary since we might want to change simulations
 			#! ... for example when plotting membrane heights with and without protein hulls from
+			#! note also that this check is not necessary on the first execution from the analysis loop
 			# the plotname is needed by other functions namely self.sns
 			self.plotname = plotname
 			# update the plotspec if the plotname changes. this also updates the upstream pointers
@@ -1034,7 +1069,7 @@ class WorkSpace:
 		bundle = dict([(k,PlotLoaded(calcnames=calcnames,sns=sns)) for k in ['data','calc']])
 		for cnum,(calcname,request) in enumerate(upstream_requests.items()):
 			for snum,sn in enumerate(sns):
-				status('caching upstream data from calculation %s, simulation %s'%(calcname,sn),
+				status('caching %s: %s'%(calcname,sn),
 					i=snum+len(sns)*cnum,looplen=len(sns)*len(upstream_requests),tag='load')
 				if calcname not in bundle['data']: bundle['data'][calcname] = {}
 				job = self.connect_upstream_calculation(request=request,sn=sn)
@@ -1060,9 +1095,9 @@ class WorkSpace:
 						for k in ['start','end','skip']]))
 				except: pass
 			bundle['calc'][calcname] = {'calcs':{'specs':job.calc.specs}}
-		# data are returned according to a versioning system
+		# data are returned according to a versioning system, default 2 on ortho branches
 		plotload_version = self.plotspec.get('plotload_version',
-			self.metadata.director.get('plotload_output_style',1))
+			self.metadata.director.get('plotload_output_style',2))
 		# original plot codes expect a data,calc pair from this function
 		if plotload_version==1: 
 			# remove calculation name from the nested dictionary if only one
@@ -1120,14 +1155,17 @@ class WorkSpace:
 							self.this = dict([(i,self.data[indices[0]][i]['data']) 
 								for i in self.data[indices[0]]])
 							return
-						else: raise Exception('set requires a dictionary to match names')
-					# select the calculation by key,value pairs in select where the key is the path in specs
+						else: raise Exception('set requires a dictionary (kwarg select) to match names')
+					# previously key,value pairs in select where the key is the path in specs
+					# updated to send select to catalog (instead of expecting paths,values in select.items()) 
+					#   so we now get the paths automatically from a dict structure that should resemble
+					#   the structure of the calculation specs themselves
 					candidates,indices = [],[]
 					for index,(name,detail) in enumerate(self.names):
 						if name==calcname:
 							# delve may fail on invalid keys so we only try
 							try: 
-								if all([delve(detail,*i)==j for i,j in select.items()]):
+								if all([delve(detail,*tuple(i))==j for i,j in catalog(select)]):
 									candidates.append(name)
 									indices.append(index)
 							except: pass
@@ -1144,13 +1182,14 @@ class WorkSpace:
 						return
 			outgoing = DataPack(**bundle)
 		else: raise Exception('invalid plotload_version: %s'%plotload_version)
-		# since we may run plotload several times we always return to the original plot specificaiton
+		# since we may run plotload several times we always return to the original plot specification
 		self.plotspec = PlotSpec(metadata=self.metadata,plotname=plotname_cursor,
 			calcs=self.calcs,workspace=self)
 		return outgoing
 
 	def plot_legacy(self,plotname,meta=None,autoplot=False,look=False):
 		"""Legacy plotting mode."""
+		raise Exception('legacy plots are deprecated in ortho')
 		# when looking from the factory we need a plotspec
 		if look: 
 			self.plotspec = PlotSpec(metadata=self.metadata,plotname=plotname,
@@ -1180,7 +1219,10 @@ class WorkSpace:
 		header_script = 'omni/base/header.py'
 		meta_out = ' '.join(meta) if type(meta)==list else ('null' if not meta else meta)
 		# call the header script with a flag for legacy execution
-		bash('./%s %s %s%s'%(header_script,script_name,plotname,'' if autoplot else ' NO_AUTOPLOT'))
+		#bash('./%s %s %s%s'%(header_script,script_name,plotname,'' if autoplot else ' NO_AUTOPLOT'))
+		#bash('python -iuttB %s %s %s%s'%(header_script,script_name,plotname,'' if autoplot else ' NO_AUTOPLOT'))
+		#! note that we cannot use ortho.bash here. what a bummer!
+		#! os.system('python -iuttB %s %s %s%s'%(header_script,script_name,plotname,'' if autoplot else ' NO_AUTOPLOT'))
 
 	def plot_prepare(self):
 		"""Rename internal variables for brevity in plot scripts."""
@@ -1195,48 +1237,48 @@ class WorkSpace:
 		Supervised plot execution.
 		This largely mimics omni/base/header.py.
 		"""	
-		#---plotspecs include args/kwargs coming in from the command line so users can make choices there
+		# plotspecs include args/kwargs coming in from the command line so users can make choices there
 		plotspecs = kwargs.pop('plotspecs',{})
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
-		#---prepare the environment for the plot
+		# prepare the environment for the plot
 		out = dict(work=self,plotname=plotname)
 		outgoing_locals = dict()
-		#---per header.py we have to add to the path
+		# per header.py we have to add to the path
 		for i in ['omni','calcs']:
 			if i not in sys.path: sys.path.insert(0,i)
-		#---inject supervised plot functions into the outgoing environment
+		# inject supervised plot functions into the outgoing environment
 		inject_supervised_plot_tools(out)
-		#---execute the plot script
+		# execute the plot script
 		plot_script_fn = self.plotspec.script
 		script = self.find_script(plot_script_fn)
 		with open(script) as fp: code = fp.read()
-		#---handle builtins before executing. we pass all keys in out through builtins for other modules
+		# handle builtins before executing. we pass all keys in out through builtins for other modules
 		import builtins
 		builtins._plotrun_specials = out.keys()
 		for key in out: builtins.__dict__[key] = out[key]
-		#---tell ths script if we are live. you can run supervised or legacy from the notebook
+		# tell ths script if we are live. you can run supervised or legacy from the notebook
 		out.update(is_live=self.is_live)
-		#---supervised execution is noninteractive and runs plots based on plotspecs
-		#---...hence we run the script as per the replot() function in omni/base/header.py
-		#---...see the header function for more detail
-		#---run the script once with name not main (hence no global execution allowed)
+		# supervised execution is noninteractive and runs plots based on plotspecs
+		#   hence we run the script as per the replot() function in omni/base/header.py
+		#   see the header function for more detail
+		# run the script once with name not main (hence no global execution allowed)
 		local_env = {'__name__':'__main__'}
 		exec(compile(code,script,'exec'),out,local_env)
-		#---we need to get plot script globals back into globals in the autoplot so we 
-		#---...pass locals into out which goes to autoplot then to globals if the mode is supervised
+		# we need to get plot script globals back into globals in the autoplot so we 
+		#   pass locals into out which goes to autoplot then to globals if the mode is supervised
 		out.update(**local_env)
 		plotrun = out['plotrun']
-		#---the loader is required for this method
+		# the loader is required for this method
 		self.plot_prepare()
 		plotrun.loader()
-		#---note that we have to add locals from the loader into globals here
-		#---note also that you cannot use "locals()" to route variables from one function into the local
+		# note that we have to add locals from the loader into globals here
+		# note also that you cannot use "locals()" to route variables from one function into the local
 		out.update(**plotrun.residue)
-		#---intervene to interpret command-line arguments
+		# intervene to interpret command-line arguments
 		kwargs_plot = plotspecs.pop('kwargs',{})
-		#---command line arguments that follow the plot script name must name the functions
+		# command line arguments that follow the plot script name must name the functions
 		plotrun.routine = plotspecs.pop('args',None)
-		#---change empty tuple to None because that means "everything" in plotrun
+		# change empty tuple to None because that means "everything" in plotrun
 		if plotrun.routine==(): plotrun.routine = None
 		if plotspecs: raise Exception('unprocessed plotspecs %s'%plotspecs)
 		if kwargs_plot: raise Exception('unprocessed plotting kwargs %s'%kwargs_plot)
@@ -1268,7 +1310,7 @@ class WorkSpace:
 		for job in jobs:
 			# check slices on disk
 			for key in ['structure','trajectory']:
-				for fn in str_or_list(job.slice.data[key]):
+				for fn in listify(job.slice.data[key]):
 					fn_abs = os.path.join(self.postdir,fn)
 					if not os.path.isfile(fn_abs):
 						raise Exception('readymade file not found %s'%fn_abs)
@@ -1352,7 +1394,7 @@ class WorkSpace:
 		# track spec files for each basename
 		spec_toc = {}
 		for fn in post_fns:
-			basename = re.match('^(.+)\.n\d+\.spec$',fn).group(1)
+			basename = re.match(r'^(.+)\.n\d+\.spec$',fn).group(1)
 			if basename not in spec_toc: spec_toc[basename] = []
 			spec_toc[basename].append(fn)
 		for k,v in spec_toc.items(): spec_toc[k] = sorted(v)
@@ -1401,7 +1443,7 @@ class WorkSpace:
 			else: name_style_this = name_style
 			basename = self.namer.basename(job=job,name_style=name_style_this)
 			# prepare suffixes for new dat files
-			keys = [int(re.match('^%s\.n(\d+)\.spec$'%basename,key).group(1)) 
+			keys = [int(re.match(r'^%s\.n(\d+)\.spec$'%basename,key).group(1)) 
 				for key in spec_toc.get(basename,[]) if re.match('^%s'%basename,key)]
 			if keys and not sorted([int(i) for i in keys])==list(range(len(keys))):
 				raise Exception('non sequential keys found for data objects prefixed with %s'%basename)
@@ -1471,6 +1513,8 @@ class WorkSpace:
 		"""
 		# MASTER LISTING OF STANDARD TOOLS
 		# always supply numpy
+		#! PHASING THIS OUT
+		return
 		import numpy as np
 		mod.np = np
 		# MDAnalysis
@@ -1478,11 +1522,15 @@ class WorkSpace:
 		mod.MDAnalysis = MDAnalysis
 		# looping tools
 		from base.tools import status,framelooper
+		from base.compute_loop import basic_compute_loop
 		from base.store import alternate_module,uniquify
+		from base.timer import checktime
 		mod.alternate_module = alternate_module
 		mod.uniquify = uniquify
 		mod.status = status
 		mod.framelooper = framelooper
+		mod.basic_compute_loop = basic_compute_loop
+		mod.checktime = checktime
 		# parallel processing
 		from joblib import Parallel,delayed
 		mod.Parallel = Parallel
@@ -1497,7 +1545,7 @@ class WorkSpace:
 		script_name = self.find_script(calcname)
 		#---! needs python3
 		sys.path.insert(0,os.path.dirname(script_name))
-		mod = __import__(re.sub('\.py$','',os.path.basename(script_name)),locals(),globals())
+		mod = __import__(re.sub(r'\.py$','',os.path.basename(script_name)),locals(),globals())
 		#---attach standard tools
 		self.attach_standard_tools(mod)
 		if not hasattr(mod,calcname): raise Exception(('performing calculation "%s" and we found '+
@@ -1525,7 +1573,7 @@ class WorkSpace:
 			#! note that this is where you would run a custom importer for non-MD data
 			if job.slice.style=='readymade':
 				struct_file = os.path.join(self.postdir,job.slice_upstream.data['structure'])
-				traj_file = [os.path.join(self.postdir,i) for i in str_or_list(
+				traj_file = [os.path.join(self.postdir,i) for i in listify(
 					job.slice_upstream.data['trajectory'])]
 			elif job.slice.style=='slice_request_named':
 				#! post directory is hard-coded here
@@ -1546,7 +1594,10 @@ class WorkSpace:
 			# redundant keywords are structure/grofile and trajectory/trajfile
 			outgoing = dict(grofile=struct_file,trajfile=traj_file,
 				structure=struct_file,trajectory=traj_file,**outgoing)
+			# time the function call
+			start_job_time = time.time()
 			result,attrs = function(**outgoing)
+			status('compute function lasted %.1fmin'%((time.time()-start_job_time)/60.),tag='time')
 			# we remove the blank dat file before continuing. one of very few delete commands
 			if job.result.style!='computing': raise Exception('attmpting to compute a stale job')
 			os.remove(job.result.files['dat'])
@@ -1658,17 +1709,18 @@ class WorkSpace:
 				ipdb.set_trace()
 				sys.exit(1)
 			elif self.debug=='stale':
-				raise Exception('cannot check for stale jobs when there are pending calculations')
+				print('warning','cannot check for stale jobs when there are pending calculations')
 			else: 
 				# removed interrupt and error handling in favor of warnings in blank dat files caught by plot
 				self.prepare_compute(self.queue_computes)
+				if self.debug=='external':return
 				self.run_compute()
 		# no compute jobs
 		else: pass
 
 	def do_autoplot(self):
-		"""Easy way to see if this plot is an autoplot."""
-		return self.plotspec.get('autoplot',self.metadata.director.get('autoplot',False))
+		"""Easy way to see if this plot is an autoplot. Default is to autoplot"""
+		return self.plotspec.get('autoplot',self.metadata.director.get('autoplot',True))
 
 	def plot(self):
 		"""
@@ -1681,6 +1733,9 @@ class WorkSpace:
 		self.prelim()
 		# the plotname is needed by other functions namely self.sns
 		self.plotname = plotname
+
+		###!!! raise Exception('check below')
+
 		# once we have a plotname we can generate a plotspec
 		self.plotspec = PlotSpec(metadata=self.metadata,plotname=self.plotname,
 			calcs=self.calcs,workspace=self)
@@ -1692,52 +1747,28 @@ class WorkSpace:
 			# trailing arguments to plot indicate functions we want to run and trigger a non-interactive mode
 			if do_autoplot and len(args)>0:
 				self.plot_supervised(plotname=plotname,plotspecs=dict(args=args,kwargs=self.plot_kwargs))
+			elif do_autoplot:
+				self.plot_supervised(plotname=plotname,plotspecs=dict(kwargs=self.plot_kwargs))
 			# call a separate function for plotting "legacy" plot scripts and interactive autoplot
 			# note that this conditional allows you to run autoplot with the header into interactive mode
 			else: self.plot_legacy(self.plotname,autoplot=do_autoplot)
 
-###
-### INTERFACE FUNCTIONS
-### note that these are imported by omni/cli.py and exposed to makeface
+	def analysis(self):
+		"""
+		Analysis pipeline.
+		"""
+		# analysis scripts that make a workspace for analysis must be run interactively
+		if not any([i in sys.argv for i in ['go','plot']]):
+			raise Exception('This is an omnicalc analysis script. You cannot run it directly. '
+				'There are two ways to use the analysis pipeline. If you have a "plot" in your metadata '
+				'you can create it via `make go <name>` or you can directly run '
+				'a script via `make go script=path/to/analysis_script.py`.')
+		self.prelim()
+		# set a null plotname which can be set later
+		# note that the previous plot method above takes arguments to the plot scripts
+		#! note that we can call `make go|plot name` or `make go script=script.py` the latter of which does 
+		#!   not take a plot and routes through here
+		self.plotname = None
 
-@requires_python('yaml','h5py')
-def compute(debug=False,debug_slices=False,meta=None,back=False):
-	if back: 
-		from base.tools import backrun
-		backrun(command='make compute',log='log-compute')
-	else:
-		status('generating workspace for compute',tag='status')
-		work = WorkSpace(compute=True,meta_cursor=meta,debug=debug)
-
-def plot(*args,**kwargs):
-	status('generating workspace for plot',tag='status')
-	work = WorkSpace(plot=True,plot_args=args,plot_kwargs=kwargs)
-
-def go(*args,**kwargs): plot(*args,**kwargs)
-
-def look(*args,**kwargs):
-	work = WorkSpace(look=dict(args=args,kwargs=kwargs))
-
-def clear_stale(meta=None):
-	"""Check for stale jobs."""
-	work = WorkSpace(compute=True,meta_cursor=meta,debug='stale')
-	fn_sizes = dict([((v.files['dat'],v.files['spec']),os.path.getsize(v.files['dat'])) 
-		for k,v in work.post.posts().items()])
-	targets = [(dat_fn,spec_fn) for (dat_fn,spec_fn),size in fn_sizes.items() if size<=10**4]
-	stales = []
-	for dat_fn,spec_fn in targets:
-		data = load(os.path.basename(dat_fn),cwd=os.path.dirname(dat_fn))
-		if data.get('error',False)=='error': 
-			# one of very few places where we delete files because we are sure they are gabage
-			# ... the other place being the dat file deletion before writing the final file
-			status('removing stale dat file %s'%dat_fn)
-			try: os.remove(dat_fn)
-			except: status('failed to delete %s'%dat_fn,tag='warning')
-			status('removing stale spec file %s'%spec_fn)
-			try: os.remove(spec_fn)
-			except: status('failed to delete %s'%spec_fn,tag='warning')
-		stales.append(dat_fn)
-	if stales:
-		treeview({'cleaned files':sorted(stales)})
-		status('you can continue with `make compute` now. '
-			'we cleaned up stale dat files and corresponding spec files listed above')
+		#! nothing specific happens when work = WorkSpace(analysis=True) but you get the environment
+		return

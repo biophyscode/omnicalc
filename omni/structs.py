@@ -5,10 +5,8 @@ OMNICALC DATA STRUCTURES
 """
 
 import os,sys,re,copy,glob
-
-from base.tools import catalog
-#! from datapack import treeview,delveset,delve,str_types,dictsub,json_type_fixer
-from ortho import treeview,delveset,delve,str_types,dictsub,json_type_fixer
+from ortho import catalog,treeview,delveset,delve,str_types
+from ortho import dictsub,json_type_fixer
 
 class NoisyOmnicalcObject:
 	def __repr__(self):
@@ -422,7 +420,8 @@ class NameManager(NamingConvention):
 	def get_spotname(self,sn):
 		"""Return a spot name in case simulations with the same name come from identical spots."""
 		# failure to identify a spot gives a generic result so users can see when they need to add spot info
-		spotnames = self.spotnames.get(sn,['spotname'])
+		#! fail silently because we should be able to compute without the main data set
+		spotnames = self.spotnames.get(sn,['SPOTNAME_UNAVAILABLE'])
 		if len(spotnames)!=1: 
 			raise Exception('DEV. need to decided between spotnames for simulation %s: %s'%(sn,spotnames))
 		else: return spotnames[0]

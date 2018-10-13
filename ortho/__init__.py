@@ -19,19 +19,24 @@ expose = {
 	'bash':['command_check','bash'],
 	'bootstrap':[],
 	'cli':['get_targets','run_program'],
-	'config':['set_config','setlist','set_list','set_dict','unset','read_config','write_config',
-		'config_fold'],
-	'dev':['tracebacker'],
-	'environments':['environ','env_list','register_extension','load_extension'],
+	'config':['set_config','setlist','set_list','set_dict','unset',
+		'read_config','write_config','config_fold'],
 	'data':['check_repeated_keys','delve','delveset','catalog',
-		'json_type_fixer','dictsub','dictsub_strict','dictsub_sparse'],
+		'json_type_fixer','dictsub','dictsub_strict','dictsub_sparse',
+		'unique_ordered'],
+	'dev':['tracebacker','debugger'],
+	'environments':['environ','env_list','register_extension','load_extension'],
+	'handler':['Handler'],
+	# note that you cannot have identical names for the module and a function
+	'hypos':['hypothesis','sweeper'],
 	'imports':['importer'],
-	#! dev: 'queue':['qbasic'],
 	'unit_tester':['unit_tester'],
-	'misc':['listify','unique','treeview','str_types',
-		'string_types','say','ctext','confirm'],
+	'misc':['listify','unique','uniform','treeview','str_types',
+		'string_types','say','ctext','confirm','status','Observer',
+		'compare_dicts'],
 	'reexec':['iteratively_execute','interact'],
-	'requires':['requires_program','requires_python']}
+	'requires':['requires_program','requires_python','requires_python_check'],
+	'timer':['time_limit','TimeoutException'],}
 	
 # use `python -c "import ortho"` to bootstrap the makefile
 if (os.path.splitext(os.path.basename(__file__))[0]!='__init__' or not os.path.isdir('ortho')): 
@@ -115,7 +120,10 @@ _ortho_keys = list(set([i for j in [v for k,v in expose.items()] for i in j]))
 for mod,ups in expose.items():
 	# note the utility functions for screening later
 	globals()[mod].__dict__['_ortho_keys'] = _ortho_keys
-	for up in ups: globals()[up] = globals()[mod].__dict__[up]
+	for up in ups: 
+		try: globals()[up] = globals()[mod].__dict__[up]
+		except:
+			import pdb;pdb.set_trace()
 
 # if the tee flag is set then we dump stdout and stderr to a file
 tee_fn = conf.get('tee',False)

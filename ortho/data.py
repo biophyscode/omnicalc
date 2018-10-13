@@ -122,9 +122,15 @@ def catalog(base,path=None):
 	Traverse all paths in a nested dictionary. Returns a list of pairs: paths and values.
 	Note that lists can be a child item; catalog does not expand the indices.
 	"""
-	if not path: path=[]
+	#! should this return a tuple as the path in case it gets routed to delve?
+	if not path: path = []
 	if isinstance(base,dict):
 		for x in base.keys():
 			local_path = path[:]+[x]
 			for b in catalog(base[x],local_path): yield b
 	else: yield path,base
+
+def unique_ordered(seq):
+	"""Return unique items maintaining the order."""
+	vals = set()
+	return [x for x in seq if not (x in vals or vals.add(x))]

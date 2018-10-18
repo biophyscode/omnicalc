@@ -177,7 +177,7 @@ class MetaData:
 					else: raise Exception('redundant key %s in more than one meta file'%key)
 		elif self.merge_method=='careful' and len(allspecs)>0:
 			#! recurse only ONE level down in case e.g. calculations is defined in two places but there
-			#! ... are no overlaps, then this will merge the dictionaries at the top level
+			#!   are no overlaps, then this will merge the dictionaries at the top level
 			specs = allspecs.pop(0)
 			for spec in allspecs:
 				for topkey,topval in spec.items():
@@ -835,6 +835,7 @@ class WorkSpace:
 		"""
 		Adorn the workspace with various data.
 		"""
+		#! needs cleaned. there are too many legacy state models
 		# settings and defaults
 		self.cwd = kwargs.pop('cwd',os.getcwd())
 		# remove arguments for plotting
@@ -1195,15 +1196,15 @@ class WorkSpace:
 			self.plotspec = PlotSpec(metadata=self.metadata,plotname=plotname,
 				calcs=self.calcs,workspace=self)
 		plots = self.metadata.plots
-		#---we hard-code the plot script naming convention here
+		# we hard-code the plot script naming convention here
 		plot_script_fn = self.plotspec.script
 		script_name = self.find_script(plot_script_fn)
 		if not os.path.isfile(script_name):
 			raise Exception('cannot find script %s'%script_name)
 		if plotname in plots: plotspec = plots[plotname]
 		else: 
-			#---previously required a plots entry however the following code makes a default plot
-			#---...object for this plotname, assuming it is the same as the calculation
+			# previously required a plots entry however the following code makes a default plot
+			#   object for this plotname, assuming it is the same as the calculation
 			try:
 				plotspec = {'calculation':plotname,
 					'collections':self.metadata.calculations[plotname]['collections'],
@@ -1340,7 +1341,7 @@ class WorkSpace:
 		for jnum,job in enumerate(jobs):
 			# prepare slice information for the slicer
 			#! note that the make_slice_gromacs function is legacy and hence requires careful inputs
-			#! ... otherwise naming errors
+			#!   otherwise naming errors
 			slice_spec = {'spec':dict([(k,job.slice.data[k]) 
 				for k in ['sn','start','end','skip','group','pbc']])}
 			sn = slice_spec['spec']['sn']
@@ -1543,10 +1544,10 @@ class WorkSpace:
 		calculations must be in a function in a script which each use the calculation name.
 		"""
 		script_name = self.find_script(calcname)
-		#---! needs python3
+		#! needs modified for python3
 		sys.path.insert(0,os.path.dirname(script_name))
 		mod = __import__(re.sub(r'\.py$','',os.path.basename(script_name)),locals(),globals())
-		#---attach standard tools
+		# attach standard tools
 		self.attach_standard_tools(mod)
 		if not hasattr(mod,calcname): raise Exception(('performing calculation "%s" and we found '+
 			'%s but it does not contain a function named %s')%(calcname,script_name,calcname))
@@ -1734,7 +1735,8 @@ class WorkSpace:
 		# the plotname is needed by other functions namely self.sns
 		self.plotname = plotname
 
-		###!!! raise Exception('check below')
+		###!!! 
+		raise Exception('check below')
 
 		# once we have a plotname we can generate a plotspec
 		self.plotspec = PlotSpec(metadata=self.metadata,plotname=self.plotname,
@@ -1757,6 +1759,7 @@ class WorkSpace:
 		"""
 		Analysis pipeline.
 		"""
+		#! needs retire legacy plots on the ortho branch and retire the plot method above
 		# analysis scripts that make a workspace for analysis must be run interactively
 		if not any([i in sys.argv for i in ['go','plot']]):
 			raise Exception('This is an omnicalc analysis script. You cannot run it directly. '

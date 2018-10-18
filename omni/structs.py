@@ -82,17 +82,17 @@ class OmnicalcDataStructure(NoisyOmnicalcObject):
 			elif not strict_this and self._routes_subset(template,routes,check_types=check_types):
 				candidates.append(key)
 		#! removed a strict keyword that applied to all classifications and ran after multiple 
-		#! ... matches were made in order to find a more specific one. this was too much inference!
+		#!   matches were made in order to find a more specific one. this was too much inference!
 		if len(candidates)>1: 
 			raise Exception('matched multiple data structures to %s'%subject)
 		elif len(candidates)==0: 
 			raise Exception('failed to classify %s'%(subject))
 		else: 
 			#! note that if you are debugging failed classifications above, then it is very useful to 
-			#! ... print the successful classification candidate and subjects here. this is useful
-			#! ... in combination with the debug flag to PostData from PostDataLibrary. add a conditional
-			#! ... to see why a particular post file is not being recognized and compare to ones that are.
-			#! ... hopefully this will be less necessary now that the code is tested on legacy post data
+			#!   print the successful classification candidate and subjects here. this is useful
+			#!   in combination with the debug flag to PostData from PostDataLibrary. add a conditional
+			#!   to see why a particular post file is not being recognized and compare to ones that are.
+			#!   hopefully this will be less necessary now that the code is tested on legacy post data
 			return candidates[0]
 
 	def cross(self,style,data):
@@ -279,9 +279,9 @@ class Calculation(NoisyOmnicalcObject):
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 	def __eq__(self,other):
 		#! note that calculations are considered identical if they have the same specs
-		#! ... we disregard the calc_specs because they include collections, slice names (which might change)
-		#! ... and the group name. we expect simulation and group and other details to be handled on 
-		#! ... slice comparison
+		#!   we disregard the calc_specs because they include collections, slice names (which might change)
+		#!   and the group name. we expect simulation and group and other details to be handled on 
+		#!   slice comparison
 		return self.specs==other.specs and self.name==other.name
 
 class CalculationOLD(NoisyOmnicalcObject):
@@ -311,9 +311,9 @@ class CalculationOLD(NoisyOmnicalcObject):
 	def __eq__(self,other):
 		"""See if calculations are equivalent."""
 		#! note that calculations are considered identical if they have the same specs
-		#! ... we disregard the calc_specs because they include collections, slice names (which might change)
-		#! ... and the group name. we expect simulation and group and other details to be handled on 
-		#! ... slice comparison
+		#!   we disregard the calc_specs because they include collections, slice names (which might change)
+		#!   and the group name. we expect simulation and group and other details to be handled on 
+		#!   slice comparison
 		return self.specs==other.specs
 
 class NamingConvention:
@@ -326,7 +326,7 @@ class NamingConvention:
 	# all n2d types in omni_namer get standard types
 	# note that we previously used a dat_type,slice_type couple to describe these but that has been removed
 	# previous options included ('standard','gmx'), ('standard','datspec'), ('standard_obvious','datspec')
-	# ... and ('raw','datspec')
+	#   and ('raw','datspec')
 	parser = dict([
 		# standard GMX slices include a suffix and a PBC mode and a group name
 		('standard_gmx',{
@@ -389,19 +389,19 @@ class NameManager(NamingConvention):
 			namer_args,namer_varargs,namer_varkw,namer_defaults = inspect.getargspec(short_namer)
 			if not namer_defaults or len(namer_args)-len(namer_defaults)!=1: 
 				raise Exception("short_namer/renamer function takes only one argument (the simulation name) "+
-								"and a keyword argument \"spot\" which can be null.")
+					"and a keyword argument \"spot\" which can be null.")
 			def careful_naming():
 				def short_namer_careful(*args,**kwargs):					
 					try: return short_namer(*args,**kwargs)
 					except: 
 						import ipdb;ipdb.set_trace()
 						raise Exception(
-						'short_namer/renamer function failed on args %s, kwargs %s'%(args,kwargs))
+							'short_namer/renamer function failed on args %s, kwargs %s'%(args,kwargs))
 				return short_namer_careful
 			self.short_namer = careful_naming()
 		self.spots = kwargs.pop('spots',{})
 		# if no spots are defined then we have no way of using a spotname in any naming scheme
-		# ... hence we save them as None here and require that names in post are unique
+		#   hence we save them as None here and require that names in post are unique
 		if not self.spots: self.spotnames = {}
 		# if we have spots then we note the simulation locations in order to hold their spots
 		#! note minor redundancy with ParsedRawData but we avoid that because it is slow, requires spots

@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 from ortho import read_config,write_config
+from ortho import dictsub_strict,treeview
 import numpy as np
 
 def get_automacs(spot='amx'):
@@ -33,3 +34,36 @@ def uniquify(array):
     # sort by count, descending
     idx_sorted = np.argsort(counts)[::-1]
     return idx[idx_sorted],counts[idx_sorted]
+
+def subdivide_trajectory(segnum,n_segments,nframes):
+	"""Evenly subdivide a trajectory."""
+	return np.where(segnum==np.floor(
+		np.arange(nframes)/(nframes/float(n_segments))).astype(int))[0]
+
+class PostAccumulator(object):
+	def __init__(self):
+		self.meta = []
+		self.data = []
+	def add(self,meta,data):
+		self.meta.append(meta)
+		self.data.append(data)
+	def _get(self,**meta):
+		"""Find unique matches."""
+		# first check exact equality
+		candidates = [ii for ii,i in enumerate(self.meta) if i==meta]
+		if len(candidates)==1: return candidates[0]
+		# next check subset
+		candidates = [ii for ii,i in enumerate(self.meta) if dictsub_strict(meta,i)]
+		if len(candidates)==1: return candidates[0]
+		# next check superset
+		candidates = [ii for ii,i in enumerate(self.meta) if dictsub_strict(i,meta)]
+		if len(candidates)==1: return candidates[0]
+		return None
+	def get(self,**meta):
+		this = self._get(**meta)
+		if this==None: 
+			treeview(dict(meta=self.meta))
+			raise Exception('cannot find data with meta (see above for meta): %s'%meta)
+		return self.data[this]
+	def done(self,**meta):
+		return self._get(**meta)!=None

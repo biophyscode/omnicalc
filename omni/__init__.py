@@ -12,6 +12,10 @@ from .base.utils import get_automacs,uniquify
 from .base.compute_loops import framelooper,basic_compute_loop
 from .base.geometry import *
 from .base.hooks import HookHandler
+from .base.store import picturesave
+from .base.utils import subdivide_trajectory
+from .plotter.utils import zoom_figure
+from .base.utils import PostAccumulator
 
 # track the start time
 import time

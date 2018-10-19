@@ -88,6 +88,16 @@ def default_spot(spot):
 	config['spots'] = spots
 	write_config(config)
 
+"""
+required defaults
+	right now this needs to be connected to the factory somehow
+	...!!!
+		post_data_spot
+		spots
+		calculations_repo
+		post_plot_spot
+"""
+
 ###
 ### INTERFACE FUNCTIONS
 ### note that these are imported by omni/cli.py and exposed to makeface

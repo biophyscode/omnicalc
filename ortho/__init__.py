@@ -33,7 +33,7 @@ expose = {
 	'unit_tester':['unit_tester'],
 	'misc':['listify','unique','uniform','treeview','str_types',
 		'string_types','say','ctext','confirm','status','Observer',
-		'compare_dicts','Hook','mkdir_p'],
+		'compare_dicts','Hook','mkdirs'],
 	'reexec':['iteratively_execute','interact'],
 	'requires':['requires_program','requires_python','requires_python_check'],
 	'timer':['time_limit','TimeoutException'],}

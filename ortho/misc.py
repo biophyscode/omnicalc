@@ -232,7 +232,7 @@ class Hook(object):
 	def function(self):
 		return self._function
 
-def mkdir_p(path):
+def mkdirs(path):
 	# https://stackoverflow.com/questions/600268
 	try: os.makedirs(path)
 	except OSError as exc:

@@ -5,6 +5,7 @@ import os
 from ortho import Handler
 
 class HookHandler(Handler):
+	#! this is being ported into ortho in automacs
 	# when calling this handler, send the kwargs from the compute function
 	#   through to the meta kwarg so the hook can access everything in compute
 	taxonomy = {'standard':{'import_target','function'}}

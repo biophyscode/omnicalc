@@ -108,7 +108,7 @@ class OmnicalcDataStructure(NoisyOmnicalcObject):
 		while routes:
 			route,value = routes.pop()
 			# find the matching route guaranteed by classify
-			index, = [ii for ii,i in enumerate(zip(*template)[0]) if route==i]
+			index, = [ii for ii,i in enumerate(list(zip(*template))[0]) if route==i]
 			path,typ = template[index]
 			# the identifier is the path up to the name
 			hinge = max([ii for ii,i in enumerate(path) if i.__class__.__name__=='StructureKey'])
@@ -149,7 +149,9 @@ class OmnicalcDataStructure(NoisyOmnicalcObject):
 		function_names = ['_eq_%s_to_%s'%(a.style,b.style) for a,b in orderings]
 		#! no protection against contradicting equivalence relations or functions
 		for name,(first,second) in zip(function_names,orderings):
-			if hasattr(self,name): return getattr(self,name)(a,b)
+			#! fixing python 3 error in which a,b are not defined (only above in a loop!)
+			#!   if hasattr(self,name): return getattr(self,name)(a,b)
+			if hasattr(self,name): return getattr(self,name)(first,second)
 		if hasattr(self,'_unequal') and set([self.style,other.style]) in self._unequal: return False
 		if hasattr(self,'_equivalence'):
 			for first,second in orderings:
@@ -248,8 +250,13 @@ class TrajectoryStructure(OmnicalcDataStructure):
 		('readymade','calculation_request'):['sn','slice_name'],}
 
 	def _eq_gromacs_slice_to_slice_request_named(self,a,b):
-		checks = ([a.data[k]==b.data['body'][k] for k in ['start','end','skip','pbc','group']]+
-			[a.data['sn']==b.data['sn']])
+		#! hacking through some python 3 problems, possibly related to order of equality?
+		checks = 'checks'
+		for i,j in [[a,b],[b,a]]:
+			try: checks = ([i.data[k]==j.data['body'][k] for k in ['start','end','skip','pbc','group']]+
+				[i.data['sn']==j.data['sn']])
+			except: pass
+		if checks=='checks': raise Exception('python 3 failure of some kind')
 		return all(checks)
 
 class Calculation(NoisyOmnicalcObject):

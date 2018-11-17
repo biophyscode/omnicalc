@@ -883,7 +883,7 @@ class WorkSpace:
 				'this is an uncommon use-case which lets you use multiple spots without naming collisions.')
 			elif len(nspots)==0: self.short_namer = None
 			# if you have one spot we infer the namer from the omnicalc config.py
-			else: self.short_namer = self.config.get('spots',{}).values()[0]['namer']	
+			else: self.short_namer = list(self.config.get('spots',{}).values())[0]['namer']	
 		global namer
 		# prepare the namer, used in several places in omnicalc.py
 		namer = self.namer = NameManager(short_namer=self.short_namer,spots=self.config.get('spots',{}))
@@ -1094,7 +1094,11 @@ class WorkSpace:
 					# send along times for frame information
 					bundle['calc']['extras'][sn].update(**dict([(k,slice_upstream.data['body'][k]) 
 						for k in ['start','end','skip']]))
-				except: pass
+				except Exception as e: 
+					tracebacker(e)
+					print('warning !!! %s'%e)
+					raise Exception('oof')
+					pass
 			bundle['calc'][calcname] = {'calcs':{'specs':job.calc.specs}}
 		# data are returned according to a versioning system, default 2 on ortho branches
 		plotload_version = self.plotspec.get('plotload_version',
@@ -1287,7 +1291,7 @@ class WorkSpace:
 
 	def parse_sources(self): 
 		"""Parse the source data in preparation for making slices."""
-		from base.parser import ParsedRawData
+		from .base.parser import ParsedRawData
 		self.source = ParsedRawData(spots=self.config.get('spots',{}))
 
 	def make_slices(self,jobs_require_slices):

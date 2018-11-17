@@ -21,6 +21,9 @@ from .base.utils import PostAccumulator
 import time
 script_start_time = time.time()
 
+# legacy imports
+from .legacy.panels import square_tiles
+
 def checktime(): 
 	"""Report the time anywhere in the calculation workflow."""
 	status('%.2f'%(1./60*(time.time()-script_start_time))+' minutes',tag='time')

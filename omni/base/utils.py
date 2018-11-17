@@ -59,6 +59,11 @@ class PostAccumulator(object):
 		candidates = [ii for ii,i in enumerate(self.meta) if dictsub_strict(i,meta)]
 		if len(candidates)==1: return candidates[0]
 		return None
+	get_index = _get
+	def get_meta(self,**meta):
+		index = self.get_index(**meta)
+		if index!=None: return self.meta[index]
+		else: return None
 	def get(self,**meta):
 		this = self._get(**meta)
 		if this==None: 

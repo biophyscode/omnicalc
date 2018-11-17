@@ -146,7 +146,8 @@ def analysis(script):
 
 def go(*args,**kwargs): 
 	"""Alias for plot. Calls the standard analysis pipeline."""
-	if not args and kwargs.keys()==['script']: analysis(**kwargs)
+	#! need a python 2/3 compatible dict_keys comparison method or use this
+	if not args and set(kwargs.keys())=={'script'}: analysis(**kwargs)
 	else: plot(*args,**kwargs)
 
 def look(*args,**kwargs):

@@ -18,9 +18,11 @@ _init_keys = globals().keys()
 expose = {
 	'bash':['command_check','bash'],
 	'bootstrap':[],
+	'background':['backrun'],
 	'cli':['get_targets','run_program'],
 	'config':['set_config','setlist','set_list','set_dict','unset',
-		'read_config','write_config','config_fold','set_hook'],
+		'read_config','write_config','config_fold','set_hook',
+		'config_hook_get'],
 	'data':['check_repeated_keys','delve','delveset','catalog',
 		'json_type_fixer','dictsub','dictsub_strict','dictsub_sparse',
 		'unique_ordered'],
@@ -35,6 +37,8 @@ expose = {
 	'misc':['listify','unique','uniform','treeview','str_types',
 		'string_types','say','ctext','confirm','status','Observer',
 		'compare_dicts','Hook','mkdirs'],
+	'packman':['packs','github_install'],
+	'ports':['check_port'],
 	'reexec':['iteratively_execute','interact'],
 	'requires':['requires_program','requires_python','requires_python_check',
 		'is_terminal_command'],
@@ -78,7 +82,7 @@ def prepare_print(override=False):
 		key_leads = ['status','warning','error','note','usage',
 			'exception','except','question','run','tail','watch',
 			'bash','debug']
-		key_leads_regex = re.compile(r'^(%s)\s*(.+)$'%'|'.join(key_leads))
+		key_leads_regex = re.compile(r'^(?:(%s)\s)(.+)$'%'|'.join(key_leads))
 		def print_stylized(*args,**kwargs):
 			"""Custom print function."""
 			if len(args)>0 and args[0] in key_leads:
@@ -87,7 +91,7 @@ def prepare_print(override=False):
 			#   statements to be capitalized
 			#! note that we can retire all print('debug','message') statements
 			elif len(args)==1:
-				match = key_leads_regex.match(args[0])
+				match = key_leads_regex.match(str(args[0]))
 				if match: return _print(
 					'[%s]'%match.group(1).upper(),match.group(2),**kwargs)
 				else: return _print(*args,**kwargs)
@@ -140,9 +144,7 @@ for mod,ups in expose.items():
 	# note the utility functions for screening later
 	globals()[mod].__dict__['_ortho_keys'] = _ortho_keys
 	for up in ups: 
-		try: globals()[up] = globals()[mod].__dict__[up]
-		except:
-			import pdb;pdb.set_trace()
+		globals()[up] = globals()[mod].__dict__[up]
 
 # if the tee flag is set then we dump stdout and stderr to a file
 tee_fn = conf.get('tee',False)

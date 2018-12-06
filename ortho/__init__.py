@@ -5,7 +5,7 @@ ORTHO MODULE DOCSTRING
 """
 
 from __future__ import print_function
-import os,sys,re
+import os,sys,re,subprocess
 from .misc import str_types
 _init_keys = globals().keys()
 
@@ -28,7 +28,7 @@ expose = {
 		'json_type_fixer','dictsub','dictsub_strict','dictsub_sparse',
 		'unique_ordered'],
 	'dev':['tracebacker','debugger'],
-	'dictionary':['DotDict'],
+	'dictionary':['DotDict','MultiDict'],
 	'environments':['environ','env_list','register_extension','load_extension'],
 	'handler':['Handler'],
 	# note that you cannot have identical names for the module and a function
@@ -38,6 +38,7 @@ expose = {
 	'misc':['listify','unique','uniform','treeview','str_types',
 		'string_types','say','ctext','confirm','status','Observer',
 		'compare_dicts','Hook','mkdirs'],
+	'modules':['sync'],
 	'packman':['packs','github_install'],
 	'ports':['check_port'],
 	'reexec':['iteratively_execute','interact'],
@@ -48,13 +49,19 @@ expose = {
 # note that packages which use ortho can just import the items above directly
 #   however ortho submodules have to import from the correct submodule `e.g. from .misc import str_types`
 #   which means that we have to update these internal imports if we later move around some of the functions
-	
+
 # use `python -c "import ortho"` to bootstrap the makefile
 if (os.path.splitext(os.path.basename(__file__))[0]!='__init__' or not os.path.isdir('ortho')): 
 	if not os.path.isdir('ortho'):
-		#! currently ortho must be a local module (a folder)
-		raise Exception('current directory is %s and ortho folder is missing'%os.getcwd())
+		# check site packages
+		reqs = subprocess.check_output([sys.executable, '-m', 'pip', 'freeze'])
+		installed_packages = [r.decode().split('==')[0] for r in reqs.split()]
+		if 'ortho' not in installed_packages:
+			#! currently ortho must be a local module (a folder)
+			raise Exception('current directory is %s and ortho folder is missing'%os.getcwd())
+		else: pass
 	else: raise Exception('__file__=%s'%__file__)
+# makefile is bootstrapped if we have an ortho directory, hence not if using pip-installed ortho
 elif not os.path.isfile('makefile'):
 	import shutil
 	print('bootstrapping makefile from ortho')

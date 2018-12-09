@@ -21,13 +21,18 @@ def strip_builtins(mod):
 	# .. so instead we pass along a copy of the relevant functions for the caller
 	return dict([(key,obj[key]) for key in keys])
 
-def remote_import_script(source,distribute=None):
+def remote_import_script(source,distribute=None,source_short=None):
 	"""
 	Import the functions in a single script.
 	This code is cross-compatible with python2.7-3.6 and we use it because there is basically no way to do 
 	this from the standard library.
 	"""
 	mod = {}
+	if source_short:
+		# try to add __name__ which is necessary in some cases i.e. 'from .formula import *' in replicator
+		path_to_module_name = re.sub(r'/','.',re.sub(r'\.py$','',source_short))
+		try: mod = {'__name__':path_to_module_name}
+		except: pass
 	#! check whether this is working?
 	if distribute: mod.update(**distribute)
 	with open(source) as f:
@@ -143,11 +148,13 @@ def importer(source,verbose=False,distribute=None,strict=False):
 		# import the script remotely if import_module fails above
 		if os.path.isfile(source_full): 
 			if verbose: print('status','remote_import_script for %s'%source)
-			return remote_import_script(source_full,distribute=distribute)
+			return remote_import_script(source_full,
+				distribute=distribute,source_short=source)
 		# import the module remotely
 		elif os.path.isdir(source_full): 
 			if verbose: print('status','remote_import_module for %s'%source)
-			return remote_import_module(source_full,distribute=distribute)
+			return remote_import_module(source_full,distribute=distribute,
+				source_short=source)
 		else: 
 			# note that you get this exception if you have a syntax error 
 			#   in amx core functionality for various reasons

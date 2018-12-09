@@ -52,7 +52,6 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False):
 		if depth == 0: print(spacer+str(obj)+'\n'+horizo*len(obj))
 		else: print(spacer+str(obj))
 	elif isinstance(obj,dict) and all([type(i) in [str,float,int,bool] for i in obj.values()]) and depth==0:
-		print('call 1')
 		asciitree({'HASH':obj},depth=1,recursed=True)
 	elif type(obj) in [list,tuple]:
 		for ind,item in enumerate(obj):
@@ -60,7 +59,6 @@ def asciitree(obj,depth=0,wide=2,last=[],recursed=False):
 			if type(item) in [float,int,bool]+str_types_list: print(spacer_this+str(item))
 			elif item != {}:
 				print(spacer_this+'('+str(ind)+')')
-				print('call 2')
 				asciitree(item,depth=depth+1,
 					last=last+([depth] if ind==len(obj)-1 else []),
 					recursed=True)
@@ -318,7 +316,7 @@ def lowest_common_dict_denominator(data):
 	# possibly via: https://stackoverflow.com/questions/1254454/
 	if isinstance(data,basestring): return str(data)
 	elif isinstance(data,collections.Mapping): 
-		return dict(map(lowest_common_dict_denominator,data.iteritems()))
+		return dict(map(lowest_common_dict_denominator,data.items()))
 	elif isinstance(data,collections.Iterable): 
 		return type(data)(map(lowest_common_dict_denominator,data))
 	else: return data

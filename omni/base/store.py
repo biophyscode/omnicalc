@@ -22,6 +22,9 @@ def load(name,cwd=None,verbose=False,exclude_slice_source=False,filename=False):
 			print('status','read '+key)
 			print('status','object = '+str(rawdat[key]))
 		data[key] = np.array(rawdat[key])
+		# python 3 convert bytes to strings
+		if not sys.version_info<(3,0) and data[key].dtype.kind=='S':
+			data[key] = np.array(data[key]).astype(str)
 	if 'meta' in rawdat: 
 		if sys.version_info<(3,0): out_text = rawdat['meta'].value
 		else: out_text = rawdat['meta'].value.decode()

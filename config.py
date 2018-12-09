@@ -16,6 +16,14 @@ from .hooks import hook_handler
 conf = {}
 config_fn = None
 
+def check_ready():
+	global config_fn
+	if not config_fn:
+		#! raise Exception('ortho import failure. config_fn is not set!')
+		#! print('warning ortho import failure. config_fn is not set!')
+		pass
+		#!!! revisit this
+
 def abspath(path):
 	"""Get the right path."""
 	return os.path.abspath(os.path.expanduser(path))
@@ -23,6 +31,7 @@ def abspath(path):
 def read_config(source=None,default=None,hook=False,strict=True):
 	"""Read the configuration."""
 	global config_fn
+	check_ready()
 	source = source if source else config_fn
 	locations = [abspath(source),os.path.join(os.getcwd(),source)]
 	found = next((loc for loc in locations if os.path.isfile(loc)),None)
@@ -56,6 +65,7 @@ def config_hook_get(hook,default):
 def write_config(config,source=None):
 	"""Write the configuration."""
 	global config_fn
+	check_ready()
 	with open(source if source else config_fn,'w') as fp:
 		json.dump(config,fp)
 
@@ -151,6 +161,7 @@ def unset(*args):
 def config(text=False):
 	"""Print the configuration."""
 	global conf,config_fn # from __init__.py
+	check_ready()
 	treeview({config_fn:conf},style={False:'unicode',True:'pprint'}[text])
 
 def set_dict(*args,**kwargs):

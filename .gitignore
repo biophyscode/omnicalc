@@ -15,3 +15,7 @@
 #!LICENSE.md
 #calcs/
 #omni/docs/build_all
+.pipeline_up_to_date
+automacs
+config.json
+calcs/*

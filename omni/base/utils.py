@@ -6,6 +6,17 @@ from ortho import dictsub_strict,treeview
 import numpy as np
 import os
 
+def make_decorator_local_run(function,spot,cwd):
+	"""A decorator which runs a function from a particular spot."""
+	def this_func(*args,**kwargs): 
+		"""Decorator for remote automacs calls."""
+		os.chdir(spot)
+		answer = function(*args,**kwargs)
+		os.chdir(cwd)
+		return answer
+	this_func.__name__ = function.__name__
+	return this_func
+
 def get_automacs(spot='automacs'):
 	"""
 	Clone and manage a copy of automacs.
@@ -36,14 +47,7 @@ def get_automacs(spot='automacs'):
 	for key,val in [(i,j) for i,j in mod.items() if callable(j)]:
 		# running automacs functions might require a local cwd so we 
 		#   decorate functions to move and then move back
-		def this_func(*args,**kwargs): 
-			"""Decorator for remote automacs calls."""
-			os.chdir(spot)
-			answer = val(*args,**kwargs)
-			os.chdir(cwd)
-			return answer
-		this_func.__name__ = val.__name__
-		mod[key] = this_func
+		mod[key] = make_decorator_local_run(val,spot,cwd)
 	return mod
 
 def uniquify(array):

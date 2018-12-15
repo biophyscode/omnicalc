@@ -48,79 +48,6 @@ class WorkSpaceState:
 				'Something has gone horribly wrong or development is incomplete.')
 			raise Exception(msg)
 
-class Specifications:
-	"""
-	Manage a folder of possibly many different specs files (which we call "metadata").
-	"""
-	def __init__(self,**kwargs):
-		"""Catalog available specs files."""
-		self.parent_cwd = kwargs.pop('parent_cwd',None)
-		if not self.parent_cwd: raise Exception('need a parent_cwd')
-		# the cursor comes in from the user
-		self.meta_cursor = kwargs.pop('meta_cursor',None)
-		# the meta_filter comes in from the config.py and serves as a default
-		self.meta_filter = kwargs.pop('meta_filter',None)
-		# specs path holds the relative path and a glob to the specs files
-		self.specs_path = kwargs.pop('specs_path',())
-		# compute the path to the specs folder
-		self.cwd = os.path.dirname(os.path.join(self.parent_cwd,*self.specs_path))
-		# merge method tells us how to combine specs files
-		self.merge_method = kwargs.pop('merge_method','careful')
-		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
-		# catalog available files
-		self.avail = glob.glob(os.path.join(self.parent_cwd,*self.specs_path))
-
-	def identify_specs_files(self):
-		"""Locate the specs files."""
-		if not self.meta_cursor: 
-			# the meta_filter from the config is the default
-			if self.meta_filter: 
-				# treat each item in the meta_filter as a possible glob for files in the specs folder
-				# paths for the globs are relative to the specs folder
-				self.specs_files = list(set([j for k in [
-					glob.glob(os.path.join(self.cwd,os.path.basename(i))) for i in self.meta_filter]
-					for j in k]))
-			# otherwise use all files
-			if not self.meta_filter: self.specs_files = list(self.avail)
-		else:
-			# the cursor can point to a single file if it comes in from the interface function
-			# note that we use a path relative to omnicalc for this option because it allows tab completion
-			if os.path.isfile(os.path.join(self.parent_cwd,self.meta_cursor)):
-				self.specs_files = [os.path.join(self.parent_cwd,self.meta_cursor)]
-			else:
-				raise Exception('under development. need to process glob in meta="calcs/specs/*name.yaml"')	
-
-	@requires_python('yaml')
-	def interpret(self):
-		"""Main loop for interpreting specs."""
-		import yaml
-		# refresh the list of specs files
-		self.identify_specs_files()
-		# trawl for hooks which allow you to interpret the specs files differently
-		#! should this kind of hook method be standardized?
-		specs_hooks = {}
-		for fn in self.specs_files:
-			with open(fn) as fp: specs_hooks[fn] = yaml.load(fp)
-		# unroll everything
-		paths = list(catalog(specs_hooks))
-		# find the parser in the director, parser location in these yaml files
-		alt_parser = [(path,val) for path,val in paths if path[1:3]==['director','parser']]
-		# the parser can only be given once
-		if alt_parser and len(alt_parser)!=1:
-			raise Exception('found non-unique alternative parsers: %s'%alt_parser)
-		elif alt_parser:
-			parser_fn = os.path.abspath(alt_parser[0][1])
-			if not os.path.isfile(parser_fn):
-				raise Exception('cannot find parser given by director,parser in %s'%(
-					alt_parser[0][0][0],parser_fn))
-			mod = importer(parser_fn)
-			if 'MetaData' not in mod: 
-				raise Exception('specs parser %s does not contain a MetaData class'%alt_parser)
-			MetaData = mod['MetaData']
-		self.specs = MetaData(specs_files=self.specs_files,merge_method=self.merge_method)
-		# return the specs object to the workspace
-		return self.specs
-
 class MetaData:
 	"""
 	Supervise the metadata.
@@ -210,6 +137,83 @@ class MetaData:
 		sns = []
 		for name in names: sns.extend(self.collections.get(name,[]))
 		return unique_ordered(sns)
+
+class Specifications:
+	"""
+	Manage a folder of possibly many different specs files (which we call "metadata").
+	"""
+	def __init__(self,**kwargs):
+		"""Catalog available specs files."""
+		self.parent_cwd = kwargs.pop('parent_cwd',None)
+		if not self.parent_cwd: raise Exception('need a parent_cwd')
+		# the cursor comes in from the user
+		self.meta_cursor = kwargs.pop('meta_cursor',None)
+		# the meta_filter comes in from the config.py and serves as a default
+		self.meta_filter = kwargs.pop('meta_filter',None)
+		# specs path holds the relative path and a glob to the specs files
+		self.specs_path = kwargs.pop('specs_path',())
+		# compute the path to the specs folder
+		self.cwd = os.path.dirname(os.path.join(self.parent_cwd,*self.specs_path))
+		# merge method tells us how to combine specs files
+		self.merge_method = kwargs.pop('merge_method','careful')
+		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
+		# catalog available files
+		self.avail = glob.glob(os.path.join(self.parent_cwd,*self.specs_path))
+
+	def identify_specs_files(self):
+		"""Locate the specs files."""
+		if not self.meta_cursor: 
+			# the meta_filter from the config is the default
+			if self.meta_filter: 
+				# treat each item in the meta_filter as a possible glob for files in the specs folder
+				# paths for the globs are relative to the specs folder
+				self.specs_files = list(set([j for k in [
+					glob.glob(os.path.join(self.cwd,os.path.basename(i))) 
+					for i in listify(self.meta_filter)]
+					for j in k]))
+			# otherwise use all files
+			if not self.meta_filter: self.specs_files = list(self.avail)
+		else:
+			# the cursor can point to a single file if it comes in from the interface function
+			# note that we use a path relative to omnicalc for this option because it allows tab completion
+			if os.path.isfile(os.path.join(self.parent_cwd,self.meta_cursor)):
+				self.specs_files = [os.path.join(self.parent_cwd,self.meta_cursor)]
+			else:
+				raise Exception('under development. need to process glob in meta="calcs/specs/*name.yaml"')	
+
+	@requires_python('yaml')
+	def interpret(self):
+		"""Main loop for interpreting specs."""
+		global MetaData
+		import yaml
+		# refresh the list of specs files
+		self.identify_specs_files()
+		# trawl for hooks which allow you to interpret the specs files differently
+		#! should this kind of hook method be standardized?
+		specs_hooks = {}
+		for fn in self.specs_files:
+			with open(fn) as fp: specs_hooks[fn] = yaml.load(fp)
+		# unroll everything
+		paths = list(catalog(specs_hooks))
+		# find the parser in the director, parser location in these yaml files
+		alt_parser = [(path,val) for path,val in paths if path[1:3]==['director','parser']]
+		# the parser can only be given once
+		if alt_parser and len(alt_parser)!=1:
+			raise Exception('found non-unique alternative parsers: %s'%alt_parser)
+		elif alt_parser:
+			parser_fn = os.path.abspath(alt_parser[0][1])
+			if not os.path.isfile(parser_fn):
+				raise Exception('cannot find parser given by director,parser in %s'%(
+					alt_parser[0][0][0],parser_fn))
+			mod = importer(parser_fn)
+			if 'MetaData' not in mod: 
+				raise Exception('specs parser %s does not contain a MetaData class'%alt_parser)
+			MetaData = mod['MetaData']
+		# the above overrides MetaData otherwise we get it from above
+		else: pass
+		self.specs = MetaData(specs_files=self.specs_files,merge_method=self.merge_method)
+		# return the specs object to the workspace
+		return self.specs
 
 class ComputeJob:
 	def __repr__(self): return str(self.__dict__)
@@ -901,7 +905,7 @@ class WorkSpace:
 
 	def read_config(self):
 		"""Read the config and set paths."""
-		self.config = read_config()
+		self.config = read_config(cwd=self.cwd)
 		#! is this deprecated? use a better data structure?
 		require_keys = ['post_plot_spot','post_data_spot']
 		missing = [key for key in require_keys if key not in self.config]

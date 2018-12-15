@@ -16,7 +16,10 @@ def load(name,cwd=None,verbose=False,exclude_slice_source=False,filename=False):
 	if not os.path.isfile(fn): raise Exception('failed to load %s'%fn)
 	data = {}
 	import h5py
-	rawdat = h5py.File(fn,'r')
+	try: rawdat = h5py.File(fn,'r')
+	except:
+		print('error failed to read %s'%fn)
+		raise
 	for key in [i for i in rawdat if i!='meta']: 
 		if verbose:
 			print('status','read '+key)
@@ -58,20 +61,36 @@ def store(obj,name,path,attrs=None,print_types=False,verbose=True):
 		if print_types: 
 			print('[WRITING] '+key+' type='+str(type(obj[key])))
 			print('[WRITING] '+key+' dtype='+str(obj[key].dtype))
-		# python3 cannot do unicode so we double check the type
-		#! the following might be wonky
-		if (type(obj[key])==np.ndarray 
-			and re.match('^str|^unicode',obj[key].dtype.name) 
-			and 'U' in obj[key].dtype.str):
-			obj[key] = obj[key].astype('S')
-		try: dset = fobj.create_dataset(key,data=obj[key])
-		except: 
+		# removed type checking for ndarray and dtype.name with U however
+		#   recent vintage numpy in python 3 returns an "object" dtype
+		#   which is usually a string. fixed with a try to convert to string
+		# note that we do try-continue-except to handle the strings and lists
+		try:
+			# most objects are converted here
+			fobj.create_dataset(key,data=obj[key])
+			continue
+		except: pass
+		try:
+			# strings should be saved with special type from bytes
+			fobj.create_dataset(key,data=obj[key],dtype=h5py.special_dtype(vlen=bytes))
+			continue
+		except: pass
+		try:
+			# if you have mixed integers and strings, we need to recast as bytes
+			fobj.create_dataset(key,data=obj[key].astype(bytes),dtype=h5py.special_dtype(vlen=str))
+			continue
+		except: pass
+		try:
 			# multidimensional scipy ndarray must be promoted to a numpy list
-			try: dset = fobj.create_dataset(key,data=obj[key].tolist())
-			except: raise Exception(
-				"failed to write this object so it's probably not numpy"+
-				"\n"+key+' type='+str(type(obj[key]))+
-				' dtype='+str(obj[key].dtype))
+			fobj.create_dataset(key,data=obj[key].tolist())
+			continue
+		except: pass
+		# failures above cause an exception
+		import ipdb;ipdb.set_trace()
+		raise Exception(
+			"failed to write this object so it's probably not numpy"+
+			"\n"+key+' type='+str(type(obj[key]))+
+			' dtype='+str(obj[key].dtype))
 	if attrs != None: 
 		try: fobj.create_dataset('meta',data=np.string_(json.dumps(attrs)))
 		except Exception as e: 
@@ -109,7 +128,7 @@ def picturefind(savename,directory='./',meta=None,loud=True):
 	Find a picture in the plot repository.
 	"""
 	if loud: status('searching pictures',tag='store')
-	regex = '^.+\.v([0-9]+)\.png'
+	regex = r'^.+\.v([0-9]+)\.png'
 	fns = glob.glob(directory+'/'+savename+'.v*')
 	nums = map(lambda y:(y,int(re.findall(regex,y)[0])),filter(lambda x:re.match(regex,x),fns))
 	#! using unicode-to-string compare_dicts function from historical version but need to confirm necessary

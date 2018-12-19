@@ -39,6 +39,8 @@ class Handler(object):
 				and (set(args)-keys['opts'])==keys['base']
 				and (set(args)-keys['base'])<=keys['opts']))]
 		if len(matches)==0: 
+			#! note that we need a more strict handling for the name keyword
+			#!   which incidentally might be worth retiring
 			raise Exception(
 				('cannot classify instructions with keys: %(args)s. '
 					'be careful with the "name" keyword, which is not allowed'

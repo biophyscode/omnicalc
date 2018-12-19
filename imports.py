@@ -153,8 +153,7 @@ def importer(source,verbose=False,distribute=None,strict=False):
 		# import the module remotely
 		elif os.path.isdir(source_full): 
 			if verbose: print('status','remote_import_module for %s'%source)
-			return remote_import_module(source_full,distribute=distribute,
-				source_short=source)
+			return remote_import_module(source_full,distribute=distribute)
 		else: 
 			# note that you get this exception if you have a syntax error 
 			#   in amx core functionality for various reasons

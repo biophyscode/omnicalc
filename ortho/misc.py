@@ -231,10 +231,18 @@ class Hook(object):
 		return self._function
 
 def mkdirs(path):
-	# https://stackoverflow.com/questions/600268
-	try: os.makedirs(path)
+	"""
+	Equivalent of `mkdir -p` for making directories.
+	"""
+	# via https://stackoverflow.com/questions/600268
+	# note that you must protect against tilde or you get non-symbolic links
+	#   to home which depend on the mounting system and are difficult to 
+	#   delete properly
+	path_real = os.path.abspath(os.path.expanduser(path))
+	try: os.makedirs(path_real)
 	except OSError as exc:
-		if exc.errno == errno.EEXIST and os.path.isdir(path): pass
+		import errno
+		if exc.errno == errno.EEXIST and os.path.isdir(path_real): pass
 		else: raise
 
 def status(string,i=0,loop=None,bar_character=None,width=None,spacer='.',

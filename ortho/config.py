@@ -28,11 +28,14 @@ def abspath(path):
 	"""Get the right path."""
 	return os.path.abspath(os.path.expanduser(path))
 
-def read_config(source=None,default=None,hook=False,strict=True):
+def read_config(source=None,cwd=None,default=None,hook=False,strict=True):
 	"""Read the configuration."""
 	global config_fn
 	check_ready()
-	source = source if source else config_fn
+	if source and cwd:
+		raise Exception('source and cwd are mutually exclusive: %s, %s'%(source,cwd))
+	elif cwd: source = os.path.join(cwd,config_fn)
+	else: source = source if source else config_fn
 	locations = [abspath(source),os.path.join(os.getcwd(),source)]
 	found = next((loc for loc in locations if os.path.isfile(loc)),None)
 	if not found and default==None: raise Exception('cannot find file "%s"'%source)

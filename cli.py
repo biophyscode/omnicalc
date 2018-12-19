@@ -188,6 +188,10 @@ def run_program(_do_debug=False,_no_run=False):
 		funcs[funcname](*args,**kwargs)
 	#? catch a TypeError in case the arguments are not formulated properly
 	except Exception as e: 
+		docstring = funcs[funcname].__doc__
+		if docstring:
+			print('note the docstring for this function: "%s"'%funcname)
+			print(docstring)
 		tracebacker(e)
 		if conf.get('auto_debug',_do_debug): # pylint: disable=undefined-variable
 			_,value,tb = sys.exc_info()

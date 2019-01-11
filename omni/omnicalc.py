@@ -264,11 +264,18 @@ class Calculations:
 		#---check that the calckeys has enough elements 
 		list(set(calckeys+[i for j in depends.values() for i in j]))
 		#---paranoid security check for infinite loop
+		#! loop was breaking with ptdins_bond_graphs_calc on 2019.1.4 so changed it to a list
+		#!   because using popitem and then reinserting was not allowing dependencies to resolve
+		depends = list(depends.items())
 		start_time = time.time()
 		while any(depends):
-			ii,i = depends.popitem()
+			#! changed from depends as a dict to list
+			#! ii,i = depends.popitem()
+			#! if all([j in calckeys for j in i]) and i!=[]: calckeys.append(ii)
+			#! else: depends[ii] = i
+			ii,i = depends.pop()
 			if all([j in calckeys for j in i]) and i!=[]: calckeys.append(ii)
-			else: depends[ii] = i
+			else: depends.insert(0,(ii,i))
 			if time.time()>(start_time+10): 
 				raise Exception('this is taking too long. '
 					'you might have a loop in your graph of dependencies')
@@ -1128,7 +1135,7 @@ class WorkSpace:
 				def __repr__(self):
 					treeview(dict(data=dict([('%s (%d)'%(name,num),val) 
 						for num,(name,val) in enumerate(self.names)])))
-					return "DataPack: %s"%list(set(zip(*self.names)[0]))
+					return "DataPack: %s"%list(set(list(zip(*self.names))[0]))
 				def __init__(self,data,calc):
 					self.calcnames = set()
 					self.data,self.names = [],[]

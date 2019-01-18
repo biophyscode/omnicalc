@@ -42,12 +42,15 @@ def get_automacs(spot='automacs'):
 	else: print('status','found automacs at: %s'%conf['automacs_spot'])
 	# importing automacs remotely will use chdir, so we change back afterwards
 	cwd = os.getcwd()
+	# we must signal to automacs not to use the call reporter because we do not need it
+	os.environ['_AMX_REPORTER_OFF'] = '1'
 	mod = importer(os.path.join(spot,'amx'))
 	os.chdir(cwd)
 	for key,val in [(i,j) for i,j in mod.items() if callable(j)]:
 		# running automacs functions might require a local cwd so we 
 		#   decorate functions to move and then move back
 		mod[key] = make_decorator_local_run(val,spot,cwd)
+	print('status done getting automacs')
 	return mod
 
 def uniquify(array):

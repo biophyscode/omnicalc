@@ -62,6 +62,10 @@ class Handler(object):
 			if i not in _protected])
 		expected = dict([(name,introspect_function(methods[name])) 
 			for name in methods])
+		# decorated handler subclass methods should save introspect as an attr
+		for key in methods:
+			if hasattr(methods[key],'_introspected'): 
+				expected[key] = methods[key]._introspected
 		#! this is not useful in python 3 because the self argument is 
 		#!   presumably ignored by the introspection
 		if sys.version_info<(3,0):

@@ -165,7 +165,7 @@ def config(text=False):
 	"""Print the configuration."""
 	global conf,config_fn # from __init__.py
 	check_ready()
-	treeview({config_fn:conf},style={False:'unicode',True:'pprint'}[text])
+	treeview({config_fn:conf},style={False:'unicode',True:'pprint','json':'json'}[text])
 
 def set_dict(*args,**kwargs):
 	"""

@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 #! once we added replicator/__init__.py to expose pipeline in 
 #!   ortho/__init__.py we had to change e.g. from ortho import read_config
 #!   hence internal ortho imports need to have the path to the submodule
 from ortho.requires import requires_python,requires_python_check
 from ortho.dictionary import MultiDict
 from ortho.bash import bash_basic,bash
-from ortho.handler import Handler
+from ortho.handler import Handler,introspect_function
 from ortho.config import read_config
 
 import re,tempfile,os,copy
@@ -32,7 +33,7 @@ class SpotLocal:
 			self.path = site
 			self.abspath = abspath(site)
 			if persist and os.path.isdir(self.abspath): 
-				print('status','found persistent spot: %s'%self.abspath)
+				print('status found persistent spot: %s'%self.abspath)
 			else: os.mkdir(self.abspath)
 
 class Runner:
@@ -89,6 +90,33 @@ class DockerFileMaker(Handler):
 
 ### SUPERVISOR
 
+def hook_watch(*args_out,**kwargs):
+	strict = kwargs.pop('strict',False)
+	if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
+	def wrapper(function):
+		introspect = introspect_function(function)
+		def decorator(self,**kwargs):
+			# process incoming arguments with at signs
+			for arg in args_out:
+				# identify arguments that are both in the hook argument list
+				#   and also are arguments accepted by the function
+				if arg in kwargs and (arg in introspect['args'] or arg in introspect['kwargs']):
+					# get the "real" answer to the hook query
+					# note that we strip the @-syntax
+					value = kwargs[arg]
+					#! should we protect the following against lookup failure or is it guaranteed?
+					#! it requires the at-sign if strict?
+					result = read_config(hook=value,strict=strict).get(re.sub('@','',value),value)
+					kwargs[arg] = result
+			# run the function and return
+			finding = function(self,**kwargs)
+			return finding
+		# we attach the original introspection for the Handler, which needs this
+		#   to decide how to route the arguments from the constructor to the method
+		decorator._introspected = introspect
+		return decorator
+	return wrapper
+
 class ReplicatorGuide(Handler):
 
 	"""
@@ -128,23 +156,45 @@ class ReplicatorGuide(Handler):
 			cwd=spot.path,fn='script.sh',log='log-run',
 			cmd='docker run %s'%tag)#+' %(path)s')
 
+	@hook_watch('prelim','site','identity',strict=False)
 	def docker_compose(self,compose,dockerfile,site,
-		command,script=None,persist=True,rebuild=True,prelim=None):
+		command,script=None,persist=True,rebuild=True,
+		prelim=None,identity=None):
 		"""
 		Prepare a docker-compose folder and run a command in the docker.
 		"""
-		#! note that the Handler class uses introspection to detect args,kwargs
-		#!   to classify incoming calls and this is broken by the decorator
+		# the identity key is hook-able, but right now we do not set a proper
+		#   hook and instead have it hard-coded below, where we add the user
+		#   key to docker compose services lists when running on linux. note
+		#   that the linux check and modification of docker compose file can
+		#   later be moved to a real hook if desired
+		if identity:
+			#! coding this hook in here
+			# if the hook is not processed we check identity here
+			is_linux = False
+			if identity=='@linux_identity':
+				try: 
+					check_linux = bash('uname -a',scroll=False)
+					if re.match('^Linux',check_linux['stdout']):
+						is_linux = True
+				except: pass
+			if is_linux:
+				user_uid = os.getuid()
+				user_gid = os.getgid()
 		requires_python_check('yaml')
 		import yaml
 		if prelim:
-			#! might not need to remove at sign
 			result = read_config(hook=prelim)[re.sub('@','',prelim)]
 			#! do something with result? right now this is just a do hook
 		dfm = DockerFileMaker(meta=self.meta,**dockerfile)
 		spot = SpotLocal(site=site,persist=persist)
 		with open(os.path.join(spot.path,'Dockerfile'),'w') as fp: 
 			fp.write(dfm.dockerfile)
+		# is this the logic we want?
+		if is_linux:
+			for key in compose.get('services',{}):
+				compose['services'][key]['user'] = '%d:%d'%(user_uid,user_gid)
+				#! what about gid?
 		with open(os.path.join(spot.path,'docker-compose.yml'),'w') as fp:
 			fp.write(yaml.dump(compose))
 		# script is optional. it only runs if you run a docker command below
@@ -167,11 +217,50 @@ class ReplicatorGuide(Handler):
 		Run a replicate with a modification. Extremely useful for DRY.
 		"""
 		if not overrides: overrides = {}
-		if via not in self.meta['complete']: 
-			raise Exception('reference to replicate %s is missing'%via)
-		fname = self.classify(*self.meta['complete'][via].keys())
-		outgoing = copy.deepcopy(self.meta['complete'][via])
+		# get dependency graph
+		vias = dict([(i,j['via']) for i,j in self.meta['complete'].items() 
+			if not i.startswith('_') and isinstance(j,dict) and 'via' in j])
+		paths = {}
+		via_keys = list(vias.keys())
+		for key in via_keys:
+			paths[key] = [key]
+			val = key
+			while val in vias:
+				key_this = vias[val]
+				if key_this in paths[key]:
+					raise Exception(('detected circular reference in "via" '
+						'methods starting from: %s: %s')%(key,str(paths[key])))
+				else: paths[key].append(key_this)
+				val = key_this
+		# paths that are not part of the via-tree
+		paths_non_via = [i for i,j in self.meta['complete'].items()
+			if not i.startswith('_') and isinstance(j,dict) and 'via' not in j]
+		# get this specific upstream path
+		if via in paths:
+			# from the origin, get the references
+			paths_this = tuple(paths[via])[::-1]
+			first = paths_this[0]
+		elif via in paths_non_via:
+			first = via
+			paths_this = []
+		else: raise Exception('error in resolving "via" path')
+		fname = self.classify(*self.meta['complete'][first].keys())
+		if fname=='via': 
+			raise Exception('eldest parent of this "via" graph needs a parent: %s'%str(paths_this))
+		outgoing = copy.deepcopy(self.meta['complete'][first])
+		for stage in paths_this[1:]:
+			outgoing.update(**copy.deepcopy(self.meta['complete'][stage].get('overrides',{})))
+		# for the simplest case we must apply the overrides
 		outgoing.update(**overrides)
+		#!!! this needs tested!
+		#!  deprecated method with no recursion
+		if False:
+			if via not in self.meta['complete']: 
+				raise Exception('reference to replicate %s is missing'%via)
+			fname = self.classify(*self.meta['complete'][via].keys())
+			outgoing = copy.deepcopy(self.meta['complete'][via])
+			#! recursion on the "via" formula needs to happen here
+			outgoing.update(**overrides)
 		getattr(self,fname)(**outgoing)
 
 	def singularity_via_vagrant(self,vagrant_site):

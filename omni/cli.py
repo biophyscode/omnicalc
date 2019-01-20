@@ -17,7 +17,7 @@ if 1:
 		'blank_meta','audit','go',
 		'compute','plot','look','clear_stale',
 		#! temporary
-		'default_spot']
+		'default_spot','make']
 
 import os,sys,re
 from ortho import read_config,write_config,bash,requires_python,treeview,status
@@ -196,3 +196,22 @@ def compute(debug=False,debug_slices=False,meta=None,back=False):
 		# since cli.py is inside omnicalc, this import must be just in time here
 		from omni import WorkSpace
 		work = WorkSpace(compute=True,meta_cursor=meta,debug=debug)
+
+###
+### NEW COMPUTE LOOP
+###
+
+def make():
+	"""
+	Demonstration of a new compute loop.
+	"""
+	# STEP 0: get bootstrap
+	import ortho
+	from ortho import read_config
+	#! make set_hook omnicalc_loop="default"
+	conf = read_config(hook='omnicalc_loop',strict=False)
+	ans = conf['omnicalc_loop']
+	print(ans)
+	import ipdb;ipdb.set_trace()
+	# STEP 1: get instructions
+

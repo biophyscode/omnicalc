@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import re,os
 from .handler import Handler
 from .misc import str_types,listify
@@ -79,6 +80,9 @@ def hook_handler(conf,this=None,strict=True):
 			conf[key_simple] = hook_defn
 		elif isinstance(hook_defn,dict):
 			conf[key_simple] = HookHandler(**hook_defn).solve
+		# ignore hooks that are False
+		elif isinstance(hook_defn,bool) and not hook_defn: 
+			conf[key_simple] = hook_defn
 		else: raise Exception('dev')
 	return True
 

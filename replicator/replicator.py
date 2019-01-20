@@ -2,9 +2,8 @@
 
 import re
 
-__all__ = ['repl','pipeline','test_clean','test_help','docker_clean']
+__all__ = ['repl','pipeline','test_clean','docker_clean']
 
-# standard handlers from ortho
 import ortho
 from .formula import *
 
@@ -92,7 +91,6 @@ def repl(*args,**kwargs):
 	# run the replicator
 	rg = ReplicatorGuide(name=this_test['name'],
 		meta=this_test['meta'],**this_test['detail'])
-
 
 # alias for the replicator
 pipeline = repl

@@ -9,6 +9,7 @@ from ortho.dictionary import MultiDict
 from ortho.bash import bash_basic,bash
 from ortho.handler import Handler,introspect_function
 from ortho.config import read_config
+from ortho.data import delveset,catalog
 
 import re,tempfile,os,copy
 import datetime as dt
@@ -104,9 +105,7 @@ def hook_watch(*args_out,**kwargs):
 					# get the "real" answer to the hook query
 					# note that we strip the @-syntax
 					value = kwargs[arg]
-					#! should we protect the following against lookup failure or is it guaranteed?
-					#! it requires the at-sign if strict?
-					result = read_config(hook=value,strict=strict).get(re.sub('@','',value),value)
+					result = read_config(hook=value,strict=strict).get(value,value)
 					kwargs[arg] = result
 			# run the function and return
 			finding = function(self,**kwargs)
@@ -168,33 +167,28 @@ class ReplicatorGuide(Handler):
 		#   key to docker compose services lists when running on linux. note
 		#   that the linux check and modification of docker compose file can
 		#   later be moved to a real hook if desired
-		if identity:
-			#! coding this hook in here
-			# if the hook is not processed we check identity here
-			is_linux = False
-			if identity=='@linux_identity':
-				try: 
-					check_linux = bash('uname -a',scroll=False)
-					if re.match('^Linux',check_linux['stdout']):
-						is_linux = True
-				except: pass
-			if is_linux:
-				user_uid = os.getuid()
-				user_gid = os.getgid()
+		is_linux = False
+		try: 
+			check_linux = bash('uname -a',scroll=False)
+			if re.match('^Linux',check_linux['stdout']):
+				is_linux = True
+		except: pass
+		if is_linux:
+			user_uid = os.getuid()
+			user_gid = os.getgid()
 		requires_python_check('yaml')
 		import yaml
 		if prelim:
-			result = read_config(hook=prelim)[re.sub('@','',prelim)]
+			result = read_config(hook=prelim).get(prelim,prelim)
 			#! do something with result? right now this is just a do hook
 		dfm = DockerFileMaker(meta=self.meta,**dockerfile)
 		spot = SpotLocal(site=site,persist=persist)
 		with open(os.path.join(spot.path,'Dockerfile'),'w') as fp: 
 			fp.write(dfm.dockerfile)
-		# is this the logic we want?
+		# add the user to all docker-compose.yml services on Linux
 		if is_linux:
 			for key in compose.get('services',{}):
 				compose['services'][key]['user'] = '%d:%d'%(user_uid,user_gid)
-				#! what about gid?
 		with open(os.path.join(spot.path,'docker-compose.yml'),'w') as fp:
 			fp.write(yaml.dump(compose))
 		# script is optional. it only runs if you run a docker command below
@@ -212,7 +206,7 @@ class ReplicatorGuide(Handler):
 		#!   for clarity
 		bash_basic(command,cwd=spot.path)
 
-	def via(self,via,overrides=None):
+	def via(self,via,overrides=None,mods=None,notes=None):
 		"""
 		Run a replicate with a modification. Extremely useful for DRY.
 		"""
@@ -261,6 +255,10 @@ class ReplicatorGuide(Handler):
 			outgoing = copy.deepcopy(self.meta['complete'][via])
 			#! recursion on the "via" formula needs to happen here
 			outgoing.update(**overrides)
+		# the mods keyword can be used to surgically alter the tree of hashes
+		if mods:
+			for path,value in catalog(mods):
+				delveset(outgoing,*path,value=value)
 		getattr(self,fname)(**outgoing)
 
 	def singularity_via_vagrant(self,vagrant_site):

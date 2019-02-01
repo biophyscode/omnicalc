@@ -2,10 +2,14 @@
 
 #! do needs a proper tracebacker instead of the "If you suspect this is an IPython bug"
 
-import os,re,glob
+import os,re,glob,json
+import yaml
 import time
 from ortho import json_type_fixer
 from ortho import Handler
+from ortho import treeview
+from ortho import catalog
+from ortho import delveset
 
 # put this in config?
 old_config = {'spots': {'sims': {'namer': 'lambda name,spot=None: name',
@@ -102,102 +106,140 @@ journal of  the dev process
 # STEP 2: parse the post data
 
 post_data_spot = ortho.conf['post_data_spot']
-fns = [
+post_files = [
 	# read file objects with a directory and name
 	{'fn':os.path.basename(i),'dn':post_data_spot} 
 	# files are globbed from the post_data_spot
 	for i in glob.glob(os.path.join(post_data_spot,'*'))]
 
-# STEP 2b: pairing functions
-#! needs developed
-
-
-regex_basic = (
+regex_post = (
 	r'^(?P<short_name>.+)\.'
 	r'(?P<start>\d+)-(?P<end>\d+)-(?P<step>\d+)'
 	r'\.(.+)\.n(?P<version>\d+)\.(?P<ext>.+)$')
+regex_post_datspec = (
+	r'^(?P<short_name>.+)\.'
+	r'(?P<start>\d+)-(?P<end>\d+)-(?P<step>\d+)'
+	r'\.(.+)\.n(?P<version>\d+)$')
 
-#! development start by reading a single item
-incoming = [i for i in fns if re.match(regex_basic,i['fn'])]
-this = incoming[0]
+# get post data that matches regex_post
+post_files_basic = [i for i in post_files if re.match(regex_post,i['fn'])]
 
-name_data = re.match(regex_basic,this['fn']).groupdict()
-json_type_fixer(name_data)
+# STEP 3: pair dat/spec files
 
-"""
-class FluxFileToData(Handler):
-	def triage_dat_spec(self,fn,dn):
-		if datspec: raise Exception('dev error: this has to be null!')
-		print(fn)
-		self.kind = 'datspec'
-
-file_resolved = []
-for item in incoming:
-	try: 
-		resolved = FluxFileToData(**item)
-		file_resolved.append(resolved)
-	except: pass
-
-that = file_resolved[0].kind
-"""
-def posts_to_twin_symmetric(fn,peers,**kwargs):
-	"""Modify a peers list in-place to identify twins."""
-	pattern = kwargs.pop('pattern')
-	if kwargs: raise Exception('unprocessed kwargs: %s'%kwargs)
-	regex = '^(?P<base>.*?)%s$'%pattern
-	candidates = []
-	for ii,item in enumerate(peers):
-		match = re.match(regex,item)
-		if match:
-			# save the index and groupdict
-			candidates.append((ii,item.groupdict()))
-	if len(candidates)==1: 
-		index,reduced = candidates
-		# add the file names back to the groupdict
-		reduced['via'] = (fn,item,)
-		if False:
-			# remove the candidate from the list of peers
-			# remove from list fast: https://stackoverflow.com/a/5746071/3313859
-			peer = [i for ii,i in enumerate(peer) if ii==index]
-		return reduced
-	else: return
-
-#! takes a file 0.3s so too slow
-if False:
-	t = time.time()
-	# identify twins in a double loop over files
-	twins = []
-	pattern = r'\.(dat|spec)'
-	regex = r'^(?P<base>.+)%s$'%pattern
+def reduce_pairs_dat_spec(incoming):
+	"""..."""
+	pattern = r'(dat|spec)'
+	regex = r'^(?P<base>.+)\.(?P<ext>%s)$'%pattern
+	for ii,item in enumerate(incoming):
+		match = re.match(regex,item['fn'])
+		if match: 
+			incoming[ii].update(**match.groupdict())
+	#! previously did a loop with regexes in the double loop and it took 0.3s
+	#! new loop is 0.0013 to regex once through, then 0.0098 total to twin them
+	#! doubtful this can be improved
+	global twins #!
+	twins = dict([sorted((ii,ii+jj+1))
+		for ii,i in enumerate(incoming) 
+		for jj,j in enumerate(incoming[ii+1:])
+		if i['base']==j['base']])
+	# collapse items
 	for ii,i in enumerate(incoming):
-		for jj,j in enumerate(incoming[ii+1:]):
-			match_l = re.match(regex,i['fn'])
-			match_r = re.match(regex,j['fn'])
-			if match_l and match_r and match_l['base']==match_r['base']:
-				twins.append((match_l.group('base'),ii,ii+jj))
-	print(time.time()-t)
+		if ii in twins.keys(): 
+			incoming[twins[ii]]['datspec'] = True
+			del incoming[twins[ii]]['fn']
+	incoming = [i for ii,i in enumerate(incoming) if ii not in twins.keys()]
+	#! assertion or exception?
+	assert not set.intersection(set(twins.keys()),set(twins.values()))
+	return incoming #!?!?!? why is it necessary to return!?
 
-t = time.time()
-pattern = r'\.(dat|spec)'
-regex = r'^(?P<base>.+)%s$'%pattern
-for ii,item in enumerate(incoming):
-	match = re.match(regex,item['fn'])
-	if match: incoming[ii]['base'] = match['base']
-print(time.time()-t);t = time.time()
-#! previously did a loop with regexes in the double loop and it took 0.3s
-#! new loop is 0.0013 to regex once through, then 0.0098 total to twin them
-#! doubtful this can be improved
-twins = dict([sorted((ii,ii+jj+1))
-	for ii,i in enumerate(incoming) 
-	for jj,j in enumerate(incoming[ii+1:])
-	if i['base']==j['base']])
-print(time.time()-t);t = time.time()
-# collapse items
-for ii,i in enumerate(incoming):
-	if ii in twins.keys(): 
-		incoming[twins[ii]]['datspec'] = True
-incoming = [i for ii,i in enumerate(incoming) if ii not in twins.keys()]
-print(time.time()-t);t = time.time()
-assert not set.intersection(set(twins.keys()),set(twins.values()))
-print(time.time()-t);t = time.time()
+post_files_basic = reduce_pairs_dat_spec(post_files_basic)
+
+if False:
+	this = next(i for i in post_files_basic if i.get('datspec',False))
+	name_data = re.match(regex_post_datspec,this['base']).groupdict()
+	json_type_fixer(name_data)
+
+class FluxFileToData(Handler):
+	kinds = ('datspec','orphan',)
+	def __repr__(self):
+		treeview({str(id(self)):self.dat})
+		return "FluxFileToData [%s] [at %d]"%(self.kind,id(self))
+	def triage_dat_spec(self,dn,base,ext,datspec):
+		#! figure out a better way to handle booleans?
+		if datspec!=True: raise Exception('datspec flag was misused!')
+		self.kind = 'datspec'
+		# get information from the name
+		name_data = re.match(regex_post_datspec,base).groupdict()
+		json_type_fixer(name_data)		
+		# get information from the spec file
+		with open(os.path.join(dn,'%s.spec'%base)) as fp:
+			spec_data = json.load(fp)
+		# package
+		self.dat = dict(dn=dn,base=base,name_data=name_data,spec_data=spec_data)
+	def orphan(self,dn,base,fn):
+		self.dat = dict(fn=fn)
+		self.kind = 'orphan'
+
+# STEP 4: resolve each datspec file into a new list
+
+post_files_resolved = []
+for item in post_files_basic:
+	resolved = FluxFileToData(**item)
+	post_files_resolved.append(resolved)
+
+posts = dict([(k,list(filter(lambda x:x.kind==k,post_files_resolved))) 
+	for k in FluxFileToData.kinds])
+
+that = posts['datspec'][0]
+
+"""
+next steps:
+	refactor actually completely rewrite the thing that interprets the yaml files
+	anticipate the data in a calculation result
+	compare to the posts['datspect'] to generate a list of pending jobs
+		the code to do this resolution will be complex
+"""
+
+class Specs:
+	def __init__(self,spot):
+		self.spot = os.path.abspath(os.path.expanduser(spot))
+		self.fns = glob.glob(os.path.join(self.spot,'*.yaml'))
+		meta_filter = ortho.listify(ortho.conf.get('meta_filter',[]))
+		# filter specs files if we have a list or string of files or globs
+		if meta_filter:
+			self.fns = [i for i in self.fns if i in [m for n in 
+				[glob.glob(os.path.join(self.spot,j)) 
+				for j in meta_filter] for m in n]]
+		# read all yaml files
+		sources = {}
+		for fn in self.fns:
+			with open(fn) as fp: 
+				sources[fn] = yaml.load(fp)
+		st = time.time()
+		self.raw = self.merge(sources)
+		print(time.time()-st) #! slow?
+	def merge(self,sources):
+		"""Merge YAML dictionaries without overlaps (that is, strictly)."""
+		sources_unravel = {}
+		for fn in sources:
+			sources_unravel[fn] = list(catalog(sources[fn]))
+		# perfect check for unique paths
+		# note that this seems expensive but only taks 0.0017s then 0.0062s with the merge at the end
+		paths_all = [tuple(i) for j in [list(zip(*i))[0] for i in sources_unravel.values()] for i in j]
+		# note that this exception does not care if you have e.g. slices: {} and a nonempty slices elsewhere
+		#   which is the desired behavior. we only want to check for paths that overwrite each other
+		#! ignore paths that overwrite with the same value
+		if len(paths_all)!=len(set(paths_all)):
+			from collections import Counter
+			redundant_paths = [k for k,v in Counter(paths_all).items() if v>1]
+			raise Exception('found redundant paths: %s'%redundant_paths)
+		# merge the dictionaries
+		raw = {}
+		for data in sources_unravel.values():
+			for key,val in data:
+				delveset(raw,*key,value=val)
+		return raw
+
+#! hardcoded path below	
+specs = Specs(spot='~/omicron/factory/calc/ptdins/calcs/specs')
 

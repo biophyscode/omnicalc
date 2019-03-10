@@ -2,10 +2,11 @@
 
 import re,glob
 
-__all__ = ['repl','pipeline','test_clean','docker_clean']
+__all__ = ['repl','pipeline','test_clean','docker_clean','get_jupyter_token']
 
 import ortho
 from ortho import str_types
+from .formula import get_jupyter_token
 from .formula import *
 
 #! no: from ortho import hook_merge

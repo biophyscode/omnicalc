@@ -79,15 +79,26 @@ class DockerFileMaker(Handler):
 		"""Assemble a sequence of dockerfiles."""
 		index = MultiDict(base=self.meta['dockerfiles'].dockerfiles,
 			underscores=True)
-		self.dockerfile = '\n'.join([self.refine(index[i]) for i in sequence])
+		self.dockerfile = [] 
+		for item in sequence:
+			item_lookup = index.get(item,None)
+			if not item_lookup:
+				raise Exception('cannot find dockerfile: %s'%item)
+			self.dockerfile.append(self.refine(item_lookup))
+		self.dockerfile = '\n'.join(self.dockerfile)
 		if addendum: 
 			for i in addendum: self.dockerfile += "\n%s"%i
+
+	def raw(self,raw):
+		"""Set a verbatim Dockerfile under the raw key."""
+		self.dockerfile = raw
 
 	def refine(self,this):
 		"""Refine the Dockerfiles."""
 		if isinstance(this,dict): 
-			return DockerFileChunk(**this).text
-		else: return this
+			this = DockerFileChunk(**this).text
+		else: pass
+		return this
 
 ### SUPERVISOR
 
@@ -158,7 +169,7 @@ class ReplicatorGuide(Handler):
 	@hook_watch('prelim','site','identity',strict=False)
 	def docker_compose(self,compose,dockerfile,site,
 		command,script=None,persist=True,rebuild=True,
-		prelim=None,identity=None):
+		prelim=None,identity=None,indirect=False):
 		"""
 		Prepare a docker-compose folder and run a command in the docker.
 		"""
@@ -167,6 +178,7 @@ class ReplicatorGuide(Handler):
 		#   key to docker compose services lists when running on linux. note
 		#   that the linux check and modification of docker compose file can
 		#   later be moved to a real hook if desired
+		if indirect: raise Exception('you cannot run this! (indirect: true)')
 		is_linux = False
 		try: 
 			check_linux = bash('uname -a',scroll=False)
@@ -259,6 +271,9 @@ class ReplicatorGuide(Handler):
 		if mods:
 			for path,value in catalog(mods):
 				delveset(outgoing,*path,value=value)
+		# via calls docker_compose typically
+		#! make sure the following does not cause conflicts
+		outgoing['indirect'] = False
 		getattr(self,fname)(**outgoing)
 
 	def singularity_via_vagrant(self,vagrant_site):
@@ -268,3 +283,11 @@ class ReplicatorGuide(Handler):
 		spot = SpotLocal(site=vagrant_site,persist=True)
 		print(spot.abspath)
 		raise Exception('yay')
+
+def get_jupyter_token(container):
+	"""Check docker logs for a container."""
+	result = bash('docker logs %s'%container,scroll=False)
+	matched = re.findall(r':(\d+)/\?token=(.*?)\s',result['stdout'])
+	if len(matched)==1: raise Exception('cannot locate the token')
+	port,token = int(matched[-1][0]),matched[-1][1]
+	print('status notebook is available at http://localhost:%d/?token=%s'%(port,token))

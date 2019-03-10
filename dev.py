@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 
+#! this is deprecated. try `make make` actually not so sure maybe it really is main_alt.py
 #! do needs a proper tracebacker instead of the "If you suspect this is an IPython bug"
 
 import os,re,glob,json
 import yaml
 import time
+import copy,itertools
+
 from ortho import json_type_fixer
 from ortho import Handler
 from ortho import treeview
@@ -316,6 +319,74 @@ sidetracked:
 commit 
 """
 
+def resolve_loops(tree):
+	"""
+	Generic function for resolving the "loop" keyword in a nested dictionary.
+	The loop keyword can point to a dictionary or a list of values.
+	In both cases, the product of all values (if dict) or list items (if list)
+	is generated and a unique tree is produced for each combination in the 
+	product.
+	#! what to do about keys?
+	"""
+	paths = list(catalog(tree))
+	# get the pivots for the loops
+	loop_base = set([tuple(path[:path.index('loop')]) for path,val in paths if 'loop' in path])
+	loop_spots = set([tuple(path[:path.index('loop')+2]) for path,val in paths if 'loop' in path])
+	loop_full = set([tuple(path) for path,val in paths if 'loop' in path])
+	loop_term = [i for i in loop_full if i[-1]=='loop']
+	# collect all terminal loop values organized by path
+	loop_term_values = dict([(i[:-1],delve(tree,*i)) for i in loop_term])
+	splits = {}
+	aliases = {}
+	# the non-terminal loops have full dictionaries
+	for item in loop_full:
+		if item[-1]=='loop': 
+			downstream = delve(tree,*item)
+			if not isinstance(downstream,dict) and not isinstance(downstream,list):
+				raise Exception(
+					('Cannot loop the following path: %s with value: %s')%(
+						item,str(downstream)))
+			splits[item[:-1]] = downstream
+	for item in loop_spots:
+		if item[-2]=='loop': 
+			path = item[:item.index('loop')]
+			tail = item[:item.index('loop')+2]
+			alias = (path,tail[-1])
+			if path not in splits: 
+				splits[path] = []
+				aliases[path] = []
+			# we index aliases and splits together to later reconstruct the alias
+			splits[path].append(delve(tree,*tail))
+			aliases[path].append(alias)
+	routes,values = splits.keys(),splits.values()
+	# get the counts of the items in each loop in the order of routes above
+	counts = [len(i) for i in values]
+	# each index below is a distinct item in the loop
+	indices = list(itertools.product(*(range(i) for i in counts)))
+	# each item in the loop gets raw data and any aliases
+	#! previously: combos = [dict(zip(splits.keys(),i)) for i in list(itertools.product(*splits.values()))]
+	# combos is a list of the raw data and an alias
+	# the alias tells you what the "name" of the item in the loop is, if constructed from a hash
+	# note that loops over lists will not have a name, and hance will not have an alias
+	combos = [dict(
+		raw=dict(zip(routes,[list(values)[ii][i] 
+			for ii,i in enumerate(index)])),
+		# the aliases are saved by route, and indexed by i in the same order as the values of splits[path]
+		alias=[aliases[list(routes)[ii]][i] 
+			for ii,i in enumerate(index) 
+			# we only look up an alias if the route is in the alias dictionary
+			if list(routes)[ii] in aliases],
+		) for index in indices]
+	if not combos: return dict(multi=[copy.deepcopy(tree)])
+	multiplexed = []
+	for mod in combos:
+		this = copy.deepcopy(tree)
+		alias = mod['alias']
+		for key,val in mod['raw'].items():
+			delveset(this,*key,value=val)
+		multiplexed.append(dict(raw=this,alias=alias))
+	return dict(multi=multiplexed)
+
 class Specs(Handler):
 	def upstream(self,upstream,**kwargs):
 		self.upstream = upstream
@@ -330,16 +401,18 @@ class Calculation(Handler):
 		#! this is almost an edge in our calculation
 		self.specs = Specs(**specs)
 
+class CalculationLayer(Handler):
+	def item(self,raw,alias=None):
+		self.alias = alias
+		self.calc = Calculation(**raw)
+
 class CalculationSet(Handler):
 	#! you cannot name the function _item below because of handler
 	def item(self,many):
 		self.many = many
 		for key,val in self.many.items():
-			self.many[key] = Calculation(**val)
-
-them = CalculationSet(**dict(many=calcs_meta))
-that = them.many['lipid_abstractor']
-print(that.specs)
+			calcs = resolve_loops(val)
+			self.many[key] = dict(calcs=[CalculationLayer(**i) for i in calcs['multi']])
 
 """
 resolving loop structures
@@ -348,51 +421,5 @@ resolving loop structures
 	and then each copy gets a different value for everything "below"
 """
 
-import copy,itertools
-
-def resolve_loops(tree):
-	"""
-	Generic function for resolving the "loop" keyword in a nested dictionary.
-	The loop keyword can point to a dictionary or a list of values.
-	In both cases, the product of all values (if dict) or list items (if list)
-	is generated and a unique tree is produced for each combination in the 
-	product.
-	#! what to do about keys?
-	"""
-	paths = list(catalog(tree))
-	# get the pivots for the loops
-	loop_spots = set([tuple(path[:path.index('loop')+2]) 
-		for path,val in paths if 'loop' in path])
-	loop_full = set([tuple(path) for path,val in paths if 'loop' in path])
-	loop_term = [i for i in loop_full if i[-1]=='loop']
-	# collect all terminal loop values organized by path
-	loop_term_values = dict([(i[:-1],delve(tree,*i)) for i in loop_term])
-	splits = {}
-	# the non-terminal loops have full dictionaries
-	for item in loop_full:
-		if item[-1]=='loop': 
-			downstream = delve(tree,*item)
-			if (not isinstance(downstream,dict) 
-				and not isinstance(downstream,list)):
-				raise Exception(
-					('Cannot loop the following path: %s with value: %s')%(
-						item,str(downstream)))
-			splits[item[:-1]] = downstream
-	for item in loop_spots:
-		if item[-2]=='loop': 
-			path = item[:item.index('loop')]
-			tail = item[:item.index('loop')+2]
-			if path not in splits: splits[path] = []
-			splits[path].append(delve(tree,*tail))
-	combos = [dict(zip(splits.keys(),i)) 
-		for i in list(itertools.product(*splits.values()))]
-	if not combos: return dict(multi=[copy.deepcopy(tree)])
-	multiplexed = []
-	for mod in combos:
-		this = copy.deepcopy(tree)
-		for key,val in mod.items():
-			delveset(this,*key,value=val)
-		multiplexed.append(this)
-	return dict(multi=multiplexed)
-
-multi = resolve_loops(that.specs.raw)
+them = CalculationSet(**dict(many=calcs_meta))
+eg = them.many['lipid_abstractor']['calcs'][0]

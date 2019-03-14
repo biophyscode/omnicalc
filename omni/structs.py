@@ -224,6 +224,21 @@ class TrajectoryStructure(OmnicalcDataStructure):
 			'meta':{'strict':False,'check_types':True},
 			'struct':{'structure':'string','trajectory':'str_or_list','slice_name':'string','sn':'string',
 			'name_style':['readymade_datspec']}},
+		#! hacking in mesoscale stuff here? note that we are developing ortho_alt so this is soon-to-deprecate
+		#!   note that this is the slice request not the slice itself
+		'readymade_meso_v1':{
+			'meta':{'strict':False,'check_types':False},
+			'struct':{
+				'readymade_meso_v1':{OmnicalcDataStructure.StructureKey('slice_name'):{
+					'path':'string','directory':'string',
+						'membrane_xyz_glob':'string','nanogel_dat':'string'}}}},
+		#! hacking in the slice itself here
+		'readymade_meso_v1_slice':{
+			'meta':{'strict':False,'check_types':False},
+			'struct':{
+				'sn':'string','slice_name':'string',
+				'path':'string','directory':'string',
+				'membrane_xyz_glob':'string','nanogel_dat':'string',}},
 		'gromacs_group':{
 			'meta':{'strict':True,'check_types':True},
 			'struct':{'group_name':'string','selection':'string','sn':'string'}},
@@ -247,7 +262,9 @@ class TrajectoryStructure(OmnicalcDataStructure):
 		('post_spec_v2_basic','slice_request_named'):['sn','start','end','skip'],
 		('post_spec_v1','slice_request_named'):['sn','group','pbc','start','end','skip'],
 		('post_spec_v1_basic','slice_request_named'):['sn','start','end','skip'],
-		('readymade','calculation_request'):['sn','slice_name'],}
+		('readymade','calculation_request'):['sn','slice_name'],
+		#! hacked in
+		('readymade_meso_v1_slice','calculation_request'):['sn','slice_name'],}
 
 	def _eq_gromacs_slice_to_slice_request_named(self,a,b):
 		#! hacking through some python 3 problems, possibly related to order of equality?

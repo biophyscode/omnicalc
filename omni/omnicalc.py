@@ -732,7 +732,10 @@ class SliceMeta(TrajectoryStructure):
 			# detect the style of a particular slice
 			style = self.classify(slices_spec)
 			# once slice specification can yield many slices (cross works for multiple types)
-			if style in ['slices_request','readymade_request']:
+			if style in ['slices_request','readymade_request']+\
+				['readymade_meso_v1']: 
+				#! above is hacked in for meso
+				#!   add a flag for this condition directly in the structure?
 				slices_raw = self.cross(style=style,data=slices_spec)
 			else: raise Exception('unclear how to turn style %s into a SliceMeta'%style)
 			# make a formal slice element out of the raw data
@@ -747,9 +750,13 @@ class SliceMeta(TrajectoryStructure):
 					# +++ TRANSFORM a cross output into a group
 					group_transformed = dict(selection=val,sn=sn,group_name=key[1])
 					self.toc.append(Group(group_transformed))
-				elif style=='readymade_request':
+				elif style=='readymade_request'\
+					or style=='readymade_meso_v1':
+					if key[0]!=style: 
+						raise Exception('inconsistent?')
+					#! above is hacked in for meso
 					# +++ BUILD slice object
-					self.toc.append(Slice(data=dict(slice_name=key[0],sn=sn,**val)))
+					self.toc.append(Slice(data=dict(slice_name=key[1],sn=sn,**val)))
 				else: raise Exception('expecting a group or slice but instead received %s'%{key:val})
 
 	def search(self,candidate):
@@ -1310,10 +1317,14 @@ class WorkSpace:
 		Make slices
 		"""
 		#! make sure all slices are handled somewhere in these lists?
-		if any([job.slice.style!='readymade' for job in jobs_require_slices]):
-			self.make_slices_automacs([job for job in jobs_require_slices if job.slice.style=='slice_request_named'])
+		#! if any([job.slice.style!='readymade' for job in jobs_require_slices]):
+		#! made this more generic with a regex match. hacked in the meso readymade
+		if any([not re.match('^readymade',job.slice.style) for job in jobs_require_slices]):
+			self.make_slices_automacs([job for job in jobs_require_slices 
+				if job.slice.style=='slice_request_named'])
 		# this happens everytime we run with readymade because the slices need to be found on disk
-		else: self.make_slices_readymade([job for job in jobs_require_slices if job.slice.style=='readymade'])
+		else: self.make_slices_readymade([job for job in jobs_require_slices 
+			if re.match('^readymade',job.slice.style)])
 
 	def make_slices_readymade(self,jobs):
 		"""
@@ -1324,12 +1335,14 @@ class WorkSpace:
 		"""
 		registered_slices = []
 		for job in jobs:
-			# check slices on disk
-			for key in ['structure','trajectory']:
-				for fn in listify(job.slice.data[key]):
-					fn_abs = os.path.join(self.postdir,fn)
-					if not os.path.isfile(fn_abs):
-						raise Exception('readymade file not found %s'%fn_abs)
+			#! distinguish this from meso readymade. hacked in meso with no file checking for now
+			if job.slice.style=='readymade':
+				# check slices on disk for the standard readymade
+				for key in ['structure','trajectory']:
+					for fn in listify(job.slice.data[key]):
+						fn_abs = os.path.join(self.postdir,fn)
+						if not os.path.isfile(fn_abs):
+							raise Exception('readymade file not found %s'%fn_abs)
 			# add to the postdata with a unique name for this slice
 			if job.slice.__dict__ not in registered_slices:
 				registered_slices.append(copy.deepcopy(job.slice.__dict__))
@@ -1425,14 +1438,20 @@ class WorkSpace:
 		if jobs_require_slices: 
 			self.make_slices(jobs_require_slices)
 			# after loading slices we have to re-parse the postdata
+			#! since the following overwrites things, we get all non standard slices first and add them back
+			hold_slices = [(i,j) for i,j in self.post.slices().items() if re.match('^readymade',j.style)]
 			#! this will overwrite things!
 			self.post = PostDataLibrary(where=self.postdir,director=self.metadata.director,
 				previous=self.post,legacy_post_mode=self.config.get('legacy_post_mode',False))
+			#! adding back the readymade
+			self.post.toc.update(**dict(hold_slices))
 			# match the upstream slices here
 			for job in jobs:
 				# find the trajectory slice
 				keys = [key for key,val in self.post.slices().items() if val==job.slice]
-				if len(keys)!=1: raise Exception('failed to make and identify slices. development error')
+				if len(keys)!=1: 
+					import ipdb;ipdb.set_trace()
+					raise Exception('failed to make and identify slices. development error')
 				else: job.slice_upstream = self.post.toc[keys[0]]
 		# acquire upstream data without loading it yet
 		for job in jobs:
@@ -1454,7 +1473,8 @@ class WorkSpace:
 			# ... calculations also omit the PBC and group by default anyway.
 			name_style = job.calc.name_style
 			# if readymade we set the name_style here
-			if not name_style and job.slice.style=='readymade': name_style_this = 'readymade_datspec'
+			#! hacked in meso here so readymade is generic
+			if not name_style and re.match('^readymade',job.slice.style): name_style_this = 'readymade_datspec'
 			elif not name_style: name_style_this = 'standard_datspec'
 			else: name_style_this = name_style
 			basename = self.namer.basename(job=job,name_style=name_style_this)
@@ -1595,7 +1615,10 @@ class WorkSpace:
 				#! post directory is hard-coded here
 				struct_file = os.path.join(self.postdir,'%s.%s'%(job.slice_upstream.data['basename'],'gro'))
 				traj_file = os.path.join(self.postdir,'%s.%s'%(job.slice_upstream.data['basename'],'xtc'))
-			else: raise Exception('dev')
+			else: 
+				#! raise Exception('dev')
+				#! continue without traj_file because this is probably a readymade
+				traj_file,struct_file = None,None
 			# load upstream data files at the last moment
 			upstream = {}
 			for unum,(key,val) in enumerate(job.upstream.items()):

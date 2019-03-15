@@ -21,7 +21,11 @@ from ortho import dictsub,dictsub_sparse
 #! from datapack import treeview,delveset,dictsub,dictsub_sparse
 #! from ortho import treeview,delveset,dictsub,dictsub_sparse,json_type_fixer
 from .structs import NameManager,Calculation,TrajectoryStructure,NoisyOmnicalcObject
-#! from .base.autoplotters import inject_supervised_plot_tools
+
+#! temporarily back for dextran
+#! added for dextran
+from .base.autoplotters import inject_supervised_plot_tools
+
 from .base.store import load,store
 
 global namer
@@ -1774,7 +1778,7 @@ class WorkSpace:
 		self.plotname = plotname
 
 		###!!! 
-		raise Exception('check below')
+		#! temporarily disabled raise Exception('check below')
 
 		# once we have a plotname we can generate a plotspec
 		self.plotspec = PlotSpec(metadata=self.metadata,plotname=self.plotname,
@@ -1813,3 +1817,40 @@ class WorkSpace:
 
 		#! nothing specific happens when work = WorkSpace(analysis=True) but you get the environment
 		return
+
+	#! added for dextran
+	def collect_upstream_calculations_over_loop(self,plotname,calcname=None):
+		"""
+		Some plotting and analysis benefits from checking all calculations in an upstream loop (which is 
+		contrary to the original design of )
+		"""
+		#! added metadata before plots
+		plotspecs = self.metadata.plots.get(plotname,self.metadata.calculations.get(plotname,{})).get('specs',{})
+		if not calcname: calcname = plotspecs.get('calcname',plotname)
+		#---load the canonical upstream data that would be the focus of a plot in standard omnicalc
+		#---! load the upstream data according to the plot. note that this may fail in a loop hence needs DEV!
+		try: data,calc = self.plotload(plotname)
+		except:
+			data,calc = None,None
+			status('failed to load a single upstream calculation however this plot script has requested '
+				'all of them so we will continue with a warning. if you have downstream problems consider '
+				'adding a specific entry to plots to specify which item in an upstream loop you want',
+				tag='warning')
+		#---in case there is no plot entry in the metadata we copy it
+		if plotname not in self.plots: self.plots[plotname] = copy.deepcopy(self.calcs[calcname])
+		#---load other upstream data
+		#---get all upstream curvature sweeps
+		upstreams,upstreams_stubs = self.calc_meta.unroll_loops(self.calcs[calcname],return_stubs=True)
+		datas,calcs = {},{}
+		#---loop over upstream calculations and load each specifically, using plotload with whittle_calc
+		for unum,upstream in enumerate(upstreams_stubs):
+			#---use the whittle option to select a particular calculation
+			dat,cal = self.plotload(calcname,whittle_calc={calcname:upstream['specs']})
+			#---! this is specific to curvature coupling
+			try: tag = upstreams_stubs[unum]['specs']['design']
+			except: tag = str(unum)
+			if type(tag)==dict: tag = 'v%d'%unum
+			datas[tag] = dict([(sn,dat[sn]['data']) for sn in self.sns()])
+			calcs[tag] = dict([(sn,cal) for sn in self.sns()])
+		#---singluar means the typical "focus" of the upstream calculation, plural is everything else
+		return dict(datas=datas,calcs=calcs,data=data,calc=calc)

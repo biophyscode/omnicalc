@@ -254,3 +254,12 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 def picturesave_redacted(*args,**kwargs):
 	"""Wrap picturesave with redacted plots."""
 	return picturesave(*args,redacted=True,**kwargs)
+
+#! added for dextran
+def plotload(plotname,specfile=None,choice_override=None,use_group=False,whittle_calc=None):
+	"""
+	Wrapper around WorkSpace.plotload method for backwards compatibility with plot scripts, which 
+	expect to find this function in globals to get data.
+	"""
+	data,calc = work.plotload(plotname,whittle_calc=whittle_calc)
+	return data,calc

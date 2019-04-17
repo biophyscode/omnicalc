@@ -1117,9 +1117,8 @@ class WorkSpace:
 					bundle['calc']['extras'][sn].update(**dict([(k,slice_upstream.data['body'][k]) 
 						for k in ['start','end','skip']]))
 				except Exception as e: 
-					tracebacker(e)
-					print('warning !!! %s'%e)
-					raise Exception('oof')
+					#! tracebacker(e)
+					print('warning %s has no trajectory slice'%(sn))
 					pass
 			bundle['calc'][calcname] = {'calcs':{'specs':job.calc.specs}}
 		# data are returned according to a versioning system, default 2 on ortho branches
@@ -1150,7 +1149,7 @@ class WorkSpace:
 				def __init__(self,data,calc):
 					self.calcnames = set()
 					self.data,self.names = [],[]
-					self.extras = calc.pop('extras')
+					self.extras = calc.pop('extras',None)
 					for key,val in data.items():
 						if type(key) in str_types: calcname = key
 						else: 

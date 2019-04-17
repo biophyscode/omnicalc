@@ -113,7 +113,10 @@ def dictsum(*args):
 
 def gopher(spec,module_name='module',variable_name='function'):
 	"""Load an external module. Useful for changing the workflow without changing the code."""
-	mod = importlib.import_module(spec[module_name])
+	try: mod = importlib.import_module(spec[module_name])
+	except Exception as e: 
+		print('failure on gopher for %s with spec: %s'%(module_name,spec))
+		raise
 	target = mod.__dict__.get(spec[variable_name],None)
 	if not target: raise Exception('add %s and %s to the specs'%(module_name,variable_name))
 	return target

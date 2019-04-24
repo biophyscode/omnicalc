@@ -84,10 +84,13 @@ class DockerFileMaker(Handler):
 			item_lookup = index.get(item,None)
 			if not item_lookup:
 				raise Exception('cannot find dockerfile: %s'%item)
-			self.dockerfile.append(self.refine(item_lookup))
+			comment = '# section: %s\n'%item
+			self.dockerfile.append(comment+self.refine(item_lookup))
 		self.dockerfile = '\n'.join(self.dockerfile)
 		if addendum: 
-			for i in addendum: self.dockerfile += "\n%s"%i
+			self.dockerfile += "\n# addendum"
+			for i in addendum: 
+				self.dockerfile += "\n%s"%i
 
 	def raw(self,raw):
 		"""Set a verbatim Dockerfile under the raw key."""
@@ -169,7 +172,7 @@ class ReplicatorGuide(Handler):
 	@hook_watch('prelim','site','identity',strict=False)
 	def docker_compose(self,compose,dockerfile,site,
 		command,script=None,persist=True,rebuild=True,
-		prelim=None,identity=None,indirect=False):
+		prelim=None,identity=None,indirect=False,cname=None):
 		"""
 		Prepare a docker-compose folder and run a command in the docker.
 		"""
@@ -201,6 +204,18 @@ class ReplicatorGuide(Handler):
 		if is_linux:
 			for key in compose.get('services',{}):
 				compose['services'][key]['user'] = '%d:%d'%(user_uid,user_gid)
+		# the cname flag gets container name from the command line
+		#   and adds it to all of the compose recipes at start time because
+		#   if we add it to the recipe by default it turns off some features
+		#! this feature does not work with docker exec for some reason
+		if cname:
+			for service in compose['services']:
+				if 'container_name' in compose['services']:
+					raise Exception(('received cname from the command line but '
+						'the service "%s" already has a container named %s and we '
+						'refuse to override this')%(service,
+						compose['services']['container_name']))
+				else: compose['services'][service]['container_name'] = cname
 		with open(os.path.join(spot.path,'docker-compose.yml'),'w') as fp:
 			fp.write(yaml.dump(compose))
 		# script is optional. it only runs if you run a docker command below
@@ -208,7 +223,10 @@ class ReplicatorGuide(Handler):
 		if script:
 			with open(os.path.join(spot.path,'script.sh'),'w') as fp: 
 				fp.write(script)
-		if rebuild: bash_basic('docker-compose build',cwd=spot.path)
+		if rebuild: 
+			cmd = 'docker-compose build'
+			print('status from %s running command %s'%(spot.path,cmd))
+			bash_basic('docker-compose build',cwd=spot.path)
 		# no need to log this since it manipulates a presumably 
 		#   persistent set of files
 		print('status running command %s'%command)
@@ -250,7 +268,7 @@ class ReplicatorGuide(Handler):
 			first = via
 			paths_this = []
 		else: raise Exception('error in resolving "via" path')
-		fname = self.classify(*self.meta['complete'][first].keys())
+		fname = self._classify(*self.meta['complete'][first].keys())
 		if fname=='via': 
 			raise Exception('eldest parent of this "via" graph needs a parent: %s'%str(paths_this))
 		outgoing = copy.deepcopy(self.meta['complete'][first])

@@ -1128,7 +1128,7 @@ class WorkSpace:
 				def __repr__(self):
 					treeview(dict(data=dict([('%s (%d)'%(name,num),val) 
 						for num,(name,val) in enumerate(self.names)])))
-					return "DataPack: %s"%list(set(zip(*self.names)[0]))
+					return "DataPack: %s"%list(set(list(zip(*self.names))[0]))
 				def __init__(self,data,calc):
 					self.calcnames = set()
 					self.data,self.names = [],[]

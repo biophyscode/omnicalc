@@ -75,6 +75,7 @@ class PostAccumulator(object):
 		self.data.append(data)
 	def _get(self,**meta):
 		"""Find unique matches."""
+		#! the fuzzy logic here is not working correctly. it needs to be more specific!
 		# first check exact equality
 		candidates = [ii for ii,i in enumerate(self.meta) if i==meta]
 		if len(candidates)==1: return candidates[0]
@@ -92,6 +93,9 @@ class PostAccumulator(object):
 		else: return None
 	def get(self,**meta):
 		this = self._get(**meta)
+		#! try stripping None here. this is a recent change and may break things
+		if not this:
+			this = self._get(**dict([(i,j) for i,j in meta.items() if j!=None]))
 		if this==None: 
 			treeview(dict(meta=self.meta,request=meta))
 			raise Exception('cannot find data with meta (see above for meta): %s'%meta)

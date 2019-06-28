@@ -31,11 +31,15 @@ def replicator_read_yaml(sources,name=None,args=None,kwargs=None):
 		'not sure what to do with these: args=%s, kwargs=%s'%(
 			str(args),kwargs)))
 	import yaml
-	incoming = {}
+	incoming,special = {},{}
 	for source in sources:
 		with open(source) as fp: 
 			this = yaml.load(fp.read())
-			for key,val in this.items():
+			this_reduced = ReplicatorSpecial(**this)
+			if this_reduced.specials:
+				special[source] = this_reduced.specials
+			# replicator special passes regular items via kwargs
+			for key,val in this_reduced.kwargs.items():
 				if key in incoming: 
 					raise Exception(
 						'duplicate keys in replicator YAML files (%s): %s'%(
@@ -45,14 +49,22 @@ def replicator_read_yaml(sources,name=None,args=None,kwargs=None):
 	#   underscores) in top-level dictionary.
 	instruct = MultiDict(base=incoming,
 		underscores=True,strict=True)
-	# special handling
-	reference = {}
-	# previously used custom taxonomy but here we infer it via inspect
-	taxonomy_rs = ReplicatorSpecial(inspect=True)._taxonomy
-	for key in taxonomy_rs:
-		if key in instruct: 
-			reference[key] = ReplicatorSpecial(name=key,
-				**{key:instruct.pop(key)})
+	"""
+	special handling for dockerfiles
+	note that the ReplicatorSpecial picks off the dockerfiles key in the recipes
+	these are merged here with name collision protection
+	however this is basically a hardcoded merge
+	development goal is to put this into another generalized handler
+	"""
+	dockerfiles_merged = {}
+	for key,val in special.items():
+		for layer_name,chunk in val.get('dockerfiles',{}).items():
+			if layer_name in dockerfiles_merged:
+				raise Exception('dockerfile name collision: %s'%layer_name)
+			dockerfiles_merged[layer_name] = chunk
+	# save the resulting dockerfiles
+	reference = {'dockerfiles':dockerfiles_merged}
+	# end of special dockerfile handling
 	# leftovers from special handling must be tests
 	if not name and len(instruct)>1: 
 		raise Exception(
@@ -62,9 +74,10 @@ def replicator_read_yaml(sources,name=None,args=None,kwargs=None):
 		test_name = instruct.keys()[0]
 		print('status','found one instruction in source %s: %s'%(
 			source,test_name))
-	elif name:test_name = name
+	elif name: test_name = name
 	else: raise Exception('source %s is empty'%source)
 	if test_name not in instruct: 
+		import ipdb;ipdb.set_trace()
 		raise Exception('cannot find replicate %s'%test_name)
 	test_detail = instruct[test_name]
 	reference['complete'] = instruct

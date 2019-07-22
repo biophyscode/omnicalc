@@ -293,6 +293,7 @@ class Calculation(NoisyOmnicalcObject):
 		self.specs = calc_specs.pop('specs',{})
 		self.name_style = calc_specs.pop('name_style',None)
 		self.ignore = calc_specs.pop('ignore',False)
+		self.name_alias = calc_specs.pop('name_alias',None)
 		# we protect against extra unprocessed data in the calculations here
 		if calc_specs: raise Exception('unprocessed inputs to the calculation: %s'%calc_specs)
 		# copy any upstream references for later

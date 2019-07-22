@@ -33,8 +33,8 @@ def load(name,cwd=None,verbose=False,exclude_slice_source=False,filename=False):
 		#!   when they come back in. it's easy to do this in the analysis 
 		#!   scripts however it is an unfortunate hassle
 	if 'meta' in rawdat: 
-		if sys.version_info<(3,0): out_text = rawdat['meta'].value
-		else: out_text = rawdat['meta'].value.decode()
+		if sys.version_info<(3,0): out_text = rawdat['meta'][()]
+		else: out_text = rawdat['meta'][()].decode()
 		attrs = json.loads(out_text)
 	else: 
 		print('[WARNING] no meta in this pickle')
@@ -98,6 +98,7 @@ def store(obj,name,path,attrs=None,print_types=False,verbose=True):
 	if attrs != None: 
 		try: fobj.create_dataset('meta',data=np.string_(json.dumps(attrs)))
 		except Exception as e: 
+			import ipdb;ipdb.set_trace()
 			raise Exception('failed to serialize attributes: %s'%e)
 	if verbose: print('status','writing'+path+'/'+name)
 	fobj.close()

@@ -95,8 +95,9 @@ class MetaData:
 			with open(fn) as fp: 
 				if (self.merge_method != 'override_factory' or 
 					not re.match(r'^meta\.factory\.',os.path.basename(fn))):
-					try: allspecs.append(yaml.load(fp.read()))
+					try: allspecs.append(yaml.load(fp.read(),Loader=yaml.FullLoader))
 					except Exception as e:
+						import ipdb;ipdb.set_trace()
 						raise Exception('failed to parse YAML (are you sure you have no tabs?): %s'%e)
 		# previously raised an exception if allspecs was empty but execution should continue
 		# merge the YAML dictionaries according to one of several methods
@@ -136,8 +137,9 @@ class MetaData:
 		"""
 		Read a collections list.
 		"""
-		if any([name not in self.collections for name in names]): 
-			raise Exception('cannot find collection %s'%name)
+		missing = [name for name in names if name not in self.collections ]
+		if any(missing): 
+			raise Exception('cannot find collection: %s'%str(missing))
 		sns = []
 		for name in names: sns.extend(self.collections.get(name,[]))
 		return unique_ordered(sns)
@@ -196,7 +198,7 @@ class Specifications:
 		#! should this kind of hook method be standardized?
 		specs_hooks = {}
 		for fn in self.specs_files:
-			with open(fn) as fp: specs_hooks[fn] = yaml.load(fp)
+			with open(fn) as fp: specs_hooks[fn] = yaml.load(fp,Loader=yaml.FullLoader)
 		# unroll everything
 		paths = list(catalog(specs_hooks))
 		# find the parser in the director, parser location in these yaml files
@@ -826,7 +828,12 @@ class PlotSpec:
 			if not self.collections: 
 				raise Exception('cannot assemble collections for plot %s after falling back to calcs'%(
 					self.plotname))
-		elif unregistered_plots: pass
+		elif unregistered_plots: 
+			#! note that blanking request_calc means you need to unpack some data yourself
+			#!   this was added when unregistered_plots became necessary during a dextran sweep
+			#!   however it is not clear what the purpose of unregistered_plots was made for
+			self.request_calc = {}
+			pass
 		else: raise Exception('cannot find plotname "%s" in plots or calculations metadata'%self.plotname)
 	def sns(self):
 		return unique_ordered(self.metadata.get_simulations_in_collection(
@@ -1021,6 +1028,9 @@ class WorkSpace:
 		whittle = kwargs.pop('whittle',None)
 		collections_alt = [i for j in [self.metadata.collections[c] 
 			for c in listify(kwargs.pop('collections',[]))] for i in j]
+		#! allow an override for this to finish the dextran sweep
+		request_calc_override = kwargs.pop('request_calc_override',None)
+		if request_calc_override: self.plotspec.request_calc = request_calc_override
 		if kwargs: raise Exception('unprocessed kwargs %s'%kwargs)
 		# plotspec is first instantiated by Workspace.plot and it is important to replace it after
 		# ... running plotload so that items like Workspace.sns() still return the correct result
@@ -1084,7 +1094,20 @@ class WorkSpace:
 					ups = self.collect_upstream_calculations(item)
 					for key,val in ups.items(): upstream_requests[(key,ii)] = val
 		# convert upstream calculation requests into proper calculations
-		else: upstream_requests = self.collect_upstream_calculations(self.plotspec.request_calc)
+		else: 
+			upstream_requests = self.collect_upstream_calculations(self.plotspec.request_calc)
+			#! more hacking for dextran. is there a more standard way to do this? this code is too big
+			if not upstream_requests and self.metadata.director.get('upstream_dissect',False):
+				upstream_requests = {}
+				#! request_calc is consumed by now !??
+				request_calc_this = request_calc_override
+				#! for key,val in self.plotspec.request_calc.items():
+				# mimic the bundling above when we really have multiple upstreams
+				for ii,(key,val) in enumerate(request_calc_this.items()):
+					ups = self.collect_upstream_calculations({key:val})
+					for m,n in ups.items():
+						upstream_requests[(m,ii)] = n
+
 		# convert upstream calculation requests into proper calculations
 		calcnames = upstream_requests.keys()
 		# package the data for export to the plot environment in a custom dictionary
@@ -1095,7 +1118,12 @@ class WorkSpace:
 				status('caching %s: %s'%(calcname,sn),
 					i=snum+len(sns)*cnum,looplen=len(sns)*len(upstream_requests),tag='load')
 				if calcname not in bundle['data']: bundle['data'][calcname] = {}
-				job = self.connect_upstream_calculation(request=request,sn=sn)
+				try: job = self.connect_upstream_calculation(request=request,sn=sn)
+				except:
+					#! note that collections_alt means some jobs do not match
+					#! hacking through this
+					if self.metadata.director.get('upstream_ignore_connect_fail',False): continue
+
 				fn = job.result.files['dat']
 				data = load(os.path.basename(fn),cwd=os.path.dirname(fn))
 				if data.get('error',False)=='error':
@@ -1477,17 +1505,27 @@ class WorkSpace:
 			name_style = job.calc.name_style
 			# if readymade we set the name_style here
 			#! hacked in meso here so readymade is generic
-			if not name_style and re.match('^readymade',job.slice.style): name_style_this = 'readymade_datspec'
+			if not name_style and re.match('^readymade',job.slice.style): 
+				name_style_this = 'readymade_datspec'
 			elif not name_style: name_style_this = 'standard_datspec'
 			else: name_style_this = name_style
 			basename = self.namer.basename(job=job,name_style=name_style_this)
 			# prepare suffixes for new dat files
 			keys = [int(re.match(r'^%s\.n(\d+)\.spec$'%basename,key).group(1)) 
 				for key in spec_toc.get(basename,[]) if re.match('^%s'%basename,key)]
-			if keys and not sorted([int(i) for i in keys])==list(range(len(keys))):
-				raise Exception('non sequential keys found for data objects prefixed with %s'%basename)
+			keys_sorted = sorted([int(i) for i in keys])
+			if keys and not keys_sorted==list(range(len(keys))):
+				print('warning non-sequential keys found for data objects prefixed with %s'%basename)
+			#! fill in gaps in the list of keys in case you delete a calculation and redo it
+			#!   this does not ensure that the new revised calculation gets the same key, but 
+			#!   at least ensures they are sequential
+			backfill_keys = [i for i in range(max(keys_sorted)) if i not in keys_sorted]
+			# either fill in a key in the middle of the range
+			if backfill_keys: new_key = backfill_keys[0]
+			# or take the next highest key
+			else: new_key = len(keys_sorted)
 			# make the new filename
-			fn = '%s.n%d.spec'%(basename,len(keys))
+			fn = '%s.n%d.spec'%(basename,new_key)
 			if basename not in spec_toc: spec_toc[basename] = []
 			# save the filename so new files give unique spec file names
 			spec_toc[basename].append(fn)
@@ -1532,6 +1570,8 @@ class WorkSpace:
 				raise Exception('failed to find the requested slice in the metadata: %s'%job.slice.__dict__)
 			# replace the job slice with the metadata slice if we found a match
 			else: job.slice = slice_match
+			# before searching for a result, we check the name alias
+			if job.calc.name_alias: job.calc.name = job.calc.name_alias
 			# search for a result
 			job.result = self.post.search_results(job=job)
 			if not job.result: 
@@ -1731,6 +1771,8 @@ class WorkSpace:
 		self.check_compute()
 		# if we have incomplete jobs then run them
 		if self.queue_computes and not automatic:
+			#!! debug now
+			import ipdb;ipdb.set_trace()
 			raise Exception('there are pending compute jobs. try `make compute` before plotting')
 		elif self.queue_computes and skip:
 			status('skipping pending computatations in case you are plotting swiftly',tag='warning')

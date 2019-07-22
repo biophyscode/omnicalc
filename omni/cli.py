@@ -186,6 +186,26 @@ def compute(debug=False,debug_slices=False,meta=None,back=False):
 	"""
 	Main compute loop runs from here.
 	"""
+	#! move this to a central location?
+	if os.environ.get('FILTER_WARNINGS',False) and False:
+		import warnings
+		warnings.filterwarnings('error')
+		# see https://stackoverflow.com/questions/40845304
+		warnings.filterwarnings("ignore",message="numpy.dtype size changed")
+		warnings.filterwarnings("ignore",message="numpy.ufunc size changed")
+		#! warning from: MDAnalysis/lib/_cutil.pyx
+		warnings.filterwarnings("ignore",message=(
+			"can't resolve package from __spec__ or __package__,"
+			" falling back on __name__ and __path__"))
+		#! warning from somewhere in duecredit related to collections
+		warnings.filterwarnings("ignore",message=(
+			"Using or importing the ABCs from 'collections' "
+			"instead of from 'collections.abc' is deprecated, "
+			"and in 3.8 it will stop working"))
+		#! ...
+		warnings.filterwarnings("ignore",message=(
+			#"Internal work array size computation failed: -5"))
+			"Intel MKL ERROR: Parameter 5 was incorrect on entry to DGESDD."))
 	# automatically clear stale
 	clear_stale()
 	if back: 

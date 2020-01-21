@@ -28,6 +28,10 @@ def load(name,cwd=None,verbose=False,exclude_slice_source=False,filename=False):
 		# python 3 convert bytes to strings
 		if not sys.version_info<(3,0) and data[key].dtype.kind=='S':
 			data[key] = np.array(data[key]).astype(str)
+		#! note that we are still getting 'O' objects in python 3
+		#!   and this means everything has to be converted back to strings
+		#!   when they come back in. it's easy to do this in the analysis 
+		#!   scripts however it is an unfortunate hassle
 	if 'meta' in rawdat: 
 		if sys.version_info<(3,0): out_text = rawdat['meta'].value
 		else: out_text = rawdat['meta'].value.decode()

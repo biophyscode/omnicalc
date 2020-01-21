@@ -13,13 +13,14 @@ def framelooper(total,start=None,text='frame'):
 		status(text,i=fr,looplen=total,tag='parallel',start=start)
 		yield fr
 
-def basic_compute_loop(compute_function,looper,run_parallel=True,debug=False):
+def basic_compute_loop(compute_function,looper,run_parallel=True,
+	debug=False,n_jobs=4):
 	"""
 	Canonical form of the basic compute loop.
 	"""
 	start = time.time()
 	if run_parallel:
-		incoming = Parallel(n_jobs=8,verbose=10 if debug else 0.,require='sharedmem')(
+		incoming = Parallel(n_jobs=n_jobs,verbose=10 if debug else 0.,require='sharedmem')(
 			delayed(compute_function)(**looper[ll]) 
 			for ll in framelooper(len(looper),start=start))
 	else: 

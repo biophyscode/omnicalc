@@ -1,35 +1,45 @@
 #!/usr/bin/env python
 
-import re
+import re,glob
 
-__all__ = ['repl','pipeline','test_clean','test_help','docker_clean']
+__all__ = ['repl','pipeline','test_clean','docker_clean','get_jupyter_token']
 
-# standard handlers from ortho
 import ortho
+from ortho import str_types
+from .formula import get_jupyter_token
 from .formula import *
 
 #! no: from ortho import hook_merge
 #!   no: from ortho.hooks import hook_merge
 #!   instead use import ortho then later ortho.hook_merge
 #! turning this off for now because of import issues. needs revisited
-if False:
-	# +++ allow user to hook in other handlers here
-	import ortho
-	ortho.hook_merge(hook='replicator',namespace=globals())
+#if False:
+
+# +++ allow user to hook in other handlers here
+#import ortho
+#ortho.hooks.hook_merge(hook='replicator',namespace=globals())
 
 ### READERS
 
 @requires_python('yaml')
-def replicator_read_yaml(source,name=None,args=None,kwargs=None):
+def replicator_read_yaml(sources,name=None,args=None,kwargs=None):
 	"""
 	Read a replicator instruction and send it to the Guide for execution.
 	"""
 	import yaml
-	with open(source) as fp: 
-		# we load into a MultiDict to forbid spaces (replaced with 
-		#   underscores) in top-level dictionary.
-		instruct = MultiDict(base=yaml.load(fp.read()),
-			underscores=True,strict=True)
+
+	incoming = {}
+	for source in sources:
+		with open(source) as fp: 
+			this = yaml.load(fp.read())
+			for key,val in this.items():
+				if key in incoming: 
+					raise Exception('duplicate keys in replicator YAML files (%s): %s'%(source,key))
+				incoming[key] = val
+	# we load into a MultiDict to forbid spaces (replaced with 
+	#   underscores) in top-level dictionary.
+	instruct = MultiDict(base=incoming,
+		underscores=True,strict=True)
 	# special handling
 	reference = {}
 	# previously used custom taxonomy but here we infer it via inspect
@@ -66,33 +76,69 @@ def docker_clean():
 	os.system('docker rm $(docker ps -a -q)')
 	os.system('docker rmi $(docker images -f "dangling=true" -q)')
 
+def many_files(spec):
+	"""
+	Specify one file, a list, or a glob or a list of globs.
+	"""
+	if isinstance(spec,list):
+		missing = [i for i in spec 
+		if not os.path.isfile(i) and not glob.glob(i)]
+		if any(missing): 
+			raise Exception('missing files from %s: %s'%(spec,missing))
+		return list(set([i for j in 
+			[[k] if os.path.isfile(k) else glob.glob(k) for k in spec] 
+			for i in j]))
+	elif isinstance(spec,str_types) and os.path.isfile(spec):
+		return [spec]
+	elif isinstance(spec,str_types):
+		fns = glob.glob(spec)
+		if any(fns): return fns
+		else: raise Exception('cannot find files: %s'%spec)
+	else: raise Exception('cannot intepret file selection: %s'%spec)
+
 def repl(*args,**kwargs):
 	"""
 	Run a test.
 	Disambiguates incoming test format and sends it to the right reader.
 	Requires explicit kwargs from the command line.
 	"""
+	"""
+	# instructions for extending ReplicatorGuide
+	# see hooks/replicator_alt.py
+	# EXTEND the ReplicatorGuide class
+	# make set_hook replicator="\"{'s':'hooks/replicator_alt.py','f':'update_replicator_guide'}\""
+	# import the class, subclass it, and export that inside a function
+	from ortho.replicator.formula import ReplicatorGuide
+	class ReplicatorGuide(ReplicatorGuide):
+		def new_handler(self,param):
+			# do things and return to ReplicatorGuide(param=1).solve
+			return dict(result=123)
+	def update_replicator_guide(): 
+		# this hook function adds the updated guide
+		return dict(ReplicatorGuide=ReplicatorGuide)
+	"""
+	# +++ allow user to hook in other handlers here
+	import ortho
+	ortho.hooks.hook_merge(hook='replicator',namespace=globals())
 	# allow args to be handled by the interface key for easier CLI
 	if args:
 		if kwargs: raise Exception('cannot use kwargs with args here')
 		if 'replicator_recipes' not in ortho.conf:
 			raise Exception('calling repl with args requires the '
 				'"replicator_recipes" variable be set in the config')
-		source = ortho.conf['replicator_recipes']
-		if not os.path.isfile(source):
-			raise Exception('cannot find %s'%source)
+		sources = many_files(ortho.conf['replicator_recipes'])
 		this_test = replicator_read_yaml(
-			name=args[0],args=args[1:],kwargs=kwargs,source=source)
+			name=args[0],args=args[1:],kwargs=kwargs,sources=sources)
 	# specific format uses only kwargs
 	elif (set(kwargs.keys())<={'source','name'} 
 		and 'source' in kwargs 
 		and re.match(r'^(.*)\.(yaml|yml)$',kwargs['source'])):
+		kwargs['sources'] = [kwargs.pop('source')]
 		this_test = replicator_read_yaml(**kwargs)
 	else: raise Exception('unclear request')
 	# run the replicator
 	rg = ReplicatorGuide(name=this_test['name'],
 		meta=this_test['meta'],**this_test['detail'])
-
 
 # alias for the replicator
 pipeline = repl

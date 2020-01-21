@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 import os,sys,ast
+from .dev import tracebacker
 
 class ReExec:
 	me = None
@@ -71,7 +72,9 @@ class ReExec:
 		print('status rerunning the script')
 		out = self.namespace
 		self.get_text()
-		exec(self.text,out,out)
+		#! testing out exception handling. you always get failure on this line
+		try: exec(self.text,out,out)
+		except Exception as e: tracebacker(e)
 		#if coda: self.get_coda()
 
 def iteratively_execute():

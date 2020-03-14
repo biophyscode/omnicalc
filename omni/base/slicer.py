@@ -249,6 +249,7 @@ def infer_parts_to_slice(start,end,skip,sequence):
 		# ... overhaul anyway. for now, we just try to get the right sequence by restricting attention to
 		# ... the last step. since the toc is sorted this is easy.
 		# all steps have the same sn and they should be ordered from the toc so we filter by the last one
+		#! note that this breaks v563. fixed it by linking things in and moving s01
 		last_step = sequence[-1][0][1]
 		sequence_alt = [s for s in sequence if s[0][1]==last_step]
 		slice_target = infer_parts_to_slice_legacy(start,end,skip,sequence_alt)
@@ -310,6 +311,8 @@ def slice_trajectory(**kwargs):
 	#---commands to create sub-slices
 	sources = infer_parts_to_slice(start,end,skip,sequence)
 	sn = sources[0][0][0]
+	if sn=='membrane-v563':
+		sources = infer_parts_to_slice_legacy(start,end,skip,sequence)
 	group_flag = '' if not group_fn else ' -n '+group_fn
 	pbc_flag = '' if not pbc else ' -pbc %s'%pbc
 	cmdlist = []
@@ -350,7 +353,7 @@ def slice_trajectory(**kwargs):
 	tail = ' -dump %d -s %s -f %s -o %s.gro%s'%(start,tpr,traj,outkey,group_flag)
 	if pbc != None: tail = tail + ' -pbc %s'%pbc
 	bash(gmxpaths['trjconv']+tail,cwd=postdir,inpipe='0\n')
-	
+
 	#---convert relevant trajectories
 	start = time.time()
 	for ii,(outfile,cmd) in enumerate(cmdlist):

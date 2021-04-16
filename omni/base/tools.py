@@ -153,7 +153,7 @@ class Observer(object):
 		self._locals = {}
 		self.function = function
 	def __call__(self,*args,**kwargs):
-	 	def tracer(frame,event,arg):
+		def tracer(frame,event,arg):
 			if event=='return': 
 				self._locals = frame.f_locals.copy()
 				# it is unwise to modify locals so dynamic variables can drop to _locals

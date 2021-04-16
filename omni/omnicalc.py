@@ -132,7 +132,7 @@ class MetaData:
 			with open(fn) as fp: 
 				if (self.merge_method != 'override_factory' or 
 					not re.match('^meta\.factory\.',os.path.basename(fn))):
-					try: allspecs.append(yaml.load(fp.read()))
+					try: allspecs.append(yaml.load(fp.read(),Loader=yaml.Loader))
 					except Exception as e:
 						raise Exception('failed to parse YAML (are you sure you have no tabs?): %s'%e)
 		# previously raised an exception if allspecs was empty but execution should continue
@@ -442,8 +442,10 @@ class PostData(NoisyOmnicalcObject):
 			# the compute function will change the style from new to read after rewriting the dat file
 			store(obj={'error':'error'},name=os.path.basename(self.files['dat']),
 				path=self.dn,attrs={},verbose=False)
-		except: raise Exception('failed to prewrite file %s with PostData: %s'%(
-			self.files['dat'],self.__dict__))
+		except Exception as e:
+			raise 
+			raise Exception('failed to prewrite file %s with PostData: %s'%(
+				self.files['dat'],self.__dict__))
 		try:
 			# write a dummy spec file
 			with open(self.files['spec'],'w') as fp: 
@@ -845,7 +847,7 @@ class WorkSpace:
 				'this is an uncommon use-case which lets you use multiple spots without naming collisions.')
 			elif len(nspots)==0: self.short_namer = None
 			# if you have one spot we infer the namer from the omnicalc config.py
-			else: self.short_namer = self.config.get('spots',{}).values()[0]['namer']	
+			else: self.short_namer = list(self.config.get('spots',{}).values())[0]['namer']	
 		global namer
 		# prepare the namer, used in several places in omnicalc.py
 		namer = self.namer = NameManager(short_namer=self.short_namer,spots=self.config.get('spots',{}))
@@ -1028,7 +1030,7 @@ class WorkSpace:
 				job = self.connect_upstream_calculation(request=request,sn=sn)
 				fn = job.result.files['dat']
 				data = load(os.path.basename(fn),cwd=os.path.dirname(fn))
-				if data.get('error',False)=='error':
+				if data.get('error',False) in ['error',b'error']:
 					raise Exception('calculation failed. clear the dat/spec files corresponding '
 						'to %s (by using `make clear_stale`) and recompute'%fn)
 				bundle['data'][calcname][sn] = {'data':data}
@@ -1056,7 +1058,7 @@ class WorkSpace:
 		if plotload_version==1: 
 			# remove calculation name from the nested dictionary if only one
 			if len(calcnames)==1 and len(bundle['data'])==1:
-				bundle['data'] = bundle['data'].values()[0]
+				bundle['data'] = list(bundle['data'].values())[0]
 			if len(bundle['calc'])==1: bundle['calc'] = bundle['calc'].values()[0]
 			# note that calc may also include extras to specify the trajectory (see plot-actinlink_videos.py)
 			outgoing = bundle['data'],bundle['calc']
@@ -1317,10 +1319,13 @@ class WorkSpace:
 				raise Exception('failed to find group %s for simulation %s in the SliceMeta')
 			else: slice_spec['group_selection'] = candidates[0].data['selection']
 			try: slice_spec['last_structure'] = self.source.get_last(sn,'structure')
-			except: raise Exception(('failed to get a starting structure for %s. this is a common '
-				'problem when you restart a simulation and do not have any structure files matching the '
-				'structure regex. we recommend converting a stray CPT file to match the structure regex for '
-				'this spot in order to continue.')%sn)
+			except Exception as e: 
+				print(e)
+				raise
+				raise Exception(('failed to get a starting structure for %s. this is a common '
+					'problem when you restart a simulation and do not have any structure files matching the '
+					'structure regex. we recommend converting a stray CPT file to match the structure regex for '
+					'this spot in order to continue.')%sn)
 			slices_new.append(slice_spec)
 		if self.debug=='slices':
 			status('welcome to the debugger. check out self.queue_computes and jobs_require_slices '

@@ -3,7 +3,7 @@
 import time
 from joblib import Parallel,delayed
 # from joblib.pool import has_shareable_memory
-from tools import status
+from .tools import status
 
 def framelooper(total,start=None,text='frame'):
 	"""

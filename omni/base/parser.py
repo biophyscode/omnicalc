@@ -3,7 +3,7 @@
 import os,collections,re
 
 from base.tools import status,delve
-from slicer import edrcheck
+from .slicer import edrcheck
 
 class ParsedRawData:
 
@@ -41,7 +41,7 @@ class ParsedRawData:
 		for snum,(spotname,spot) in enumerate(self.spots.items()):
 			status('running the treeparser: %s,%s'%spotname,
 				i=snum,looplen=len(self.spots),tag='parse',width=65)
- 			self.treeparser(spotname,**spot)
+			self.treeparser(spotname,**spot)
 
 	def divy_keys(self,spot):
 		"""
@@ -49,7 +49,7 @@ class ParsedRawData:
 		This function prepares a lambda that divides the combined regex into parts and reduces them to 
 		strings if there is only one part. The resulting regex groups serve as keys in the toc.
 		"""
-		group_counts = [sum([i[0]=='subpattern' 
+		group_counts = [sum([i[0].name=='SUBPATTERN' 
 			for i in re.sre_parse.parse(self.spots[spot][key])]) 
 			#---apply naming convention
 			for key in ['top','step','part']]
@@ -74,7 +74,7 @@ class ParsedRawData:
 			#---! it may be worth storing this as a function a la divy_keys
 			#---follow the top,step,part naming convention
 			try:
-				backwards = [''.join(['%s' if i[0]=='subpattern' else chr(i[1]) 
+				backwards = [''.join(['%s' if i[0].name=='SUBPATTERN' else chr(i[1]) 
 					for i in re.sre_parse.parse(regex)]) for regex in [self.spots[spotname][key] 
 					for key in ['top','step','part']]]
 				fn = os.path.join(
@@ -115,7 +115,7 @@ class ParsedRawData:
 					"any 'top' regexes in your paths. fix 'top' and make sure to run "+
 					"'make refresh' to search for simulations again")
 			raise Exception('[ERROR] could not find simulation "%s" in the toc'%sn)
-		spotnames_unique = list(set(zip(*spotnames)[0]))
+		spotnames_unique = list(set(list(zip(*spotnames))[0]))
 		if len(spotnames_unique) != 1: 
 			raise Exception('[ERROR] you cannot have the same simulation in multiple spots.\n'+
 				'simulation = "%s" and "%s"'%(sn,str(spotnames)))
@@ -187,7 +187,7 @@ class ParsedRawData:
 		#---! removed short_namer on the top below for expedience, but this needs tested and confirmed
 		matches = [(top,step,part) for top,step,part in matches]
 		#---sort the tops into an ordered dictionary
-		for top in sorted(set(zip(*matches)[0])): 
+		for top in sorted(set(list(zip(*matches))[0])): 
 			self.toc[spot][top] = collections.OrderedDict()
 		#---collect unique steps for each top and load them with the parts
 		for tnum,top in enumerate(self.toc[spot]):
@@ -214,6 +214,7 @@ class ParsedRawData:
 		if len(spot_matches)>1: 
 			raise Exception('development. need a way to adjucate spots that have redundant simulations')
 		elif len(spot_matches)==0:
+			import ipdb;ipdb.set_trace()
 			raise Exception('cannot find simulation %s in any of the spots: %s'%(sn,self.spots.keys()))
 		else: spotname = spot_matches[0]
 		edrtree = self.toc[spotname][sn]

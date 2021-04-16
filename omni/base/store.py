@@ -109,7 +109,7 @@ def picturesave(savename,directory='./',meta=None,extras=[],backup=False,
 		os.remove(alt_name)
 	else: 
 		(figure_held if figure_held else plt).savefig(base_fn,dpi=dpi,bbox_extra_artists=extras,
-			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None,format=form,rasterized=False)
+			bbox_inches='tight' if tight else None,pad_inches=pad_inches if pad_inches else None,format=form)
 	plt.close()
 	#---add metadata to png
 	if form=='png' and meta!=None:
@@ -147,9 +147,11 @@ def picturedat(savename,directory='./',bank=False):
 
 def lowest_common_dict_denominator(data):
 	"""..."""
-	if isinstance(data,basestring): return str(data)
+	if sys.version_info>=(3,0) and isinstance(data,str): return str(data)
+	elif sys.version_info<(3,0) and isinstance(data,basestring): return str(data)
 	elif isinstance(data,collections.Mapping): 
-		return dict(map(lowest_common_dict_denominator,data.iteritems()))
+		if sys.version_info<(3,0): return dict(map(lowest_common_dict_denominator,data.iteritems()))
+		else: return dict(map(lowest_common_dict_denominator,data.items()))
 	elif isinstance(data,collections.Iterable): 
 		return type(data)(map(lowest_common_dict_denominator,data))
 	else: return data
@@ -258,7 +260,7 @@ def load(name,cwd=None,verbose=False,exclude_slice_source=False,filename=False):
 		data[key] = np.array(rawdat[key])
 	if 'meta' in rawdat: 
 		if sys.version_info<(3,0): out_text = rawdat['meta'].value
-		else: out_text = rawdat['meta'].value.decode()
+		else: out_text = rawdat['meta'][()].decode()
 		attrs = json.loads(out_text)
 	else: 
 		print('[WARNING] no meta in this pickle')

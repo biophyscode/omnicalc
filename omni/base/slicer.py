@@ -173,6 +173,10 @@ def get_gmx_paths(override=False,gmx_series=False,hostname=None):
 			for key,val in machine_config.items(): 
 				gmxpaths[name] = re.sub(key.upper(),str(val),gmxpaths[name])
 		del name
+	# addition to handle requirement for SLURM wrappers
+	if machine_config.get('use_mpiexec',False):
+		for key,val in gmxpaths.items():
+			gmxpaths[key] = 'mpiexec '+gmxpaths[key]
 	#---even if mdrun is customized in config we treat the gpu flag separately
 	if 'gpu_flag' in machine_config: gmxpaths['mdrun'] += ' -nb %s'%machine_config['gpu_flag']	
 	#---export the gmxpaths to the state
@@ -191,15 +195,18 @@ def edrcheck(fn,debug=False):
 	start,end = None,None
 	cmd = gmxpaths['gmxcheck']+' -e %s'%fn
 	p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stdin=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
-	catch = p.communicate(input=None)
+	catch = tuple([i.decode() for i in p.communicate(input=None)])
 	log = re.sub('\\\r','\n','\n'.join(catch)).split('\n')
 	start,end = None,None
 	try: 
-		start = map(lambda y:re.findall('^.+time\s*([0-9]+\.?[0-9]+)',y)[0],
-			filter(lambda z:re.match('\s*(R|r)eading energy frame',z),log))[0]
-		end = map(lambda y:re.findall('^.+time\s*([0-9]+\.?[0-9]+)',y)[0],
-			filter(lambda z:re.match('\s*(L|l)ast energy',z),log))[0]
-	except: pass
+		start = list(map(lambda y:re.findall('^.+time\s*([0-9]+\.?[0-9]+)',y)[0],
+			filter(lambda z:re.match('\s*(R|r)eading energy frame',z),log)))[0]
+		end = list(map(lambda y:re.findall('^.+time\s*([0-9]+\.?[0-9]+)',y)[0],
+			filter(lambda z:re.match('\s*(L|l)ast energy',z),log)))[0]
+	except Exception as e: 
+		print(e)
+		import ipdb;ipdb.set_trace()
+		pass
 	start = float(start) if start!=None else start
 	end = float(end) if end!=None else end
 	return start,end
@@ -254,7 +261,9 @@ def infer_parts_to_slice(start,end,skip,sequence):
 		sequence_alt = [s for s in sequence if s[0][1]==last_step]
 		slice_target = infer_parts_to_slice_legacy(start,end,skip,sequence_alt)
 	# fall back to the original method
-	except: slice_target = infer_parts_to_slice_legacy(start,end,skip,sequence)
+	except Exception as e: 
+		raise 
+		slice_target = infer_parts_to_slice_legacy(start,end,skip,sequence)
 	return slice_target
 
 def create_group(**kwargs):
@@ -283,7 +292,7 @@ def create_group(**kwargs):
 	import numpy as np
 	iii = sel.indices+1	
 	rows = [iii[np.arange(cols*i,cols*(i+1) if cols*(i+1)<len(iii) else len(iii))] 
-		for i in range(0,len(iii)/cols+1)]
+		for i in range(0,int(len(iii)/cols+1))]
 	with open(fn_abs,'w') as fp:
 		fp.write('[ %s ]\n'%name)
 		for line in rows:
@@ -352,20 +361,20 @@ def slice_trajectory(**kwargs):
 	traj = traj_keyfinder(*keys)
 	tail = ' -dump %d -s %s -f %s -o %s.gro%s'%(start,tpr,traj,outkey,group_flag)
 	if pbc != None: tail = tail + ' -pbc %s'%pbc
-	bash(gmxpaths['trjconv']+tail,cwd=postdir,inpipe='0\n')
+	bash(gmxpaths['trjconv']+tail,cwd=postdir,inpipe='0\n'.encode())
 
 	#---convert relevant trajectories
 	start = time.time()
 	for ii,(outfile,cmd) in enumerate(cmdlist):
 		status('slicing trajectory',i=ii,looplen=len(cmdlist),start=start,tag='SLICE')
-		bash(cmd,cwd=postdir,inpipe='0\n')
+		bash(cmd,cwd=postdir,inpipe='0\n'.encode())
 	
 	#---concatenate remaining steps with no errors
 	valid_parts = range(len(cmdlist))
 	bash(gmxpaths['trjcat']+' -o %s.%s -f '%(outkey,output_format)+
-		' '.join(zip(*cmdlist)[0]),cwd=postdir)
+		' '.join(list(zip(*cmdlist))[0]),cwd=postdir)
 
 	#---delete extraneous files
 	#---! consider using a temporary directory although it's nice to have things onsite
-	for outfile in zip(*cmdlist)[0]:
+	for outfile in list(zip(*cmdlist))[0]:
 		os.remove(postdir+'/%s'%outfile)

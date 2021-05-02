@@ -173,7 +173,7 @@ class MetaData:
 		Read a collections list.
 		"""
 		if any([name not in self.collections for name in names]): 
-			raise Exception('cannot find collection %s'%name)
+			raise Exception('cannot find collection %s'%str(names))
 		sns = []
 		for name in names: sns.extend(self.collections.get(name,[]))
 		return unique_ordered(sns)
@@ -222,16 +222,16 @@ class Calculations:
 			depends[t[0]].extend([t[ii+1] for ii,i in enumerate(t) if ii<len(t)-1 and t[ii]=='upstream'])
 		calckeys = [i for i in calcs_meta if i not in depends]
 		#---if the calculation uses an upstream list instead of dictionary we flatten it
-		depends = dict([(k,(v if not all([type(i)==list for i in v]) else 
-			[j for k in v for j in k])) for k,v in depends.items()])
+		depends = [(k,(list(set(v)) if not all([type(i)==list for i in v]) else 
+			list(set([j for k in v for j in k])))) for k,v in depends.items()]
 		#---check that the calckeys has enough elements 
-		list(set(calckeys+[i for j in depends.values() for i in j]))
+		list(set(calckeys+[i for j in list(zip(*depends))[0] for i in j]))
 		#---paranoid security check for infinite loop
 		start_time = time.time()
 		while any(depends):
-			ii,i = depends.popitem()
+			ii,i = depends.pop(0)
 			if all([j in calckeys for j in i]) and i!=[]: calckeys.append(ii)
-			else: depends[ii] = i
+			else: depends.append((ii,i))
 			if time.time()>(start_time+10): 
 				raise Exception('this is taking too long. '
 					'you might have a loop in your graph of dependencies')
@@ -247,7 +247,7 @@ class Calculations:
 			for i,j in catalog(details_trim) if 'loop' in i[:-1]])])
 		#---some loops end in a list instead of a sub-dictionary
 		nonterm_paths_list = list([tuple(j) for j in set([tuple(i[:i.index('loop')+1]) 
-			for i,j in catalog(details_trim) if i[-1]=='loop'])])
+			for i,j in catalog(details_trim) if i and i[-1]=='loop'])])
 		#---for each non-terminal path we save everything below and replace it with a key
 		nonterms = []
 		for path in nonterm_paths:
@@ -952,7 +952,7 @@ class WorkSpace:
 		"""
 		Export completed calculations to a plot environment.
 		"""
-		whittle = kwargs.pop('whittle',None)
+		whittle = kwargs.pop('whittle_calc',None)
 		collections_alt = [i for j in [self.metadata.collections[c] 
 			for c in str_or_list(kwargs.pop('collections',[]))] for i in j]
 		plotload_version_override = kwargs.pop('plotload_version',False)
@@ -987,8 +987,11 @@ class WorkSpace:
 		if self.plotname not in self.plots: 
 			# carefully reformulate the original plots as the scripts would expect to see them
 			#! make a more flexible data structure for the future?
-			self.plots.update(**dict([(key,{'specs':val}) 
-				for key,val in copy.deepcopy(self.plotspec.request_calc).items()]))
+			#! hacking away some problems on 2021.04.20
+			try:
+				self.plots.update(**dict([(key,{'specs':val}) 
+					for key,val in copy.deepcopy(self.plotspec.request_calc).items()]))
+			except: pass
 			#!!! DEVELOPMENT NOTE. how should we populate work.plots
 			#! currrently set to override with specs in the plot section
 			if self.plotname in self.metadata.plots and 'specs' in self.metadata.plots[self.plotname]:

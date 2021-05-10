@@ -793,7 +793,7 @@ class WorkSpace:
 	# version numbering for spec files (previously 1,2 and now leap to 10)
 	versioning = {'spec_file':10}
 	# number of processors to try
-	nprocs = 4
+	nprocs = int(os.environ.get('OMP_NUM_THREADS',4))
 	# note the member (child) classes
 	_children = ['specs']
 

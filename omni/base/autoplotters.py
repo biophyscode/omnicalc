@@ -119,12 +119,12 @@ def inject_supervised_plot_tools(out,mode='supervised',silent=False):
 	#---save keys before the additions
 	keys_incoming = set(out.keys())
 	#---import sequence from original header.py
-	import store
+	from . import store
 	#---distribute the workspace to the store module
 	#---...we have to distribute this way, or internalize these function
 	store.work = work
-	from store import plotload,picturesave,picturesave_redacted
-	from tools import status
+	from .store import plotload,picturesave,picturesave_redacted
+	from .tools import status
 	if work.metadata.director.get('redacted',False):
 		picturesave = picturesave_redacted
 	#---handle latex and matplotlibrc here
@@ -156,7 +156,7 @@ def inject_supervised_plot_tools(out,mode='supervised',silent=False):
 	#---the plotter __init__.py sets the imports (importantly, including mpl,plt with modifications)
 	from plotter.panels import panelplot,square_tiles
 	from makeface import tracebacker
-	from hypothesis import hypothesis,sweeper
+	from .hypothesis import hypothesis,sweeper
 	from copy import deepcopy
 	#---we would prefer not to import numpy here but it is important for backwards compatibility
 	import numpy as np
@@ -166,7 +166,7 @@ def inject_supervised_plot_tools(out,mode='supervised',silent=False):
 		square_tiles=square_tiles,tracebacker=tracebacker,hypothesis=hypothesis,sweeper=sweeper,
 		deepcopy=deepcopy,np=np)
 	#---add a plot supervisor instance and the autoplotter decorators
-	from autoplotters import PlotSupervisor,autoload,autoplot
+	from .autoplotters import PlotSupervisor,autoload,autoplot
 	out.update(plotrun=PlotSupervisor(mode=mode))
 	#---we use str_types frequently for python 2,3 cross-compatibility
 	str_types = [str,unicode] if sys.version_info<(3,0) else [str]

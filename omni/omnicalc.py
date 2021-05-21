@@ -1237,7 +1237,8 @@ class WorkSpace:
 		#---change empty tuple to None because that means "everything" in plotrun
 		if plotrun.routine==(): plotrun.routine = None
 		if plotspecs: raise Exception('unprocessed plotspecs %s'%plotspecs)
-		if kwargs_plot: raise Exception('unprocessed plotting kwargs %s'%kwargs_plot)
+		#! let kwargs through for now
+		#!   if kwargs_plot: raise Exception('unprocessed plotting kwargs %s'%kwargs_plot)
 		plotrun.autoplot(out=out)
 
 	def parse_sources(self): 
@@ -1691,7 +1692,7 @@ class WorkSpace:
 			do_autoplot = self.do_autoplot()
 			# check plotspec for the autoplot flag otherwise get the default from director
 			# trailing arguments to plot indicate functions we want to run and trigger a non-interactive mode
-			if do_autoplot and len(args)>0:
+			if do_autoplot and len(args)>0 or len(self.plot_kwargs)>0:
 				self.plot_supervised(plotname=plotname,plotspecs=dict(args=args,kwargs=self.plot_kwargs))
 			# call a separate function for plotting "legacy" plot scripts and interactive autoplot
 			# note that this conditional allows you to run autoplot with the header into interactive mode

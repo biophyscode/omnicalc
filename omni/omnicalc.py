@@ -1600,8 +1600,8 @@ class WorkSpace:
 			if not kwargs.get('write_json',False): 
 				view = dict([(name,[
 					(('%s%s-%s'%k+' part%s:'%i).ljust(25,'.')+'%s%s'%(
-					str(round(j['start'],2)  if j['start'] else '???').rjust(12,'.'),
-					str(round(j['stop'],2) if j['stop'] else '???').rjust(12,'.'))) 
+					str(round(j['start'],2)  if j['start']!=None else '???').rjust(12,'.'),
+					str(round(j['stop'],2) if j['stop']!=None else '???').rjust(12,'.'))) 
 					for k,v in obj.items() for i,j in v.items()]) for name,obj in view_od])
 				asciitree(dict(simulations=collections.OrderedDict([(k,view[k]) 
 					for k in sorted(view.keys())])))
